@@ -1,2 +1,1 @@
-def hello() -> str:
-    return "Hello from vision!"
+"""Turning Frames into Observations with a vision-language model on this machine."""

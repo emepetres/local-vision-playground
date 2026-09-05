@@ -56,8 +56,11 @@ class ModelIdentity:
 
 
 @dataclass(frozen=True)
-class Completion:
-    """What the model said, already copied out of the native response."""
+class RawObservation:
+    """What the model reports about a Frame, already copied out of the native response.
+
+    An Observation without the provenance and the timings the command wraps around it.
+    """
 
     text: str
     finish_reason: FinishReason
@@ -109,10 +112,10 @@ class VisionModel(Protocol):
         """Bring the model up on whichever Execution Provider it resolves to."""
         ...
 
-    def observe(self, frame: Frame, prompt: str) -> Completion: ...
+    def observe(self, frame: Frame, prompt: str) -> RawObservation: ...
 
 
-class Foundry(Protocol):
+class FoundryLocal(Protocol):
     """The port onto Foundry Local."""
 
     def resolve(self, name: str) -> VisionModel:
@@ -130,8 +133,8 @@ def require_vision_task(identity: ModelIdentity) -> None:
         )
 
 
-class FoundryLocal:
-    """The real Foundry Local, in-process. Constructed only by the entry point."""
+class InProcessFoundryLocal:
+    """The real Foundry Local, called in-process (ADR-0004). Built by the entry point only."""
 
     def __init__(
         self,
@@ -210,7 +213,7 @@ class FoundryLocalModel:
         self._model.load()
         self._session = ChatSession(self._model)
 
-    def observe(self, frame: Frame, prompt: str) -> Completion:
+    def observe(self, frame: Frame, prompt: str) -> RawObservation:
         from foundry_local_sdk import (
             ImageItem,
             MessageItem,
@@ -236,7 +239,7 @@ class FoundryLocalModel:
                 text = "".join(_text_of(item) for item in response)
                 finish_reason = _finish_reason(response)
 
-        return Completion(text=text.strip(), finish_reason=finish_reason)
+        return RawObservation(text=text.strip(), finish_reason=finish_reason)
 
 
 def _text_of(item: Item) -> str:

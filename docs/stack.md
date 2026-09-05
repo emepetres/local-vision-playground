@@ -173,8 +173,10 @@ a homepage at an unrelated company).
 
 It is not a CLI wrapper: it is an in-process native library that handles catalogue lookup,
 download, load/unload and EP registration. The OpenAI-compatible REST server is
-**optional** — `manager.start_web_service()`. This playground starts it anyway, because
-that endpoint is the seam the C# Agent talks to.
+**optional** — `manager.start_web_service()`. That endpoint is still the seam the C# Agent
+talks to, but `vision/` does not start it: serving it is Foundry Local's job, and nothing
+on the Python side speaks HTTP. See
+[ADR-0004](./adr/0004-target-foundry-local-2x-in-process.md).
 
 Shape: `Configuration(app_name=…)` → `FoundryLocalManager.initialize(config)` →
 `manager.catalog.get_model(alias)` (falling back to `get_model_variant(id)` for a pinned

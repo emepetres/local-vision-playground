@@ -6,18 +6,22 @@ illustration of a desk with a laptop, a coffee mug, a stack of books and a potte
 enough recognisable objects for an Observation to be worth reading, and enough flat colour
 that it survives JPEG at the working resolution.
 
-Run with ``uv run python tools/make_reference_frame.py``.
+Run with ``uv run python tools/make_reference_frame.py``. It writes into ``docs/`` at the
+repository root rather than into ``vision/``, because the Frame is a fixture the whole
+playground shares — pass ``--output`` to put it somewhere else.
 """
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 from vision.capture import JPEG_QUALITY, WORKING_RESOLUTION
 
-OUTPUT = Path(__file__).resolve().parents[2] / "docs" / "fixtures" / "reference-frame.jpg"
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_OUTPUT = REPOSITORY_ROOT / "docs" / "fixtures" / "reference-frame.jpg"
 
 WALL = (232, 228, 220)
 DESK = (166, 118, 74)
@@ -90,9 +94,13 @@ def _plant(canvas: ImageDraw.ImageDraw) -> None:
 
 
 def main() -> None:
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    draw().save(OUTPUT, format="JPEG", quality=JPEG_QUALITY)
-    print(f"wrote {OUTPUT}")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    output = parser.parse_args().output
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    draw().save(output, format="JPEG", quality=JPEG_QUALITY)
+    print(f"wrote {output}")
 
 
 if __name__ == "__main__":

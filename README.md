@@ -74,7 +74,7 @@ uv run observe --image ../docs/fixtures/reference-frame.jpg
 
 ```
 Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
-Frame      640x480 jpeg from ../docs/fixtures/reference-frame.jpg
+Frame      640x480 jpeg, fit to 640x480, from ../docs/fixtures/reference-frame.jpg
 Load       2.822 s
 Capture    0.014 s
 Inference  1.977 s

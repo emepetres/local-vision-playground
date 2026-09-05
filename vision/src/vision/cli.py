@@ -18,13 +18,13 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO
 
-from vision.capture import Camera, Frame, ImageFileCamera
+from vision.capture import WORKING_RESOLUTION, Camera, Frame, ImageFileCamera
 from vision.errors import VisionError
 from vision.inference import (
     DEFAULT_MODEL,
     MAX_OUTPUT_TOKENS,
     PROMPT,
-    Foundry,
+    FoundryLocal,
     ModelIdentity,
     Observation,
     Timings,
@@ -42,7 +42,7 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     camera: Camera | None = None,
-    foundry: Foundry | None = None,
+    foundry: FoundryLocal | None = None,
     clock: Clock | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
@@ -118,8 +118,8 @@ def _camera_from(args: argparse.Namespace) -> Camera:
     return ImageFileCamera(args.image)
 
 
-def _foundry(out: TextIO) -> tuple[Foundry, Callable[[], None]]:
-    from vision.inference import FoundryLocal
+def _foundry(out: TextIO) -> tuple[FoundryLocal, Callable[[], None]]:
+    from vision.inference import InProcessFoundryLocal
 
     announced = False
 
@@ -128,7 +128,7 @@ def _foundry(out: TextIO) -> tuple[Foundry, Callable[[], None]]:
         announced = True
         print(line, file=out, flush=True)
 
-    foundry = FoundryLocal(on_setup=on_setup)
+    foundry = InProcessFoundryLocal(on_setup=on_setup)
     if announced:
         print(file=out)
     return foundry, foundry.close
@@ -137,7 +137,7 @@ def _foundry(out: TextIO) -> tuple[Foundry, Callable[[], None]]:
 def _observe(
     *,
     camera: Camera,
-    foundry: Foundry,
+    foundry: FoundryLocal,
     clock: Clock,
     model_name: str,
     out: TextIO,
@@ -150,12 +150,12 @@ def _observe(
 
     _, load = _timed(clock, model.load)
     frame, capture = _timed(clock, camera.capture)
-    completion, inference = _timed(clock, lambda: model.observe(frame, PROMPT))
+    raw, inference = _timed(clock, lambda: model.observe(frame, PROMPT))
 
     observation = Observation(
-        text=completion.text,
+        text=raw.text,
         model=identity,
-        finish_reason=completion.finish_reason,
+        finish_reason=raw.finish_reason,
         timings=Timings(load=load, capture=capture, inference=inference),
     )
     return frame, observation
@@ -174,7 +174,7 @@ def _download(
 
     on_progress = _whole_percent_only(f"Downloading {identity.variant}", out=out)
     _, seconds = _timed(clock, lambda: model.download(on_progress))
-    print(f"Downloaded in {_seconds(seconds)}\n", file=out, flush=True)
+    print(f"Downloaded in {_format_seconds(seconds)}\n", file=out, flush=True)
 
 
 def _whole_percent_only(prefix: str, *, out: TextIO) -> Callable[[float], None]:
@@ -217,26 +217,32 @@ def _render(observation: Observation, frame: Frame, *, out: TextIO) -> None:
 def _report(observation: Observation, frame: Frame) -> list[tuple[str, str]]:
     timings = observation.timings
     return [
-        ("Model", _model(observation.model)),
-        ("Frame", _frame(frame)),
-        ("Load", _seconds(timings.load)),
-        ("Capture", _seconds(timings.capture)),
-        ("Inference", _seconds(timings.inference)),
+        ("Model", _format_model(observation.model)),
+        ("Frame", _format_frame(frame)),
+        ("Load", _format_seconds(timings.load)),
+        ("Capture", _format_seconds(timings.capture)),
+        ("Inference", _format_seconds(timings.inference)),
     ]
 
 
-def _model(identity: ModelIdentity) -> str:
+def _format_model(identity: ModelIdentity) -> str:
     detail = f"alias {identity.alias}"
     if identity.runtime is not None:
         detail = f"{detail}, {identity.runtime}"
     return f"{identity.variant} ({detail})"
 
 
-def _frame(frame: Frame) -> str:
-    return f"{frame.width}x{frame.height} {frame.codec} from {frame.provenance}"
+def _format_frame(frame: Frame) -> str:
+    """Name the working resolution as well as this Frame's own.
+
+    They only coincide for a 4:3 Frame — a 16:9 one fits the same box at 640x360 — and it
+    is the working resolution that fixes the workload.
+    """
+    working = "x".join(str(edge) for edge in WORKING_RESOLUTION)
+    return f"{frame.width}x{frame.height} {frame.codec}, fit to {working}, from {frame.provenance}"
 
 
-def _seconds(seconds: float) -> str:
+def _format_seconds(seconds: float) -> str:
     return f"{seconds:.3f} s"
 
 

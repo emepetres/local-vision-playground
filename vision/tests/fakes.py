@@ -1,16 +1,24 @@
 """Fakes for the three ports the ``observe`` command is given.
 
 They encode our reading of the Foundry Local 2.x type signatures — see ADR-0004. They do
-not prove the SDK behaves this way; only running against the real model does that.
+not prove the SDK behaves this way; only running against the real model does that. What
+they do prove, through the assignments at the bottom of this module, is that they still
+satisfy the ports the command declares.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 
-from vision.capture import Frame
+from vision.capture import Camera, Frame
 from vision.errors import VisionError
-from vision.inference import Completion, FinishReason, ModelIdentity
+from vision.inference import (
+    FinishReason,
+    FoundryLocal,
+    ModelIdentity,
+    RawObservation,
+    VisionModel,
+)
 
 
 class FakeCamera:
@@ -29,33 +37,33 @@ class FakeCamera:
 
 
 class FakeVisionModel:
-    """A model whose task, runtime and response are all declared up front."""
+    """A model whose task, runtime and Observation are all declared up front."""
 
     def __init__(
         self,
         identity: ModelIdentity,
-        completion: Completion,
+        observation: RawObservation,
         *,
         is_cached: bool = True,
         download_progress: Sequence[float] = (),
     ) -> None:
         self.identity = identity
         self.is_cached = is_cached
-        self._completion = completion
+        self._observation = observation
         self._download_progress = tuple(download_progress)
         self.loaded = False
         self.observed: list[tuple[Frame, str]] = []
 
     def download(self, on_progress: Callable[[float], None]) -> None:
-        for fraction in self._download_progress:
-            on_progress(fraction)
+        for percent in self._download_progress:
+            on_progress(percent)
 
     def load(self) -> None:
         self.loaded = True
 
-    def observe(self, frame: Frame, prompt: str) -> Completion:
+    def observe(self, frame: Frame, prompt: str) -> RawObservation:
         self.observed.append((frame, prompt))
-        return self._completion
+        return self._observation
 
 
 class FakeFoundry:
@@ -85,7 +93,7 @@ class FakeClock:
         return reading
 
 
-def identity(
+def make_identity(
     *,
     alias: str = "qwen3-vl-2b-instruct",
     variant: str = "qwen3-vl-2b-instruct-cuda-gpu",
@@ -95,14 +103,14 @@ def identity(
     return ModelIdentity(alias=alias, variant=variant, task=task, runtime=runtime)
 
 
-def completion(
+def make_observation(
     text: str = "A wooden desk with a laptop, a coffee mug and an open notebook.",
     finish_reason: FinishReason = FinishReason.COMPLETE,
-) -> Completion:
-    return Completion(text=text, finish_reason=finish_reason)
+) -> RawObservation:
+    return RawObservation(text=text, finish_reason=finish_reason)
 
 
-def frame(
+def make_frame(
     *,
     provenance: str = "docs/fixtures/reference-frame.jpg",
     width: int = 640,
@@ -115,3 +123,10 @@ def frame(
         width=width,
         height=height,
     )
+
+
+# Each fake really does satisfy the port it stands in for. mypy checks these; a port that
+# grows a member without its fake growing one fails here rather than at some later run.
+_camera: Camera = FakeCamera([])
+_model: VisionModel = FakeVisionModel(make_identity(), make_observation())
+_foundry: FoundryLocal = FakeFoundry(FakeVisionModel(make_identity(), make_observation()))

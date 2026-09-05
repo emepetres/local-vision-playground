@@ -11,7 +11,9 @@ The continuous stream of images coming from a camera attached to the local machi
 _Avoid_: stream, video, source, input
 
 **Frame**:
-A single still image taken from the Feed at one point in time. The unit of work everything downstream operates on.
+A single still image the rest of the system reasons over — normally taken from the Feed at
+one point in time, though an image file on disk is a Frame too. The Feed is the canonical
+source of Frames, not the only one. The unit of work everything downstream operates on.
 _Avoid_: snapshot, capture, still, photo
 
 ### Understanding
@@ -19,6 +21,12 @@ _Avoid_: snapshot, capture, still, photo
 **Observation**:
 What the model reports about a Frame — what is present in it and how it is described.
 _Avoid_: detection, caption, description, result, inference
+
+**Structured Observation**:
+An Observation the model is asked to return as a fixed shape — a list of the objects
+present in a Frame rather than free-form prose. Same concept as an Observation, asked
+for differently. Whether an object being present *matters* is a [[Trigger]], not this.
+_Avoid_: object detection, bounding boxes, labels, classification
 
 **Scene Question**:
 A natural-language question an Operator asks about a Frame, answered from that Frame alone.

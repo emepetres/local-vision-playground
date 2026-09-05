@@ -1,0 +1,113 @@
+# Local Vision Playground
+
+A demo and teaching playground for multimodal vision running entirely on the Operator's
+own machine, with no cloud. [Foundry Local](https://learn.microsoft.com/en-us/azure/foundry-local/)
+serves a local vision-language model on ONNX Runtime; a camera Feed is turned into
+Observations; those Observations drive an Agent written in C# with Microsoft Agent
+Framework.
+
+The point is not that it works — it is what it *feels like*: how fast local inference
+actually is, what it costs on different hardware, and where the line sits between what a
+local model can do and what still wants the cloud.
+
+See [`CONTEXT.md`](./CONTEXT.md) for the vocabulary (Feed, Frame, Observation, Trigger,
+Execution Provider…), [`docs/stack.md`](./docs/stack.md) for the Microsoft stack and its
+known constraints, and [`docs/adr/`](./docs/adr/) for the decisions that shaped it.
+
+## Layout
+
+One folder at the root per **domain** — named for the part of the problem it owns, never
+for a language or a runtime. Inside a domain sit its **code projects**.
+
+A project folder is the project's own root: its manifest and tooling live there
+(`pyproject.toml`, a `.csproj`, lockfiles, config), with `src/` as one folder inside it.
+
+A domain folder may *be* a single project, in which case the manifest sits directly in the
+domain folder. Or it may hold several projects side by side. Nothing says the projects
+under one domain share a language: a domain is a boundary in the problem, not in the
+toolchain.
+
+```
+vision/                 domain — turning Frames into Observations
+    pyproject.toml          currently also the project root itself
+    src/
+agent/                  domain — deciding and acting on Observations
+    Agent.csproj            likewise
+    src/
+docs/                   ADRs, stack notes, agent-facing docs
+```
+
+As the playground grows, a domain gains project folders rather than spilling into the
+root — and the manifests move down with them:
+
+```
+vision/
+    capture/                for example: a project owning the Feed
+        pyproject.toml
+        src/
+    inference/              ... and one owning the model
+        pyproject.toml
+        src/
+```
+
+The two domains are separate processes. They meet at the OpenAI-compatible endpoint that
+Foundry Local serves on localhost — that seam is deliberate, and it is part of what the
+playground demonstrates. See [ADR-0003](./docs/adr/0003-the-agent-consumes-observations-not-images.md).
+
+## Requirements
+
+- **Foundry Local**, with a vision-language model available locally. Confirm with
+  `foundry model list` — you are looking for a `vision-language-chat` task. The project
+  builds on `qwen3-vl-2b-instruct` ([ADR-0001](./docs/adr/0001-qwen3-vl-as-the-local-vision-model.md)).
+- **Python** for `vision/`, **.NET** for `agent/`.
+- A camera. Not strictly required: every stage accepts an image file instead of a live
+  Frame, so the playground can be developed and demonstrated without one.
+
+There is nothing to run yet. The backlog below is the order it gets built in.
+
+## Backlog
+
+The high-level thread of the demo. Each item is one demonstrable feature, small enough to
+show in a single sitting. Issues are opened per item as it is picked up — they are not
+mirrored here.
+
+### Committed
+
+- [ ] **1. One Observation, on demand.** Capture a Frame from the camera (or take an
+      image file), send it to the local model, print the Observation and the latency it
+      took. Runs and exits.
+- [ ] **2. Benchmark Runs across Execution Providers.** The same fixed workload against
+      the CUDA-GPU variant and the CPU variant, N times each, printed as a table and
+      persisted to the repo so the numbers survive a demo that goes wrong. Each Benchmark
+      Run is named against its Hardware Profile.
+- [ ] **3. A continuous Feed.** Observations in a loop over the live camera, and a
+      deliberate answer to what happens when inference is slower than the capture
+      interval.
+- [ ] **4. Scene Questions.** Ask a natural-language question about the current Frame and
+      get an answer from that Frame alone.
+- [ ] **5. Structured Observations.** Ask the model for a fixed shape — the list of
+      objects present in a Frame — instead of prose.
+- [ ] **6. Triggers.** Fire when a condition over Observations holds: an object appears,
+      a scene changes.
+- [ ] **7. The Agent, in C#.** Microsoft Agent Framework consuming Observations over the
+      local endpoint and invoking Actions when Triggers fire. The Agent never sees an
+      image ([ADR-0003](./docs/adr/0003-the-agent-consumes-observations-not-images.md)).
+- [ ] **8. NPU as a third Execution Provider.** Blocked on hardware: no vision-language
+      model in the local catalogue currently ships an NPU variant, and the development
+      machine has no NPU. Committed, but it needs a Copilot+ PC before it can be
+      rehearsed.
+
+### Exploratory
+
+Written down so it is not lost. Not promised.
+
+- [ ] **Model comparison on fixed hardware.** `qwen3-vl` at 2B / 4B / 8B, and against
+      other local VLMs (`qwen3.5-*`, `ministral-3-3b`, `gemma-4-e2b`) — the variable an
+      Operator can actually change on their own machine.
+- [ ] **The cloud comparison.** Phi-4-reasoning-vision in Microsoft Foundry, not to run
+      it as part of the demo but to make "when does local actually compensate?" concrete.
+- [ ] **Live transcription.** The Live Transcription API added in Foundry Local 1.1,
+      putting vision and speech on the same laptop with nothing leaving it.
+- [ ] **Phi-4-multimodal, compiled by hand** for Foundry Local — the path
+      [ADR-0001](./docs/adr/0001-qwen3-vl-as-the-local-vision-model.md) rejected as the
+      primary route but kept as a comparison exercise.

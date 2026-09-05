@@ -1,18 +1,21 @@
 # Microsoft Stack and Known Constraints
 
-The Microsoft technologies this playground demonstrates, the two constraints that shape
-how it must be built, and the primary sources for both.
+The Microsoft technologies this playground demonstrates, the constraints that shape how it
+must be built, and the primary sources for both.
 
-Everything here was supplied by the maintainer on 2026-09-05 and has **not** been
-re-verified against the linked sources. Verify before relying on a version number or an
-API shape — the Foundry Local catalogue moves quickly.
+The original contents of this file were supplied by the maintainer on 2026-09-05 and
+unverified. Sections marked **[verified 2026-09-05]** have since been checked against the
+local Foundry catalogue and the official sample; the rest still has not been. The Foundry
+Local catalogue moves quickly — re-run `foundry model list` rather than trusting a name
+here.
 
 ## What is demonstrated
 
 - **Foundry Local (GA)** — the local inference runtime.
 - **The Microsoft Foundry model catalogue** — note that the local and cloud catalogues
   differ; see the constraint below.
-- **ONNX Runtime**, with NPU / GPU / CPU acceleration via execution providers.
+- **ONNX Runtime**, with GPU / CPU acceleration via execution providers (NPU: see
+  Constraint 3).
 - **Microsoft Agent Framework in C#** — orchestration of Actions from Observations.
 - **Microsoft.Extensions.AI (MEAI)** — the abstraction layer the Agent talks through.
 - **A comparison against Microsoft Foundry in the cloud** — not to run it, but to make the
@@ -25,28 +28,102 @@ algorithmic latency. That would put vision and speech on the same laptop with no
 
 ## Constraint 1 — the local catalogue is not the cloud catalogue
 
-Foundry Local's local catalogue was text-only for months. Version 1.1 changed that: it
-added a Qwen3-VL vision-language model that reasons over images and text together, with
-small on-device variants (3B, 7B), and the new **Responses API** gained vision support for
-passing images alongside text input (model-dependent).
+Foundry Local's local catalogue was text-only for months. Version 1.1 changed that, adding
+vision-language models that reason over images and text together, and vision support in
+the **Responses API**.
 
-**Phi-4-multimodal lives in the cloud catalogue, not the local one.** Plan around
-**Qwen3-VL** as the primary local model. `qwen3-vl-2b-instruct` is the alias used in the
-official sample; run `foundry model list` to see what is actually available on a given
-machine. See [ADR-0001](./adr/0001-qwen3-vl-as-the-local-vision-model.md).
+**Phi-4-multimodal lives in the cloud catalogue, not the local one.** The primary local
+model is **Qwen3-VL**. See [ADR-0001](./adr/0001-qwen3-vl-as-the-local-vision-model.md).
 
-The working pattern from the sample: load `qwen3-vl-2b-instruct`, register the execution
-providers for hardware acceleration, start the local web service, and call
-`client.responses.create` with a base64 `input_image`.
+### What the local catalogue actually contains **[verified 2026-09-05]**
+
+Checked with `foundry model list` on the development machine, CLI **0.8.119**. The task
+string to look for is `vision-language-chat`:
+
+| Alias | Variants |
+| --- | --- |
+| `qwen3-vl-2b-instruct` | `-cuda-gpu`, `-generic-cpu` |
+| `qwen3-vl-4b-instruct` | `-cuda-gpu`, `-generic-cpu` |
+| `qwen3-vl-8b-instruct` | `-cuda-gpu`, `-generic-cpu` |
+| `qwen3.5-0.8b` / `-2b` / `-4b` / `-9b` | `-cuda-gpu`, `-generic-gpu`, `-generic-cpu` |
+| `ministral-3-3b-instruct-2512` | `-cuda-gpu`, `-generic-gpu`, `-generic-cpu` |
+| `gemma-4-e2b-it` | `-cuda-gpu`, `-generic-gpu`, `-generic-cpu` |
+
+ADR-0001's `qwen3-vl-2b-instruct` is confirmed to exist. All of these also carry `tools`.
+Note there are considerably more local VLMs than the demo needs — enough for a
+model-to-model comparison on fixed hardware.
+
+`foundry model list` on 0.8.119 also emits nine `Failed to process model` errors; the
+catalogue is served fine but some entries are not parsed by this CLI version. Worth
+re-checking after an upgrade.
 
 ## Constraint 2 — there is no first-party .NET bridge to Foundry Local
 
 Agent Framework's own documentation states that Foundry Local is not currently supported
 in .NET; the `FoundryLocalClient` provider is Python-only. Meanwhile MEAI and Agent
-Framework both expect an `IChatClient`. Nothing first-party joins the two.
-
-Bruno Capuano hit exactly this and wrote an adapter. See
+Framework both expect an `IChatClient`. Nothing first-party joins the two. Bruno Capuano
+hit exactly this and wrote an adapter. See
 [ADR-0002](./adr/0002-custom-ichatclient-adapter-for-foundry-local.md).
+
+### The vision payload is not the OpenAI shape **[verified 2026-09-05]**
+
+This sharpens Constraint 2 considerably. The official sample uses the stock `openai`
+Python client against the local endpoint, but the image is passed as:
+
+```python
+{"type": "input_image", "image_data": image_b64, "media_type": "image/jpeg"}
+```
+
+— raw base64 with no `data:` prefix, not OpenAI's `image_url`. The OpenAI SDK does not
+type this, so the sample passes a dummy `input="placeholder"` and smuggles the real
+payload through `extra_body={"input": vision_input, ...}`, which overwrites it on the wire.
+
+The consequence: an `IChatClient` adapter built for chat should not be assumed to carry
+images. This is the technical half of the reason the C# Agent never sees a Frame — see
+[ADR-0003](./adr/0003-the-agent-consumes-observations-not-images.md).
+
+## Constraint 3 — no explicit Execution Provider switch, and no local NPU vision model **[verified 2026-09-05]**
+
+Two facts that together reshape what the benchmarking half of the demo can promise.
+
+**Selection is implicit.** Nothing in the SDK or the sample chooses an execution provider.
+`manager.download_and_register_eps()` registers *all* EPs applicable to the machine and
+takes no EP name. The choice happens at model load: passing an **alias** lets Foundry pick
+the best available hardware automatically. The only lever is to pass a **variant id**
+instead — `qwen3-vl-2b-instruct-generic-cpu` pins CPU, `…-cuda-gpu` pins CUDA. So a
+Benchmark Run selects hardware by naming a variant, not by configuring a backend.
+
+**No vision-language model in the local catalogue ships an NPU variant** — every VLM above
+offers only `cuda-gpu`, `generic-gpu` and `generic-cpu`. The development machine (RTX 4090
++ i7-13700KF, Raptor Lake, no AI Boost) has no NPU either.
+
+The demonstrable Execution Provider axis is therefore **CUDA-GPU vs CPU**. NPU remains a
+committed backlog goal, blocked on both a Copilot+ class machine and an NPU variant
+appearing in the catalogue.
+
+For reference, the Windows plugin EPs that exist: `NvTensorRTRTXExecutionProvider`,
+`OpenVINOExecutionProvider` (Intel CPU/GPU/NPU), `QNNExecutionProvider` (Qualcomm NPU),
+`VitisAIExecutionProvider` (AMD NPU); built in: CPU (MLAS), WebGPU (Dawn), CUDA.
+
+## The Python SDK **[verified 2026-09-05]**
+
+`foundry-local-sdk` on PyPI (Windows-accelerated sibling: `foundry-local-sdk-winml` —
+install one, never both; conflicting `onnxruntime-core` pins). The PyPI package named
+`foundry-local`, without `-sdk`, is an unrelated third party.
+
+It is not a CLI wrapper: it is an in-process native library that handles catalogue lookup,
+download, load/unload and EP registration. The OpenAI-compatible REST server is
+**optional** — `manager.start_web_service()`. This playground starts it anyway, because
+that endpoint is the seam the C# Agent talks to.
+
+Shape: `Configuration(app_name=…)` → `FoundryLocalManager.initialize(config)` →
+`manager.catalog.get_model(alias)` (falling back to `get_model_variant(id)` for a pinned
+variant) → `model.download()` → `model.load()` → call `openai.responses.create` against
+`manager.urls[0] + "/v1"` with `model=model.id`. Clean up with `model.unload()` and
+`manager.stop_web_service()`.
+
+The official sample **does not use a camera** — it reads an image file from disk. Camera
+capture is entirely this project's own code.
 
 ## References
 
@@ -55,6 +132,8 @@ Bruno Capuano hit exactly this and wrote an adapter. See
 - Docs: https://learn.microsoft.com/en-us/azure/foundry-local/
 - Get started (full quickstart code): https://learn.microsoft.com/en-us/azure/foundry-local/get-started
 - CLI reference: https://learn.microsoft.com/en-us/azure/foundry-local/reference/reference-cli
+- SDK reference: https://learn.microsoft.com/en-us/azure/foundry-local/reference/reference-sdk-current
+- Architecture, incl. EP selection at load time: https://learn.microsoft.com/en-us/azure/foundry-local/concepts/foundry-local-architecture
 - Samples repo, all languages: https://github.com/microsoft/Foundry-Local
 - Windows get-started, with execution-provider control: https://learn.microsoft.com/en-us/windows/ai/foundry-local/get-started
 
@@ -66,7 +145,7 @@ Bruno Capuano hit exactly this and wrote an adapter. See
 
 ### Models
 
-- Qwen3-VL in the local catalogue — discover aliases with `foundry model list`.
+- Qwen3-VL in the local catalogue — see the verified table above, or run `foundry model list`.
 - Phi-4-reasoning-vision-15B, for the cloud comparison: https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/introducing-phi-4-reasoning-vision-to-microsoft-foundry/4499154
 - Research blog, details and benchmarks: https://www.microsoft.com/en-us/research/blog/phi-4-reasoning-vision-and-the-lessons-of-training-a-multimodal-reasoning-model/
 - Phi-4-multimodal on Hugging Face, if it ends up being compiled by hand: https://huggingface.co/microsoft/Phi-4-multimodal-instruct

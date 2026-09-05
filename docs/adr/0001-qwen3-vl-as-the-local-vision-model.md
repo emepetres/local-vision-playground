@@ -3,7 +3,7 @@
 The project was pitched around Phi-4-multimodal, but that model lives in the Microsoft
 Foundry **cloud** catalogue — the local catalogue was text-only until Foundry Local 1.1
 added Qwen3-VL, a natively multimodal vision-language model with small on-device variants
-(3B, 7B), alongside vision support in the Responses API. Since Local-First is the premise
+(2B, 4B and 8B in this machine's catalogue), alongside vision support in the Responses API. Since Local-First is the premise
 of the whole playground and not an optimisation, the model has to come from the local
 catalogue: we build on **Qwen3-VL** (`qwen3-vl-2b-instruct` in the official sample).
 

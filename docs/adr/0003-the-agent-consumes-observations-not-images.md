@@ -11,16 +11,19 @@ Two independent reasons put the line here.
 *consumes* Observations and does not produce them. Handing it a Frame would make it an
 Observer, collapsing a distinction the vocabulary depends on.
 
-**The runtime says so too.** Foundry Local's vision payload is not the OpenAI shape:
+**The runtime makes it expensive.** Foundry Local's vision payload is not the OpenAI shape:
 images go as `{"type": "input_image", "image_data": <base64>, "media_type": …}`, which the
 OpenAI SDK does not type and the official Python sample smuggles through `extra_body`. The
 community `IChatClient` adapter this project depends on ([ADR-0002](./0002-custom-ichatclient-adapter-for-foundry-local.md))
-bridges chat, and there is no reason to expect it to carry that payload. Sending images
-from C# would mean extending a non-first-party adapter on the project's most load-bearing
-seam.
+bridges chat, and there is no reason to expect it to carry that payload. Doing vision from
+C# through MEAI would mean extending a non-first-party adapter on the project's most
+load-bearing seam.
 
-That the model boundary and the technical constraint agree is the reason to trust the
-line, rather than treat it as a workaround.
+This is a cost, not a barrier — and since Foundry Local 2.0.1 it is avoidable. That release
+gives C# a typed image item on `ChatSession`, natively, bypassing `IChatClient` entirely, so
+a C# app could do vision on-device with no adapter at all. The line is therefore held by the
+domain reason above: crossing it would make the Agent an Observer whatever the API allows.
+The runtime cost is why the line was cheap to draw, not why it is where it is.
 
 ## Considered Options
 

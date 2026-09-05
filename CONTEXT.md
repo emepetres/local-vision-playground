@@ -7,7 +7,9 @@ A demo and teaching playground for multimodal vision running entirely on the ope
 ### Capture
 
 **Feed**:
-The continuous stream of images coming from a camera attached to the local machine.
+The continuous stream of images coming from a camera attached to the local machine. A Feed
+does not yield usable Frames the instant it opens — the camera needs a moment to settle
+before what it reports is what is actually in front of it.
 _Avoid_: stream, video, source, input
 
 **Frame**:
@@ -49,11 +51,13 @@ _Avoid_: offline, on-prem, edge, air-gapped
 ### Measurement
 
 **Benchmark Run**:
-One measured execution of a fixed workload against one model on one Execution Provider.
+One measured execution of a fixed workload against one model on one Execution Provider. The
+workload is only fixed if the size of the Frame is too: a larger Frame is more work for the
+model, so two Benchmark Runs over differently sized Frames measure different things.
 _Avoid_: test, trial, profile, benchmark
 
 **Hardware Profile**:
-The machine-and-Execution-Provider combination a Benchmark Run is attributed to. Two Benchmark Runs are only comparable when named against their Hardware Profiles.
+The machine-and-Execution-Provider combination a Benchmark Run is attributed to. Two Benchmark Runs are only comparable when named against their Hardware Profiles — and only then if their workloads match, Frame size included.
 _Avoid_: rig, environment, setup, config
 
 ### Action

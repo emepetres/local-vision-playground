@@ -207,8 +207,10 @@ still describe 1.2.x. What it does:
 - **The `-winml` packages are merged away**: one `foundry-local-sdk` for Python, one
   `Microsoft.AI.Foundry.Local` for .NET. `foundry-local-sdk-winml` is stuck at 1.2.4.
 
-Decide deliberately whether this playground targets 1.2.x (what the docs describe) or 2.x
-(what ships).
+This playground targets **2.x, in-process** — see
+[ADR-0004](./adr/0004-target-foundry-local-2x-in-process.md). Note that the SDK reference on
+Learn (`reference-sdk-current`) still documents the 1.x API, so it is not a source for this
+path; the 2.0.1 release notes and the package's own README are.
 
 ## References
 

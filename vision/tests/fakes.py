@@ -75,7 +75,11 @@ class FakeCameras:
 
 
 class FakeVisionModel:
-    """A model whose task, runtime and Observation are all declared up front."""
+    """A model whose task, runtime and Observation are all declared up front.
+
+    ``downloads`` counts the downloads that were started, which is what lets a test pin a
+    refusal ahead of one rather than merely ahead of the Observation.
+    """
 
     def __init__(
         self,
@@ -92,9 +96,11 @@ class FakeVisionModel:
         self._download_progress = tuple(download_progress)
         self._load_error = load_error
         self.loaded = False
+        self.downloads = 0
         self.observed: list[tuple[Frame, str]] = []
 
     def download(self, on_progress: Callable[[float], None]) -> None:
+        self.downloads += 1
         for percent in self._download_progress:
             on_progress(percent)
 

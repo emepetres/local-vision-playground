@@ -200,13 +200,18 @@ def test_says_which_execution_provider_could_not_be_registered() -> None:
     )
 
 
-def test_refuses_a_model_that_cannot_see_a_frame() -> None:
+def test_refuses_a_model_that_cannot_see_a_frame_before_the_download_starts() -> None:
+    # Not cached, which is the only case a download could start in: discovering after
+    # several gigabytes that the model was never a vision-language model is the worst
+    # failure this command has.
     model = FakeVisionModel(
         make_identity(task="chat", variant="qwen3.5-2b-text-generic-cpu:2"),
         make_observation(),
+        is_cached=False,
     )
     result = run(["--image", "a.jpg"], model=model)
 
+    assert result.model.downloads == 0
     assert result.code == 1
     assert result.out == ""
     assert result.err == (

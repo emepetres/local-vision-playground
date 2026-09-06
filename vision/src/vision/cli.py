@@ -18,6 +18,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO
 
+from tqdm import tqdm
+
 from vision.capture import WORKING_RESOLUTION, Camera, Frame, ImageFileCamera
 from vision.errors import VisionError
 from vision.inference import (
@@ -148,7 +150,7 @@ def _observe(
 
     _download(model, identity, clock=clock, out=out)
 
-    _, load = _timed(clock, model.load)
+    _, load = _timed(clock, lambda: _load(model, identity))
     frame, capture = _timed(clock, camera.capture)
     raw, inference = _timed(clock, lambda: model.observe(frame, PROMPT))
 
@@ -159,6 +161,28 @@ def _observe(
         timings=Timings(load=load, capture=capture, inference=inference),
     )
     return frame, observation
+
+
+def _load(model: VisionModel, identity: ModelIdentity) -> None:
+    """Load the model, turning a native load failure into something to act on.
+
+    A variant that will not load is not a rare accident: Foundry Local picks the hardware
+    when the model is named by alias, and it can pick a variant this machine cannot run —
+    including one whose ONNX graph is invalid as published. The only lever an Operator has
+    is to name a different variant (see docs/stack.md, Constraint 3), so the message says
+    that rather than leaving them with a native stack.
+    """
+    try:
+        model.load()
+    except VisionError:
+        raise
+    except Exception as error:
+        on = f" on {identity.runtime}" if identity.runtime is not None else ""
+        raise VisionError(
+            f"{identity.variant} would not load{on} — pin a different variant with"
+            " --model (run `foundry model list`; a -generic-cpu variant is the safe one)."
+            f" Foundry Local said: {error}"
+        ) from error
 
 
 def _download(
@@ -172,28 +196,25 @@ def _download(
     if model.is_cached:
         return
 
-    on_progress = _whole_percent_only(f"Downloading {identity.variant}", out=out)
-    _, seconds = _timed(clock, lambda: model.download(on_progress))
+    # Foundry Local reports progress as a percentage, and calls back far more often than
+    # a screen can usefully be redrawn; tqdm does the rate limiting, and takes itself off
+    # when nothing is watching (`disable=None` means "disable when this is not a TTY"),
+    # which is what keeps the rendered output assertable in the tests.
+    with tqdm(
+        total=100,
+        desc=f"Downloading {identity.variant}",
+        unit="%",
+        bar_format="{desc} |{bar}| {n:.0f}% [{elapsed}<{remaining}]",
+        file=out,
+        disable=None,
+    ) as bar:
+
+        def on_progress(percent: float) -> None:
+            bar.update(max(0.0, min(percent, 100.0) - bar.n))
+
+        _, seconds = _timed(clock, lambda: model.download(on_progress))
+
     print(f"Downloaded in {_format_seconds(seconds)}\n", file=out, flush=True)
-
-
-def _whole_percent_only(prefix: str, *, out: TextIO) -> Callable[[float], None]:
-    """Report progress once per whole percent.
-
-    Foundry Local calls back far more often than that — a couple of hundred times for a
-    2B model — and an Operator watching a download does not need tenths of a percent.
-    """
-    reported = -1
-
-    def on_progress(percent: float) -> None:
-        nonlocal reported
-        whole = int(percent)
-        if whole <= reported:
-            return
-        reported = whole
-        print(f"{prefix} {whole:3d}%", file=out, flush=True)
-
-    return on_progress
 
 
 def _timed[T](clock: Clock, work: Callable[[], T]) -> tuple[T, float]:

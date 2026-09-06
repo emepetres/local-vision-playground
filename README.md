@@ -94,6 +94,11 @@ on the CPU. That is the only lever there is; nothing selects an Execution Provid
 directly (see [`docs/stack.md`](./docs/stack.md), Constraint 3). `--debug` restores the
 full traceback behind a one-line failure.
 
+Pinning is also the answer when a model will not load at all. An alias picks the hardware,
+and it can pick a variant that cannot run — `qwen3.5-0.8b-cuda-gpu:3` ships an invalid
+ONNX graph, and no caller can fix that. `observe` says which variant failed and tells you
+to name another; a `-generic-cpu` one is the safe bet.
+
 `docs/fixtures/reference-frame.jpg` is the reference Frame — one still taken from the
 camera at 1280×720 and put through the same rescale-and-encode every Frame goes through.
 It is 640×360, and that is not a mistake: a 16:9 camera fits the 640×480 working

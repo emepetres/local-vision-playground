@@ -46,11 +46,13 @@ class FakeVisionModel:
         *,
         is_cached: bool = True,
         download_progress: Sequence[float] = (),
+        load_error: Exception | None = None,
     ) -> None:
         self.identity = identity
         self.is_cached = is_cached
         self._observation = observation
         self._download_progress = tuple(download_progress)
+        self._load_error = load_error
         self.loaded = False
         self.observed: list[tuple[Frame, str]] = []
 
@@ -59,6 +61,8 @@ class FakeVisionModel:
             on_progress(percent)
 
     def load(self) -> None:
+        if self._load_error is not None:
+            raise self._load_error
         self.loaded = True
 
     def observe(self, frame: Frame, prompt: str) -> RawObservation:

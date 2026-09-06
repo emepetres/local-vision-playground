@@ -82,8 +82,9 @@ def test_reports_the_download_outside_the_three_latencies() -> None:
         make_identity(),
         make_observation(),
         is_cached=False,
-        # Foundry Local calls back far more often than once per percent.
-        download_progress=(0.0, 0.4, 50.0, 50.9, 100.0),
+        # Foundry Local calls back far more often than a screen can be redrawn, and its
+        # last reading is not guaranteed to be exactly 100.
+        download_progress=(0.0, 0.4, 50.0, 50.9, 99.98, 100.4),
     )
     result = run(
         ["--image", "docs/fixtures/reference-frame.jpg"],
@@ -92,13 +93,27 @@ def test_reports_the_download_outside_the_three_latencies() -> None:
     )
 
     assert result.code == 0
-    assert result.out == (
-        "Downloading qwen3-vl-2b-instruct-cuda-gpu   0%\n"
-        "Downloading qwen3-vl-2b-instruct-cuda-gpu  50%\n"
-        "Downloading qwen3-vl-2b-instruct-cuda-gpu 100%\n"
-        "Downloaded in 42.000 s\n"
-        "\n"
-        f"{REPORT}\n{OBSERVATION}"
+    # The progress bar takes itself off when nothing is watching, so what is left to
+    # assert is the one number that outlives the download.
+    assert result.out == f"Downloaded in 42.000 s\n\n{REPORT}\n{OBSERVATION}"
+
+
+def test_says_what_to_do_when_a_variant_will_not_load() -> None:
+    model = FakeVisionModel(
+        make_identity(variant="qwen3.5-0.8b-cuda-gpu:3", runtime="GPU / CUDAExecutionProvider"),
+        make_observation(),
+        load_error=RuntimeError("This is an invalid model. Error: Duplicate definition of name"),
+    )
+    result = run(["--image", "a.jpg"], model=model)
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.err == (
+        "error: qwen3.5-0.8b-cuda-gpu:3 would not load on GPU / CUDAExecutionProvider"
+        " — pin a different variant with --model (run `foundry model list`;"
+        " a -generic-cpu variant is the safe one)."
+        " Foundry Local said: This is an invalid model."
+        " Error: Duplicate definition of name\n"
     )
 
 

@@ -69,6 +69,27 @@ see a Frame. Match on the task string, never on the alias prefix.
 catalogue is served fine but some entries are not parsed by this CLI version. Worth
 re-checking after an upgrade.
 
+### A published variant can be broken **[verified 2026-09-06]**
+
+`qwen3.5-0.8b-cuda-gpu:3` does not load. It fails with
+
+```
+This is an invalid model. Error: Duplicate definition of name (pad_CUDAExecutionProvider).
+```
+
+and the defect is in the artifact as published, not in anything a caller does: the
+`vision.onnx` inside that download contains the node name `pad_CUDAExecutionProvider`
+**twice**, which makes the graph invalid on its face. Counting the occurrences in the
+cached file is enough to see it, and `qwen3-vl-2b-instruct-cuda-gpu:2` has none.
+`qwen3.5-0.8b-generic-cpu:3` runs the same workload fine, and `:3` is already the latest
+version of the CUDA variant, so there is nothing to upgrade to.
+
+Two things follow. **An alias can select a variant that cannot run** — Foundry Local picks
+the hardware, and it picked this one — so resolving by alias is not a guarantee that a
+model loads. And **a load failure is an ordinary outcome, not a crash**: the only lever is
+to name a different variant, which is why `observe` says so in as many words instead of
+printing the native stack.
+
 ## Constraint 2 — there is no first-party .NET bridge to Foundry Local
 
 Agent Framework's own documentation states that Foundry Local is not currently supported

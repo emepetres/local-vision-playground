@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Frames the camera took, kept so a surprising Observation can be explained afterwards
+vision/frames/
+
+# .NET
+bin/
+obj/

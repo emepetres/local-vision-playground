@@ -69,6 +69,40 @@ see a Frame. Match on the task string, never on the alias prefix.
 catalogue is served fine but some entries are not parsed by this CLI version. Worth
 re-checking after an upgrade.
 
+### A published variant can be broken **[verified 2026-09-06]**
+
+`qwen3.5-0.8b-cuda-gpu:3` does not load. It fails with
+
+```
+This is an invalid model. Error: Duplicate definition of name (pad_CUDAExecutionProvider).
+```
+
+and the defect is in the artifact as published, not in anything a caller does. The graph
+itself is valid — no duplicate node names, outputs or initializers. What it carries is
+ONNX Runtime's **own `Memcpy` nodes, already inserted**: the shipped `vision.onnx` has 55
+of them, including `Memcpy_token_218: MemcpyFromHost(pad) -> pad_CUDAExecutionProvider`.
+The model was exported after an ORT placement pass rather than before it, so when ORT runs
+that pass again at load time it regenerates the same name and collides with the copy
+baked in.
+
+`qwen3-vl-2b-instruct-cuda-gpu:2` ships baked `Memcpy` nodes too (32), but none for `pad`,
+which is why it loads. `qwen3.5-0.8b-generic-cpu:3` runs the same workload fine, and `:3`
+is already the latest version of the CUDA variant, so there is nothing to upgrade to.
+Reported as [microsoft/foundry-local#1075](https://github.com/microsoft/foundry-local/issues/1075);
+[#1039](https://github.com/microsoft/foundry-local/issues/1039) is the same failure on
+`qwen3.5-9b-generic-gpu:3`, and the CUDA-suffixed name appearing while loading a *WebGPU*
+variant is what confirms these names travel inside the artifact.
+
+Counting the raw string in the file is **not** evidence of the bug — a name legitimately
+appears twice, once where it is produced and once where it is consumed. The graph has to
+be parsed.
+
+Two things follow. **An alias can select a variant that cannot run** — Foundry Local picks
+the hardware, and it picked this one — so resolving by alias is not a guarantee that a
+model loads. And **a load failure is an ordinary outcome, not a crash**: the only lever is
+to name a different variant, which is why `observe` says so in as many words instead of
+printing the native stack.
+
 ## Constraint 2 — there is no first-party .NET bridge to Foundry Local
 
 Agent Framework's own documentation states that Foundry Local is not currently supported
@@ -173,14 +207,22 @@ a homepage at an unrelated company).
 
 It is not a CLI wrapper: it is an in-process native library that handles catalogue lookup,
 download, load/unload and EP registration. The OpenAI-compatible REST server is
-**optional** — `manager.start_web_service()`. This playground starts it anyway, because
-that endpoint is the seam the C# Agent talks to.
+**optional** — `manager.start_web_service()`. That endpoint is still the seam the C# Agent
+talks to, but `vision/` does not start it: serving it is Foundry Local's job, and nothing
+on the Python side speaks HTTP. See
+[ADR-0004](./adr/0004-target-foundry-local-2x-in-process.md).
 
-Shape: `Configuration(app_name=…)` → `FoundryLocalManager.initialize(config)` →
+Shape: `Configuration(app_name=…)` → `FoundryLocalManager(config)` →
 `manager.catalog.get_model(alias)` (falling back to `get_model_variant(id)` for a pinned
 variant) → `model.download()` → `model.load()` → call `openai.responses.create` against
 `manager.urls[0].rstrip("/") + "/v1"` with `model=model.id`. The sample tears down in the
 order `openai.close()` → `manager.stop_web_service()` → `model.unload()`.
+
+The samples call `FoundryLocalManager.initialize(config)`, which reads as the way in but is
+a `@staticmethod` doing nothing but `FoundryLocalManager(config)` and dropping the instance
+(verified against 2.0.1's `foundry_local_manager.py`). The manager is a singleton whose
+constructor raises once one exists, so `initialize()` followed by a construction is an
+error, not a sequence — a caller that needs the manager constructs it and keeps it.
 
 `get_model_variant` is **not** in the SDK reference's Core API table — it is evidenced only
 by the sample source. Constraint 3's only hardware lever rests on an under-documented call;
@@ -207,8 +249,10 @@ still describe 1.2.x. What it does:
 - **The `-winml` packages are merged away**: one `foundry-local-sdk` for Python, one
   `Microsoft.AI.Foundry.Local` for .NET. `foundry-local-sdk-winml` is stuck at 1.2.4.
 
-Decide deliberately whether this playground targets 1.2.x (what the docs describe) or 2.x
-(what ships).
+This playground targets **2.x, in-process** — see
+[ADR-0004](./adr/0004-target-foundry-local-2x-in-process.md). Note that the SDK reference on
+Learn (`reference-sdk-current`) still documents the 1.x API, so it is not a source for this
+path; the 2.0.1 release notes and the package's own README are.
 
 ## References
 

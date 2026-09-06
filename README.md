@@ -59,11 +59,116 @@ playground demonstrates. See [ADR-0003](./docs/adr/0003-the-agent-consumes-obser
 - **Foundry Local**, with a vision-language model available locally. Confirm with
   `foundry model list` — you are looking for a `vision-language-chat` task. The project
   builds on `qwen3-vl-2b-instruct` ([ADR-0001](./docs/adr/0001-qwen3-vl-as-the-local-vision-model.md)).
-- **Python** for `vision/`, **.NET** for `agent/`.
+- **Python** for `vision/`, managed with [uv](https://docs.astral.sh/uv/); **.NET** for `agent/`.
 - A camera. Not strictly required: every stage accepts an image file instead of a live
   Frame, so the playground can be developed and demonstrated without one.
 
-There is nothing to run yet. The backlog below is the order it gets built in.
+## Running
+
+One Observation of one Frame, printed with what each stage cost:
+
+```bash
+cd vision
+uv run observe
+```
+
+```
+Registering Execution Providers — the first run also downloads them
+
+Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
+Frame      640x480 jpeg, fit to 640x480, from camera 0
+Saved      D:\dev\local-vision-playground\vision\frames\frame-20260906-110354-829440.jpg
+Providers  4.138 s
+Load       3.251 s
+Capture    5.125 s (including 5 Frames discarded while the Feed settled)
+Inference  1.201 s
+
+A man with a beard is sitting in a room in front of a wooden bookshelf filled with books
+and model rockets. A white door is open behind him, and a blue mesh chair is behind him.
+```
+
+`--camera N` picks between cameras where the machine has more than one; `--image <path>`
+takes the Frame from a file instead, and is the way to run the whole playground with no
+camera at all.
+
+A Feed does not yield a usable Frame the instant it opens — the camera exposes and
+white-balances for a moment first — so **five Frames are read and discarded** before the
+one that is observed. That wait is not hidden in a sleep in front of the capture: it
+happens inside the capture and is counted in the Capture number, which is why that number
+is the wait the Operator actually sat through, and why it dwarfs the same number for an
+image file.
+
+Every Frame the camera takes is written to `vision/frames/` (git-ignored) and its path
+printed. A surprising Observation can then be explained afterwards, instead of vanishing
+with the process.
+
+The two failures a live demo actually hits each get one line and a non-zero exit: no
+camera at that index — which points at `--image` — and a camera another application is
+holding, which opens and then yields nothing.
+
+The first run downloads the model, and reports that time separately — it is not one of
+the latencies. Nothing is warmed up afterwards either: the first Observation is the
+honest one.
+
+**Providers** is what registering this machine's Execution Providers cost. It is timed on
+its own because it is machine setup rather than part of the Observation — but it is not
+optional: it is what makes a GPU variant loadable at all, and skipping it would leave a
+pinned CUDA variant with nothing to load onto. Registration is per-process, so every run
+pays it; only the first run on a machine also downloads the providers. That download is
+why it happens *after* the model has been resolved and checked: nothing is fetched before
+the model has said it can see a Frame.
+
+By default the model is resolved by **alias**, letting Foundry Local pick the hardware.
+`--variant` pins an exact **variant id**, version suffix included, and with it the
+Execution Provider the work runs on — `--variant qwen3-vl-2b-instruct-generic-cpu:2`
+runs the same workload on the CPU. That is the only lever there is; nothing selects an
+Execution Provider directly (see [`docs/stack.md`](./docs/stack.md), Constraint 3),
+which is why the Model line names the variant that was actually resolved and what it
+was built for — that pair is what a Benchmark Run is attributed to. `--debug` restores
+the full traceback behind a one-line failure.
+
+Pinning is also the answer when a model will not load at all. An alias picks the hardware,
+and it can pick a variant that cannot run — `qwen3.5-0.8b-cuda-gpu:3` ships a graph ONNX
+Runtime refuses to load, and no caller can fix that
+([microsoft/foundry-local#1075](https://github.com/microsoft/foundry-local/issues/1075)).
+`observe` says which variant failed and why in one line, exits non-zero, and tells you to
+name another; a `-generic-cpu` one is the safe bet.
+
+`docs/fixtures/reference-frame.jpg` is the reference Frame — one still taken from the
+camera at 1280×720 and put through the same rescale-and-encode every Frame goes through.
+It is 640×360, and that is not a mistake: a 16:9 camera fits the 640×480 working
+resolution at 640×360, because a Frame is **rescaled on its long edge, never cropped**.
+Which is why the report names both numbers.
+
+It does mean the fixture is not interchangeable with a Frame from a 4:3 camera: at 640×360
+it carries a quarter fewer pixels, and image tokens scale with area. The working
+resolution bounds the workload; it does not by itself fix it. A Benchmark Run therefore
+has to hold the Frame size constant as well as the working resolution — which is what
+[`CONTEXT.md`](./CONTEXT.md) already requires of a Hardware Profile comparison — and the
+fixture is the right Frame to hold it at.
+
+> **Note on the SDK.** Microsoft Learn documents the **1.x** Foundry Local API — the
+> `get_chat_client()` shape every quickstart shows. This code targets **2.x** and calls
+> the model in-process through `ChatSession`, with images as typed items carrying raw
+> bytes and a codec hint. That is deliberate; see
+> [ADR-0004](./docs/adr/0004-target-foundry-local-2x-in-process.md). A reader comparing
+> this against Learn will find Learn describing a different API.
+
+### Development
+
+```bash
+cd vision
+uv run pytest       # the whole suite, no model needed
+uv run mypy
+uv run ruff check .
+```
+
+The tests drive the `observe` command end to end through a fake camera, a fake Foundry
+and a fake clock. A fourth fake stands in for the Feed itself: it is what lets a test
+assert that the settling Frames really are discarded, and that the Frame observed is the
+one after them rather than the first one. They do **not** prove the Foundry Local SDK
+behaves as we believe — the fakes encode our reading of the 2.x type signatures. Running
+the command against the real model is the only thing that validates that.
 
 ## Backlog
 
@@ -73,7 +178,7 @@ mirrored here.
 
 ### Committed
 
-- [ ] **1. One Observation, on demand.** Capture a Frame from the camera (or take an
+- [x] **1. One Observation, on demand.** Capture a Frame from the camera (or take an
       image file), send it to the local model, print the Observation and the latency it
       took. Runs and exits.
 - [ ] **2. Benchmark Runs across Execution Providers.** The same fixed workload against

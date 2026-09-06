@@ -1,0 +1,300 @@
+"""Turning a Frame into an Observation with a local vision-language model.
+
+Inference does not know a camera exists: it takes a Frame from wherever it came. The call
+is in-process through ``ChatSession`` and the image payload is 2.x-shaped — raw bytes plus
+an IANA-style codec hint, not base64 and not a MIME type. See ADR-0004.
+
+Two lifetime rules leak out of the native layer: a ``MessageItem`` borrows its parts, and
+response items are only valid inside the response's scope. That is why an Observation
+leaves this module with its text already copied out — nothing native escapes.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import TYPE_CHECKING, Protocol
+
+from vision.capture import Frame
+from vision.errors import VisionError
+
+if TYPE_CHECKING:
+    from foundry_local_sdk import ChatSession, IModel, Item, Response, Runtime
+
+PROMPT = "Describe what you see in this image in two or three sentences."
+"""The fixed workload's prompt. The length bound lives here; the token limit is a net."""
+
+MAX_OUTPUT_TOKENS = 128
+TEMPERATURE = 0.0
+
+DEFAULT_ALIAS = "qwen3-vl-2b-instruct"
+"""Resolved when no variant is pinned, so Foundry Local picks the hardware."""
+
+VISION_TASK = "vision-language-chat"
+"""Match on the task, never on the alias prefix: qwen3.5-2b-text is a text-only sibling."""
+
+APP_NAME = "local-vision-playground"
+
+
+class FinishReason(StrEnum):
+    """Why the model stopped, reduced to what an Operator needs to know."""
+
+    COMPLETE = "complete"
+    TRUNCATED = "truncated"
+    OTHER = "other"
+
+
+@dataclass(frozen=True)
+class ModelIdentity:
+    """Which model actually answered, and what it was built for."""
+
+    alias: str
+    variant: str
+    task: str | None
+    runtime: str | None
+
+
+@dataclass(frozen=True)
+class RawObservation:
+    """What the model reports about a Frame, already copied out of the native response.
+
+    An Observation without the provenance and the timings the command wraps around it.
+    """
+
+    text: str
+    finish_reason: FinishReason
+
+
+@dataclass(frozen=True)
+class Timings:
+    """What one run cost, in seconds, in the order the costs are paid.
+
+    Registering the Execution Providers is machine setup rather than part of the
+    Observation, which is why it is a fourth number and not folded into the load. Of the
+    other three, only inference is the latency of the Observation.
+    """
+
+    providers: float
+    load: float
+    capture: float
+    inference: float
+
+
+@dataclass(frozen=True)
+class Observation:
+    """What the model reports about a Frame, and what reporting it cost."""
+
+    text: str
+    model: ModelIdentity
+    finish_reason: FinishReason
+    timings: Timings
+
+    @property
+    def truncated(self) -> bool:
+        return self.finish_reason is FinishReason.TRUNCATED
+
+
+class VisionModel(Protocol):
+    """A resolved model, before and after it is on the machine."""
+
+    @property
+    def identity(self) -> ModelIdentity: ...
+
+    @property
+    def is_cached(self) -> bool:
+        """True when the weights are already on disk and no download is needed."""
+        ...
+
+    def download(self, on_progress: Callable[[float], None]) -> None:
+        """Fetch the weights, reporting progress as a percentage between 0 and 100.
+
+        Foundry Local calls back several hundred times over a 2B model, so a caller that
+        renders every callback renders far too much.
+        """
+        ...
+
+    def load(self) -> None:
+        """Bring the model up on whichever Execution Provider it resolves to."""
+        ...
+
+    def observe(self, frame: Frame, prompt: str) -> RawObservation: ...
+
+
+class FoundryLocal(Protocol):
+    """The port onto Foundry Local."""
+
+    def register_execution_providers(self, announce: Callable[[str], None]) -> None:
+        """Make this machine's Execution Providers available, reporting what is worth saying.
+
+        Start-up work, not part of any Observation — but it is what makes a GPU variant
+        loadable at all, so it happens before a model is loaded and is timed on its own.
+        It is not the first thing the command does: on a first run this downloads the
+        providers, and nothing may be downloaded before the model is known to be one that
+        can see a Frame.
+        """
+        ...
+
+    def resolve(self, name: str) -> VisionModel:
+        """Resolve an alias (Foundry picks the hardware) or a variant id (pins it)."""
+        ...
+
+
+def require_vision_task(identity: ModelIdentity) -> None:
+    """Refuse a model that cannot see a Frame, before anything expensive happens.
+
+    A model that declares no task at all gets its own refusal. It is the same outcome —
+    nothing here will send a Frame to a model that has not said it can see one — but a
+    different fault: the catalogue entry is incomplete on Foundry Local's side, and
+    `foundry model list` failing to process nine entries on 0.8.119 (docs/stack.md) is
+    the same gap seen from the CLI. Saying so keeps an Operator from hunting for a bug in
+    this command that is not there.
+    """
+    if identity.task is None:
+        raise VisionError(
+            f"{identity.variant} declares no task in the Foundry Local catalogue,"
+            " so nothing says whether it can see a Frame — the incomplete entry is"
+            " Foundry Local's, not this command's; pick a model that declares"
+            f" {VISION_TASK} (run `foundry model list`)"
+        )
+    if identity.task != VISION_TASK:
+        raise VisionError(
+            f"{identity.variant} has task {identity.task!r}, not {VISION_TASK!r},"
+            f" so it cannot see a Frame — pick a model whose task is {VISION_TASK}"
+            " (run `foundry model list`)"
+        )
+
+
+class InProcessFoundryLocal:
+    """The real Foundry Local, called in-process (ADR-0004). Built by the entry point only."""
+
+    def __init__(self, *, app_name: str = APP_NAME) -> None:
+        from foundry_local_sdk import Configuration, FoundryLocalManager
+
+        self._manager = FoundryLocalManager(Configuration(app_name=app_name))
+
+    def register_execution_providers(self, announce: Callable[[str], None]) -> None:
+        """Register every Execution Provider this machine can offer.
+
+        This is the only thing that makes a GPU variant available at all — nothing
+        selects an Execution Provider explicitly (see docs/stack.md, Constraint 3).
+        Registration is per-process, so it happens on every run; only the first run pays
+        to download an EP, which is why it waits until the model has been accepted. An
+        Operator is told it is happening and told when one fails —
+        which one was ultimately chosen shows up on the Model line instead.
+        """
+        pending = [ep.name for ep in self._manager.discover_eps() if not ep.is_registered]
+        if pending:
+            announce("Registering Execution Providers — the first run also downloads them")
+
+        result = self._manager.download_and_register_eps()
+
+        if result.failed_eps:
+            announce(
+                f"Could not register {', '.join(result.failed_eps)}"
+                " — Foundry Local will fall back to whatever remains"
+            )
+
+    def resolve(self, name: str) -> FoundryLocalModel:
+        catalog = self._manager.catalog
+        model = catalog.get_model(name) or catalog.get_model_variant(name)
+        if model is None:
+            raise VisionError(
+                f"Foundry Local has no model called {name!r} — an alias has no version"
+                " but a variant id does (qwen3-vl-2b-instruct-generic-cpu:2);"
+                " run `foundry model list` to see what this machine is offered"
+            )
+        return FoundryLocalModel(model)
+
+    def close(self) -> None:
+        self._manager.close()
+
+
+class FoundryLocalModel:
+    """One resolved model, and the ChatSession held open across its Observations."""
+
+    def __init__(self, model: IModel) -> None:
+        self._model = model
+        self._session: ChatSession | None = None
+
+    @property
+    def identity(self) -> ModelIdentity:
+        info = self._model.info
+        return ModelIdentity(
+            alias=self._model.alias,
+            variant=self._model.id,
+            task=info.task,
+            runtime=_runtime(info.runtime),
+        )
+
+    @property
+    def is_cached(self) -> bool:
+        return self._model.is_cached
+
+    def download(self, on_progress: Callable[[float], None]) -> None:
+        self._model.download(progress_callback=on_progress)
+
+    def load(self) -> None:
+        from foundry_local_sdk import ChatSession
+
+        self._model.load()
+        self._session = ChatSession(self._model)
+
+    def observe(self, frame: Frame, prompt: str) -> RawObservation:
+        from foundry_local_sdk import (
+            ImageItem,
+            MessageItem,
+            Request,
+            RequestOptions,
+            SearchOptions,
+            TextItem,
+        )
+
+        if self._session is None:
+            raise VisionError(f"{self._model.id} was asked for an Observation before it was loaded")
+
+        # parts stays referenced for the whole call: the MessageItem borrows their native
+        # pointers without owning them, and releasing one would dangle the message.
+        parts = [TextItem(prompt), ImageItem(frame.codec, frame.data)]
+        message = MessageItem.user(parts)
+        options = RequestOptions(
+            search=SearchOptions(temperature=TEMPERATURE, max_output_tokens=MAX_OUTPUT_TOKENS)
+        )
+
+        with Request().add_item(message).set_options(options) as request:
+            with self._session.process_request(request) as response:
+                text = "".join(_text_of(item) for item in response)
+                finish_reason = _finish_reason(response)
+
+        return RawObservation(text=text.strip(), finish_reason=finish_reason)
+
+
+def _text_of(item: Item) -> str:
+    """Copy an output item's text into a Python str, before the response is released."""
+    from foundry_local_sdk import MessageItem, TextItem
+
+    if isinstance(item, TextItem):
+        return item.text
+    if isinstance(item, MessageItem):
+        return "".join(_text_of(part) for part in item.parts)
+    return ""
+
+
+def _finish_reason(response: Response) -> FinishReason:
+    from foundry_local_sdk import FinishReason as NativeFinishReason
+
+    match response.finish_reason:
+        case NativeFinishReason.STOP:
+            return FinishReason.COMPLETE
+        case NativeFinishReason.LENGTH:
+            return FinishReason.TRUNCATED
+        case _:
+            return FinishReason.OTHER
+
+
+def _runtime(runtime: Runtime | None) -> str | None:
+    if runtime is None:
+        return None
+    if runtime.device_type is None:
+        return runtime.execution_provider
+    return f"{runtime.device_type} / {runtime.execution_provider}"

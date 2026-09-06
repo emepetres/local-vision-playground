@@ -26,13 +26,20 @@ from vision.capture import SETTLING_FRAMES
 from vision.cli import main
 from vision.inference import FinishReason
 
-CACHED_READINGS = (0.0, 1.25, 10.0, 10.03, 20.0, 22.5)
-"""Load 1.250 s, capture 0.030 s, inference 2.500 s, with no download in front of them."""
+SETUP_READINGS = (0.0, 0.5)
+"""Registering the Execution Providers: 0.500 s."""
+
+WORK_READINGS = (10.0, 11.25, 20.0, 20.03, 30.0, 32.5)
+"""Load 1.250 s, capture 0.030 s, inference 2.500 s."""
+
+CACHED_READINGS = (*SETUP_READINGS, *WORK_READINGS)
+"""A whole run, with no download in front of it."""
 
 REPORT = (
-    "Model      qwen3-vl-2b-instruct-cuda-gpu"
+    "Model      qwen3-vl-2b-instruct-cuda-gpu:2"
     " (alias qwen3-vl-2b-instruct, GPU / NvTensorRtRtxExecutionProvider)\n"
     "Frame      640x480 jpeg, fit to 640x480, from docs/fixtures/reference-frame.jpg\n"
+    "Providers  0.500 s\n"
     "Load       1.250 s\n"
     "Capture    0.030 s\n"
     "Inference  2.500 s\n"
@@ -59,16 +66,17 @@ def run(
     model: FakeVisionModel | None = None,
     camera: FakeCamera | None = None,
     readings: tuple[float, ...] = CACHED_READINGS,
+    setup_lines: tuple[str, ...] = (),
 ) -> Run:
     model = model if model is not None else FakeVisionModel(make_identity(), make_observation())
     camera = camera if camera is not None else FakeCamera([make_frame()])
-    foundry = FakeFoundry(model)
+    foundry = FakeFoundry(model, setup_lines=setup_lines)
     out, err = io.StringIO(), io.StringIO()
     code = main(argv, camera=camera, foundry=foundry, clock=FakeClock(readings), out=out, err=err)
     return Run(code, out.getvalue(), err.getvalue(), camera, foundry, model)
 
 
-def test_reports_the_observation_the_model_the_resolution_and_three_latencies() -> None:
+def test_reports_the_observation_the_model_the_resolution_and_what_it_cost() -> None:
     result = run(["--image", "docs/fixtures/reference-frame.jpg"])
 
     assert result.code == 0
@@ -95,7 +103,7 @@ def test_reports_the_download_outside_the_three_latencies() -> None:
     result = run(
         ["--image", "docs/fixtures/reference-frame.jpg"],
         model=model,
-        readings=(100.0, 142.0, *CACHED_READINGS),
+        readings=(*SETUP_READINGS, 100.0, 142.0, *WORK_READINGS),
     )
 
     assert result.code == 0
@@ -116,7 +124,7 @@ def test_says_what_to_do_when_a_variant_will_not_load() -> None:
     assert result.out == ""
     assert result.err == (
         "error: qwen3.5-0.8b-cuda-gpu:3 would not load on GPU / CUDAExecutionProvider"
-        " — pin a different variant with --model (run `foundry model list`;"
+        " — pin a different variant with --variant (run `foundry model list`;"
         " a -generic-cpu variant is the safe one)."
         " Foundry Local said: This is an invalid model."
         " Error: Duplicate definition of name\n"
@@ -158,10 +166,38 @@ def test_resolves_the_model_by_alias_by_default() -> None:
     assert result.foundry.resolved == ["qwen3-vl-2b-instruct"]
 
 
-def test_pins_a_variant_when_one_is_named() -> None:
-    result = run(["--image", "a.jpg", "--model", "qwen3-vl-2b-instruct-generic-cpu:2"])
+def test_pins_a_variant_and_reports_the_one_that_answered() -> None:
+    model = FakeVisionModel(
+        make_identity(
+            variant="qwen3-vl-2b-instruct-generic-cpu:2", runtime="CPU / CPUExecutionProvider"
+        ),
+        make_observation(),
+    )
+    result = run(
+        ["--image", "a.jpg", "--variant", "qwen3-vl-2b-instruct-generic-cpu:2"], model=model
+    )
 
     assert result.foundry.resolved == ["qwen3-vl-2b-instruct-generic-cpu:2"]
+    assert (
+        "Model      qwen3-vl-2b-instruct-generic-cpu:2"
+        " (alias qwen3-vl-2b-instruct, CPU / CPUExecutionProvider)\n"
+    ) in result.out
+
+
+def test_registers_the_execution_providers_before_resolving_a_model() -> None:
+    result = run(["--image", "a.jpg"])
+
+    assert result.foundry.events == ["register", "resolve"]
+
+
+def test_says_which_execution_provider_could_not_be_registered() -> None:
+    lines = ("Could not register NvTensorRtRtxExecutionProvider",)
+    result = run(["--image", "a.jpg"], setup_lines=lines)
+
+    assert result.code == 0
+    assert result.out == (
+        f"Could not register NvTensorRtRtxExecutionProvider\n\n{REPORT}\n{OBSERVATION}"
+    )
 
 
 def test_refuses_a_model_that_cannot_see_a_frame() -> None:

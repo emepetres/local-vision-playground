@@ -28,8 +28,8 @@ PROMPT = "Describe what you see in this image in two or three sentences."
 MAX_OUTPUT_TOKENS = 128
 TEMPERATURE = 0.0
 
-DEFAULT_MODEL = "qwen3-vl-2b-instruct"
-"""Resolved as an alias, so Foundry Local picks the hardware. Name a variant to pin one."""
+DEFAULT_ALIAS = "qwen3-vl-2b-instruct"
+"""Resolved when no variant is pinned, so Foundry Local picks the hardware."""
 
 VISION_TASK = "vision-language-chat"
 """Match on the task, never on the alias prefix: qwen3.5-2b-text is a text-only sibling."""
@@ -68,8 +68,14 @@ class RawObservation:
 
 @dataclass(frozen=True)
 class Timings:
-    """The three costs of an Observation, in seconds. Only the third is inference."""
+    """What one run cost, in seconds, in the order the costs are paid.
 
+    Registering the Execution Providers is machine setup rather than part of the
+    Observation, which is why it is a fourth number and not folded into the load. Of the
+    other three, only inference is the latency of the Observation.
+    """
+
+    providers: float
     load: float
     capture: float
     inference: float
@@ -118,6 +124,14 @@ class VisionModel(Protocol):
 class FoundryLocal(Protocol):
     """The port onto Foundry Local."""
 
+    def register_execution_providers(self, announce: Callable[[str], None]) -> None:
+        """Make this machine's Execution Providers available, reporting what is worth saying.
+
+        Start-up work, not part of any Observation — but it is what makes a GPU variant
+        loadable at all, so it happens before a model is resolved and is timed on its own.
+        """
+        ...
+
     def resolve(self, name: str) -> VisionModel:
         """Resolve an alias (Foundry picks the hardware) or a variant id (pins it)."""
         ...
@@ -136,34 +150,28 @@ def require_vision_task(identity: ModelIdentity) -> None:
 class InProcessFoundryLocal:
     """The real Foundry Local, called in-process (ADR-0004). Built by the entry point only."""
 
-    def __init__(
-        self,
-        *,
-        app_name: str = APP_NAME,
-        on_setup: Callable[[str], None] | None = None,
-    ) -> None:
+    def __init__(self, *, app_name: str = APP_NAME) -> None:
         from foundry_local_sdk import Configuration, FoundryLocalManager
 
         self._manager = FoundryLocalManager(Configuration(app_name=app_name))
-        self._register_execution_providers(on_setup)
 
-    def _register_execution_providers(self, on_setup: Callable[[str], None] | None) -> None:
-        """One-off machine setup, not part of any latency this command reports.
+    def register_execution_providers(self, announce: Callable[[str], None]) -> None:
+        """Register every Execution Provider this machine can offer.
 
-        It is also the only thing that makes a GPU variant available at all — nothing
+        This is the only thing that makes a GPU variant available at all — nothing
         selects an Execution Provider explicitly (see docs/stack.md, Constraint 3).
         Registration is per-process, so it happens on every run; only the first run pays
         to download an EP. An Operator is told it is happening and told when one fails —
         which one was ultimately chosen shows up on the Model line instead.
         """
         pending = [ep.name for ep in self._manager.discover_eps() if not ep.is_registered]
-        if pending and on_setup is not None:
-            on_setup("Preparing execution providers — the first run downloads them")
+        if pending:
+            announce("Registering Execution Providers — the first run also downloads them")
 
         result = self._manager.download_and_register_eps()
 
-        if result.failed_eps and on_setup is not None:
-            on_setup(
+        if result.failed_eps:
+            announce(
                 f"Could not register {', '.join(result.failed_eps)}"
                 " — Foundry Local will fall back to whatever remains"
             )

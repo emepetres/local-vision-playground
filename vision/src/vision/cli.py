@@ -5,9 +5,10 @@ arrive as ports rather than being constructed here, which is the injection point
 benchmarking feature will need — and what lets the tests drive the whole command with
 fakes.
 
-The latency is not one number. Loading the model, preparing the Frame and running
-inference are three costs of wildly different magnitude, and only the third is the latency
-of the Observation. Nothing is warmed up: the first run is the honest run.
+The latency is not one number. Registering the Execution Providers is machine setup paid
+before anything else; loading the model, preparing the Frame and running inference are
+three further costs of wildly different magnitude, and only the last is the latency of the
+Observation. Nothing is warmed up: the first run is the honest run.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from vision.capture import (
 )
 from vision.errors import VisionError
 from vision.inference import (
-    DEFAULT_MODEL,
+    DEFAULT_ALIAS,
     MAX_OUTPUT_TOKENS,
     PROMPT,
     FoundryLocal,
@@ -76,7 +77,7 @@ def main(
         if camera is None:
             camera = _camera_from(args, open_feed)
         if foundry is None:
-            foundry, close = _foundry(out)
+            foundry, close = _foundry()
             owned.append(close)
         if clock is None:
             from time import perf_counter
@@ -124,11 +125,14 @@ def _parser() -> argparse.ArgumentParser:
         help="index of the camera to open the Feed on (default: 0)",
     )
     parser.add_argument(
-        "--model",
-        default=DEFAULT_MODEL,
+        "--variant",
+        metavar="ID",
+        dest="model",
+        default=DEFAULT_ALIAS,
         help=(
-            "model to resolve: an alias lets Foundry Local pick the hardware,"
-            f" a variant id pins it (default: {DEFAULT_MODEL})"
+            "pin this exact model variant, version suffix included, and with it the"
+            " Execution Provider the work runs on (default: resolve the alias"
+            f" {DEFAULT_ALIAS}, letting Foundry Local pick the hardware)"
         ),
     )
     parser.add_argument(
@@ -145,19 +149,10 @@ def _camera_from(args: argparse.Namespace, open_feed: OpenFeed) -> Camera:
     return LiveCamera(args.camera, open_feed)
 
 
-def _foundry(out: TextIO) -> tuple[FoundryLocal, Callable[[], None]]:
+def _foundry() -> tuple[FoundryLocal, Callable[[], None]]:
     from vision.inference import InProcessFoundryLocal
 
-    announced = False
-
-    def on_setup(line: str) -> None:
-        nonlocal announced
-        announced = True
-        print(line, file=out, flush=True)
-
-    foundry = InProcessFoundryLocal(on_setup=on_setup)
-    if announced:
-        print(file=out)
+    foundry = InProcessFoundryLocal()
     return foundry, foundry.close
 
 
@@ -170,6 +165,8 @@ def _observe(
     out: TextIO,
     keep_in: Path | None,
 ) -> tuple[Frame, Observation, Path | None]:
+    providers = _register_execution_providers(foundry, clock=clock, out=out)
+
     model = foundry.resolve(model_name)
     identity = model.identity
     require_vision_task(identity)
@@ -187,9 +184,33 @@ def _observe(
         text=raw.text,
         model=identity,
         finish_reason=raw.finish_reason,
-        timings=Timings(load=load, capture=capture, inference=inference),
+        timings=Timings(providers=providers, load=load, capture=capture, inference=inference),
     )
     return frame, observation, saved
+
+
+def _register_execution_providers(
+    foundry: FoundryLocal,
+    *,
+    clock: Clock,
+    out: TextIO,
+) -> float:
+    """Register the Execution Providers, timing and announcing what the port reports.
+
+    Timed apart from the three latencies because it is not one of them: it is paid once
+    per process, before a model is resolved. Why it is not optional is on the port.
+    """
+    announced = False
+
+    def announce(line: str) -> None:
+        nonlocal announced
+        announced = True
+        print(line, file=out, flush=True)
+
+    _, seconds = _timed(clock, lambda: foundry.register_execution_providers(announce))
+    if announced:
+        print(file=out)
+    return seconds
 
 
 def _load(model: VisionModel, identity: ModelIdentity) -> None:
@@ -209,7 +230,7 @@ def _load(model: VisionModel, identity: ModelIdentity) -> None:
         on = f" on {identity.runtime}" if identity.runtime is not None else ""
         raise VisionError(
             f"{identity.variant} would not load{on} — pin a different variant with"
-            " --model (run `foundry model list`; a -generic-cpu variant is the safe one)."
+            " --variant (run `foundry model list`; a -generic-cpu variant is the safe one)."
             f" Foundry Local said: {error}"
         ) from error
 
@@ -273,6 +294,7 @@ def _report(observation: Observation, frame: Frame, saved: Path | None) -> list[
     if saved is not None:
         rows.append(("Saved", str(saved)))
     rows += [
+        ("Providers", _format_seconds(timings.providers)),
         ("Load", _format_seconds(timings.load)),
         ("Capture", _format_capture(timings.capture, frame)),
         ("Inference", _format_seconds(timings.inference)),

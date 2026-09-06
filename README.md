@@ -73,9 +73,12 @@ uv run observe
 ```
 
 ```
+Registering Execution Providers — the first run also downloads them
+
 Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
 Frame      640x480 jpeg, fit to 640x480, from camera 0
 Saved      D:\dev\local-vision-playground\vision\frames\frame-20260906-110354-829440.jpg
+Providers  4.138 s
 Load       3.251 s
 Capture    5.125 s (including 5 Frames discarded while the Feed settled)
 Inference  1.201 s
@@ -103,22 +106,32 @@ The two failures a live demo actually hits each get one line and a non-zero exit
 camera at that index — which points at `--image` — and a camera another application is
 holding, which opens and then yields nothing.
 
-The first run downloads the model and the execution providers, and reports that time
-separately — it is not one of the three latencies. Nothing is warmed up afterwards
-either: the first Observation is the honest one.
+The first run downloads the model, and reports that time separately — it is not one of
+the latencies. Nothing is warmed up afterwards either: the first Observation is the
+honest one.
 
-`--model` takes an **alias**, letting Foundry Local pick the hardware, or a **variant
-id**, which pins it — `--model qwen3-vl-2b-instruct-generic-cpu:2` runs the same workload
-on the CPU. That is the only lever there is; nothing selects an Execution Provider
-directly (see [`docs/stack.md`](./docs/stack.md), Constraint 3). `--debug` restores the
-full traceback behind a one-line failure.
+**Providers** is what registering this machine's Execution Providers cost. It happens
+at start-up, before a model is resolved, and is timed on its own because it is machine
+setup rather than part of the Observation — but it is not optional: it is what makes a
+GPU variant loadable at all, and skipping it would leave a pinned CUDA variant with
+nothing to load onto. Registration is per-process, so every run pays it; only the first
+run on a machine also downloads the providers.
+
+By default the model is resolved by **alias**, letting Foundry Local pick the hardware.
+`--variant` pins an exact **variant id**, version suffix included, and with it the
+Execution Provider the work runs on — `--variant qwen3-vl-2b-instruct-generic-cpu:2`
+runs the same workload on the CPU. That is the only lever there is; nothing selects an
+Execution Provider directly (see [`docs/stack.md`](./docs/stack.md), Constraint 3),
+which is why the Model line names the variant that was actually resolved and what it
+was built for — that pair is what a Benchmark Run is attributed to. `--debug` restores
+the full traceback behind a one-line failure.
 
 Pinning is also the answer when a model will not load at all. An alias picks the hardware,
 and it can pick a variant that cannot run — `qwen3.5-0.8b-cuda-gpu:3` ships a graph ONNX
 Runtime refuses to load, and no caller can fix that
 ([microsoft/foundry-local#1075](https://github.com/microsoft/foundry-local/issues/1075)).
-`observe` says which variant failed and tells you to name another; a `-generic-cpu` one is
-the safe bet.
+`observe` says which variant failed and why in one line, exits non-zero, and tells you to
+name another; a `-generic-cpu` one is the safe bet.
 
 `docs/fixtures/reference-frame.jpg` is the reference Frame — one still taken from the
 camera at 1280×720 and put through the same rescale-and-encode every Frame goes through.

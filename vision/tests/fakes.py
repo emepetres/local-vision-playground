@@ -109,13 +109,27 @@ class FakeVisionModel:
 
 
 class FakeFoundry:
-    """Resolves every name to the one model it was given."""
+    """Resolves every name to the one model it was given.
 
-    def __init__(self, model: FakeVisionModel) -> None:
+    ``setup_lines`` are what registering the Execution Providers announces — an EP that
+    could not be registered is the thing worth saying out loud. ``resolved`` keeps the
+    names it was asked for; ``events`` keeps only the order the port was called in, which
+    is how a test pins registration before a resolve.
+    """
+
+    def __init__(self, model: FakeVisionModel, *, setup_lines: Sequence[str] = ()) -> None:
         self.model = model
+        self._setup_lines = tuple(setup_lines)
+        self.events: list[str] = []
         self.resolved: list[str] = []
 
+    def register_execution_providers(self, announce: Callable[[str], None]) -> None:
+        self.events.append("register")
+        for line in self._setup_lines:
+            announce(line)
+
     def resolve(self, name: str) -> FakeVisionModel:
+        self.events.append("resolve")
         self.resolved.append(name)
         return self.model
 
@@ -138,7 +152,7 @@ class FakeClock:
 def make_identity(
     *,
     alias: str = "qwen3-vl-2b-instruct",
-    variant: str = "qwen3-vl-2b-instruct-cuda-gpu",
+    variant: str = "qwen3-vl-2b-instruct-cuda-gpu:2",
     task: str = "vision-language-chat",
     runtime: str | None = "GPU / NvTensorRtRtxExecutionProvider",
 ) -> ModelIdentity:

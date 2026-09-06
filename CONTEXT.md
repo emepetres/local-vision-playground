@@ -44,6 +44,19 @@ _Avoid_: Local Foundry, the runtime, the service
 The hardware backend the model is dispatched to — NPU, GPU or CPU. Which one is chosen is what a Benchmark Run is measuring.
 _Avoid_: accelerator, device, backend, target
 
+**Alias**:
+The name of a model without a hardware or a version attached — `qwen3-vl-2b-instruct`.
+Naming one leaves the choice of Execution Provider to Foundry Local, which is why an
+Alias alone cannot name a Hardware Profile.
+_Avoid_: model name, model id, family
+
+**Variant**:
+One build of a model for one Execution Provider, version suffix included —
+`qwen3-vl-2b-instruct-generic-cpu:2`. Naming a Variant instead of an Alias is the only
+lever there is over which hardware the work runs on; nothing selects an Execution
+Provider directly.
+_Avoid_: build, flavour, SKU, model version
+
 **Local-First**:
 The constraint that every stage — capture, understanding and action — runs on the Operator's machine, with no request leaving it. It is the reason the project exists, not an optimisation applied to it.
 _Avoid_: offline, on-prem, edge, air-gapped

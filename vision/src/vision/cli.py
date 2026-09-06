@@ -20,7 +20,17 @@ from typing import TextIO
 
 from tqdm import tqdm
 
-from vision.capture import WORKING_RESOLUTION, Camera, Frame, ImageFileCamera
+from vision.capture import (
+    FRAMES_DIRECTORY,
+    WORKING_RESOLUTION,
+    Camera,
+    Frame,
+    ImageFileCamera,
+    LiveCamera,
+    OpenFeed,
+    open_camera_feed,
+    save_frame,
+)
 from vision.errors import VisionError
 from vision.inference import (
     DEFAULT_MODEL,
@@ -44,20 +54,27 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     camera: Camera | None = None,
+    open_feed: OpenFeed | None = None,
     foundry: FoundryLocal | None = None,
     clock: Clock | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
+    frames_dir: Path | None = None,
 ) -> int:
     """Run the command. Every port defaults to the real thing when it is not injected."""
     args = _parser().parse_args(argv)
     out = out if out is not None else sys.stdout
     err = err if err is not None else sys.stderr
 
+    if open_feed is None:
+        open_feed = open_camera_feed
+    if frames_dir is None:
+        frames_dir = FRAMES_DIRECTORY
+
     owned: list[Callable[[], None]] = []
     try:
         if camera is None:
-            camera = _camera_from(args)
+            camera = _camera_from(args, open_feed)
         if foundry is None:
             foundry, close = _foundry(out)
             owned.append(close)
@@ -66,12 +83,14 @@ def main(
 
             clock = perf_counter
 
-        frame, observation = _observe(
+        frame, observation, saved = _observe(
             camera=camera,
             foundry=foundry,
             clock=clock,
             model_name=args.model,
             out=out,
+            # A Frame from an image file is already on disk; only the camera's is not.
+            keep_in=frames_dir if args.image is None else None,
         )
     except Exception as error:
         if args.debug:
@@ -82,7 +101,7 @@ def main(
         for close in owned:
             close()
 
-    _render(observation, frame, out=out)
+    _render(observation, frame, saved, out=out)
     return 0
 
 
@@ -91,10 +110,18 @@ def _parser() -> argparse.ArgumentParser:
         prog="observe",
         description="Take one Frame, ask the local model what it sees, print the Observation.",
     )
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
         "--image",
         type=Path,
-        help="the image file to take the Frame from",
+        help="take the Frame from this image file instead of from a camera",
+    )
+    source.add_argument(
+        "--camera",
+        type=int,
+        default=0,
+        metavar="N",
+        help="index of the camera to open the Feed on (default: 0)",
     )
     parser.add_argument(
         "--model",
@@ -112,12 +139,10 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _camera_from(args: argparse.Namespace) -> Camera:
-    if args.image is None:
-        raise VisionError(
-            "--image is required — capturing from a live camera Feed is not built yet"
-        )
-    return ImageFileCamera(args.image)
+def _camera_from(args: argparse.Namespace, open_feed: OpenFeed) -> Camera:
+    if args.image is not None:
+        return ImageFileCamera(args.image)
+    return LiveCamera(args.camera, open_feed)
 
 
 def _foundry(out: TextIO) -> tuple[FoundryLocal, Callable[[], None]]:
@@ -143,7 +168,8 @@ def _observe(
     clock: Clock,
     model_name: str,
     out: TextIO,
-) -> tuple[Frame, Observation]:
+    keep_in: Path | None,
+) -> tuple[Frame, Observation, Path | None]:
     model = foundry.resolve(model_name)
     identity = model.identity
     require_vision_task(identity)
@@ -152,6 +178,9 @@ def _observe(
 
     _, load = _timed(clock, lambda: _load(model, identity))
     frame, capture = _timed(clock, camera.capture)
+    # Kept before inference runs: a Frame worth explaining is worth keeping even when the
+    # Observation that would have prompted the question never arrives.
+    saved = save_frame(frame, keep_in) if keep_in is not None else None
     raw, inference = _timed(clock, lambda: model.observe(frame, PROMPT))
 
     observation = Observation(
@@ -160,7 +189,7 @@ def _observe(
         finish_reason=raw.finish_reason,
         timings=Timings(load=load, capture=capture, inference=inference),
     )
-    return frame, observation
+    return frame, observation, saved
 
 
 def _load(model: VisionModel, identity: ModelIdentity) -> None:
@@ -223,8 +252,8 @@ def _timed[T](clock: Clock, work: Callable[[], T]) -> tuple[T, float]:
     return result, clock() - start
 
 
-def _render(observation: Observation, frame: Frame, *, out: TextIO) -> None:
-    for label, value in _report(observation, frame):
+def _render(observation: Observation, frame: Frame, saved: Path | None, *, out: TextIO) -> None:
+    for label, value in _report(observation, frame, saved):
         print(f"{label:<{LABEL_WIDTH}}{value}", file=out)
     print(file=out)
     print(observation.text, file=out)
@@ -235,15 +264,34 @@ def _render(observation: Observation, frame: Frame, *, out: TextIO) -> None:
         )
 
 
-def _report(observation: Observation, frame: Frame) -> list[tuple[str, str]]:
+def _report(observation: Observation, frame: Frame, saved: Path | None) -> list[tuple[str, str]]:
     timings = observation.timings
-    return [
+    rows = [
         ("Model", _format_model(observation.model)),
         ("Frame", _format_frame(frame)),
+    ]
+    if saved is not None:
+        rows.append(("Saved", str(saved)))
+    rows += [
         ("Load", _format_seconds(timings.load)),
-        ("Capture", _format_seconds(timings.capture)),
+        ("Capture", _format_capture(timings.capture, frame)),
         ("Inference", _format_seconds(timings.inference)),
     ]
+    return rows
+
+
+def _format_capture(seconds: float, frame: Frame) -> str:
+    """Name the settling discards where their cost is, rather than beside it.
+
+    They are not overhead around the capture: they are the capture, and the number the
+    Operator is shown is the wait they actually sat through.
+    """
+    if frame.settling_discards == 0:
+        return _format_seconds(seconds)
+    return (
+        f"{_format_seconds(seconds)} (including {frame.settling_discards} Frames discarded"
+        " while the Feed settled)"
+    )
 
 
 def _format_model(identity: ModelIdentity) -> str:

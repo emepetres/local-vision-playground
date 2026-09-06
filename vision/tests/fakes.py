@@ -8,9 +8,12 @@ satisfy the ports the command declares.
 
 from __future__ import annotations
 
+import io
 from collections.abc import Callable, Iterable, Sequence
 
-from vision.capture import Camera, Frame
+from PIL import Image
+
+from vision.capture import Camera, Feed, Frame, OpenFeed
 from vision.errors import VisionError
 from vision.inference import (
     FinishReason,
@@ -34,6 +37,41 @@ class FakeCamera:
         frame = self._frames[self.captures]
         self.captures += 1
         return frame
+
+
+class FakeFeed:
+    """A Feed that hands out prepared images, one per read, and counts every read.
+
+    ``gives_nothing`` is the camera that opens but never yields — what a camera held by
+    another application looks like from here.
+    """
+
+    def __init__(self, images: Iterable[Image.Image], *, gives_nothing: bool = False) -> None:
+        self._images = list(images)
+        self._gives_nothing = gives_nothing
+        self.reads = 0
+        self.closed = False
+
+    def read(self) -> Image.Image | None:
+        self.reads += 1
+        if self._gives_nothing or self.reads > len(self._images):
+            return None
+        return self._images[self.reads - 1]
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class FakeCameras:
+    """Stands in for the machine's cameras: an index either has a Feed on it or does not."""
+
+    def __init__(self, feeds: dict[int, FakeFeed]) -> None:
+        self._feeds = feeds
+        self.opened: list[int] = []
+
+    def __call__(self, index: int) -> FakeFeed | None:
+        self.opened.append(index)
+        return self._feeds.get(index)
 
 
 class FakeVisionModel:
@@ -114,6 +152,31 @@ def make_observation(
     return RawObservation(text=text, finish_reason=finish_reason)
 
 
+def make_images(colours: Sequence[tuple[int, int, int]]) -> list[Image.Image]:
+    """One solid-colour image per colour, so a test can tell which Frame was taken."""
+    return [Image.new("RGB", (640, 480), colour) for colour in colours]
+
+
+SETTLING_COLOURS = ((10, 10, 10), (30, 30, 30), (50, 50, 50), (70, 70, 70), (90, 90, 90))
+"""Five dark greys for the Frames the Feed discards while it settles."""
+
+SETTLED_COLOUR = (200, 40, 40)
+"""The red the Frame that is actually taken is made of."""
+
+
+def settling_feed() -> FakeFeed:
+    """A Feed that yields the Frames discarded while it settles, then the one worth taking."""
+    return FakeFeed(make_images([*SETTLING_COLOURS, SETTLED_COLOUR]))
+
+
+def colour_of(jpeg: bytes) -> tuple[int, ...]:
+    """The colour an encoded Frame is made of — which says which image it was made from."""
+    with Image.open(io.BytesIO(jpeg)) as decoded:
+        pixel = decoded.convert("RGB").getpixel((0, 0))
+    assert isinstance(pixel, tuple)
+    return pixel
+
+
 def make_frame(
     *,
     provenance: str = "docs/fixtures/reference-frame.jpg",
@@ -132,5 +195,7 @@ def make_frame(
 # Each fake really does satisfy the port it stands in for. mypy checks these; a port that
 # grows a member without its fake growing one fails here rather than at some later run.
 _camera: Camera = FakeCamera([])
+_feed: Feed = FakeFeed([])
+_open_feed: OpenFeed = FakeCameras({})
 _model: VisionModel = FakeVisionModel(make_identity(), make_observation())
 _foundry: FoundryLocal = FakeFoundry(FakeVisionModel(make_identity(), make_observation()))

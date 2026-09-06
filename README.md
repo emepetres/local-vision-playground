@@ -69,20 +69,39 @@ One Observation of one Frame, printed with what each stage cost:
 
 ```bash
 cd vision
-uv run observe --image ../docs/fixtures/reference-frame.jpg
+uv run observe
 ```
 
 ```
 Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
-Frame      640x360 jpeg, fit to 640x480, from ../docs/fixtures/reference-frame.jpg
-Load       3.050 s
-Capture    0.015 s
-Inference  2.046 s
+Frame      640x480 jpeg, fit to 640x480, from camera 0
+Saved      D:\dev\local-vision-playground\vision\frames\frame-20260906-110354-829440.jpg
+Load       3.251 s
+Capture    5.125 s (including 5 Frames discarded while the Feed settled)
+Inference  1.201 s
 
-This is a view of a home office or study area. A tall, light-colored wooden bookshelf is
-filled with books and various decorative items... In the foreground, a modern ergonomic
-office chair with a blue mesh back is partially visible.
+A man with a beard is sitting in a room in front of a wooden bookshelf filled with books
+and model rockets. A white door is open behind him, and a blue mesh chair is behind him.
 ```
+
+`--camera N` picks between cameras where the machine has more than one; `--image <path>`
+takes the Frame from a file instead, and is the way to run the whole playground with no
+camera at all.
+
+A Feed does not yield a usable Frame the instant it opens — the camera exposes and
+white-balances for a moment first — so **five Frames are read and discarded** before the
+one that is observed. That wait is not hidden in a sleep in front of the capture: it
+happens inside the capture and is counted in the Capture number, which is why that number
+is the wait the Operator actually sat through, and why it dwarfs the same number for an
+image file.
+
+Every Frame the camera takes is written to `vision/frames/` (git-ignored) and its path
+printed. A surprising Observation can then be explained afterwards, instead of vanishing
+with the process.
+
+The two failures a live demo actually hits each get one line and a non-zero exit: no
+camera at that index — which points at `--image` — and a camera another application is
+holding, which opens and then yields nothing.
 
 The first run downloads the model and the execution providers, and reports that time
 separately — it is not one of the three latencies. Nothing is warmed up afterwards
@@ -124,9 +143,11 @@ uv run ruff check .
 ```
 
 The tests drive the `observe` command end to end through a fake camera, a fake Foundry
-and a fake clock. They do **not** prove the Foundry Local SDK behaves as we believe — the
-fakes encode our reading of the 2.x type signatures. Running the command against the real
-model is the only thing that validates that.
+and a fake clock. A fourth fake stands in for the Feed itself: it is what lets a test
+assert that the settling Frames really are discarded, and that the Frame observed is the
+one after them rather than the first one. They do **not** prove the Foundry Local SDK
+behaves as we believe — the fakes encode our reading of the 2.x type signatures. Running
+the command against the real model is the only thing that validates that.
 
 ## Backlog
 

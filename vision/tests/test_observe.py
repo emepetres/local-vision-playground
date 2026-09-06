@@ -1,4 +1,4 @@
-"""End-to-end tests for the ``observe`` command, driven through its three ports."""
+"""End-to-end tests for the ``observe`` command, driven through the ports it is given."""
 
 from __future__ import annotations
 
@@ -9,14 +9,20 @@ from pathlib import Path
 import pytest
 
 from tests.fakes import (
+    SETTLED_COLOUR,
     FakeCamera,
+    FakeCameras,
     FakeClock,
+    FakeFeed,
     FakeFoundry,
     FakeVisionModel,
+    colour_of,
     make_frame,
     make_identity,
     make_observation,
+    settling_feed,
 )
+from vision.capture import SETTLING_FRAMES
 from vision.cli import main
 from vision.inference import FinishReason
 
@@ -198,18 +204,122 @@ def test_debug_restores_the_traceback() -> None:
         run(["--image", "a.jpg", "--debug"], model=model)
 
 
-def test_an_image_is_required_while_the_feed_does_not_exist_yet() -> None:
+@dataclass
+class LiveRun:
+    """One invocation driven through a fake Feed rather than a fake Camera."""
+
+    code: int
+    out: str
+    err: str
+    cameras: FakeCameras
+    model: FakeVisionModel
+
+
+def run_live(
+    argv: list[str],
+    frames_dir: Path,
+    *,
+    feeds: dict[int, FakeFeed] | None = None,
+) -> LiveRun:
+    feeds = feeds if feeds is not None else {0: settling_feed()}
+    cameras = FakeCameras(feeds)
+    model = FakeVisionModel(make_identity(), make_observation())
     out, err = io.StringIO(), io.StringIO()
     code = main(
-        [],
+        argv,
+        open_feed=cameras,
+        foundry=FakeFoundry(model),
+        clock=FakeClock(CACHED_READINGS),
+        out=out,
+        err=err,
+        frames_dir=frames_dir,
+    )
+    return LiveRun(code, out.getvalue(), err.getvalue(), cameras, model)
+
+
+def test_takes_a_frame_from_the_camera_when_no_image_is_given(tmp_path: Path) -> None:
+    result = run_live([], tmp_path)
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.cameras.opened == [0]
+    assert "Frame      640x480 jpeg, fit to 640x480, from camera 0\n" in result.out
+
+
+def test_selects_the_camera(tmp_path: Path) -> None:
+    result = run_live(["--camera", "2"], tmp_path, feeds={2: settling_feed()})
+
+    assert result.code == 0
+    assert result.cameras.opened == [2]
+    assert "from camera 2\n" in result.out
+
+
+def test_discards_the_settling_frames_and_observes_the_next_one(tmp_path: Path) -> None:
+    feed = settling_feed()
+
+    result = run_live([], tmp_path, feeds={0: feed})
+
+    assert feed.reads == SETTLING_FRAMES + 1
+    (observed, _) = result.model.observed[0]
+    assert colour_of(observed.data) == SETTLED_COLOUR
+
+
+def test_counts_the_settling_discards_inside_the_reported_capture_time(tmp_path: Path) -> None:
+    result = run_live([], tmp_path)
+
+    assert (
+        f"Capture    0.030 s (including {SETTLING_FRAMES} Frames discarded"
+        " while the Feed settled)\n"
+    ) in result.out
+
+
+def test_keeps_the_camera_frame_and_says_where(tmp_path: Path) -> None:
+    result = run_live([], tmp_path)
+
+    (saved,) = sorted(tmp_path.glob("*.jpg"))
+    assert f"Saved      {saved}\n" in result.out
+    (observed, _) = result.model.observed[0]
+    assert saved.read_bytes() == observed.data
+
+
+def test_does_not_keep_a_frame_that_came_from_an_image_file(tmp_path: Path) -> None:
+    out, err = io.StringIO(), io.StringIO()
+    main(
+        ["--image", "a.jpg"],
+        camera=FakeCamera([make_frame()]),
         foundry=FakeFoundry(FakeVisionModel(make_identity(), make_observation())),
         clock=FakeClock(CACHED_READINGS),
         out=out,
         err=err,
+        frames_dir=tmp_path,
     )
 
-    assert code == 1
-    assert out.getvalue() == ""
-    assert err.getvalue() == (
-        "error: --image is required — capturing from a live camera Feed is not built yet\n"
+    assert list(tmp_path.glob("*.jpg")) == []
+    assert "Saved" not in out.getvalue()
+
+
+def test_points_at_an_image_file_when_no_camera_is_attached(tmp_path: Path) -> None:
+    result = run_live([], tmp_path, feeds={})
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.err == (
+        "error: there is no camera at index 0 — attach one, select another with"
+        " --camera N, or observe an image file with --image <path>\n"
     )
+
+
+def test_says_what_to_do_when_another_application_is_holding_the_camera(tmp_path: Path) -> None:
+    result = run_live([], tmp_path, feeds={0: FakeFeed([], gives_nothing=True)})
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.err == (
+        "error: camera 0 opened but gave no Frame — another application is holding it;"
+        " close that application, or observe an image file with --image <path>\n"
+    )
+
+
+def test_refuses_an_image_file_and_a_camera_at_once(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        run_live(["--image", "a.jpg", "--camera", "1"], tmp_path)

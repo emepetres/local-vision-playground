@@ -95,9 +95,11 @@ directly (see [`docs/stack.md`](./docs/stack.md), Constraint 3). `--debug` resto
 full traceback behind a one-line failure.
 
 Pinning is also the answer when a model will not load at all. An alias picks the hardware,
-and it can pick a variant that cannot run — `qwen3.5-0.8b-cuda-gpu:3` ships an invalid
-ONNX graph, and no caller can fix that. `observe` says which variant failed and tells you
-to name another; a `-generic-cpu` one is the safe bet.
+and it can pick a variant that cannot run — `qwen3.5-0.8b-cuda-gpu:3` ships a graph ONNX
+Runtime refuses to load, and no caller can fix that
+([microsoft/foundry-local#1075](https://github.com/microsoft/foundry-local/issues/1075)).
+`observe` says which variant failed and tells you to name another; a `-generic-cpu` one is
+the safe bet.
 
 `docs/fixtures/reference-frame.jpg` is the reference Frame — one still taken from the
 camera at 1280×720 and put through the same rescale-and-encode every Frame goes through.

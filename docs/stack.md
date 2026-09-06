@@ -77,12 +77,25 @@ re-checking after an upgrade.
 This is an invalid model. Error: Duplicate definition of name (pad_CUDAExecutionProvider).
 ```
 
-and the defect is in the artifact as published, not in anything a caller does: the
-`vision.onnx` inside that download contains the node name `pad_CUDAExecutionProvider`
-**twice**, which makes the graph invalid on its face. Counting the occurrences in the
-cached file is enough to see it, and `qwen3-vl-2b-instruct-cuda-gpu:2` has none.
-`qwen3.5-0.8b-generic-cpu:3` runs the same workload fine, and `:3` is already the latest
-version of the CUDA variant, so there is nothing to upgrade to.
+and the defect is in the artifact as published, not in anything a caller does. The graph
+itself is valid — no duplicate node names, outputs or initializers. What it carries is
+ONNX Runtime's **own `Memcpy` nodes, already inserted**: the shipped `vision.onnx` has 55
+of them, including `Memcpy_token_218: MemcpyFromHost(pad) -> pad_CUDAExecutionProvider`.
+The model was exported after an ORT placement pass rather than before it, so when ORT runs
+that pass again at load time it regenerates the same name and collides with the copy
+baked in.
+
+`qwen3-vl-2b-instruct-cuda-gpu:2` ships baked `Memcpy` nodes too (32), but none for `pad`,
+which is why it loads. `qwen3.5-0.8b-generic-cpu:3` runs the same workload fine, and `:3`
+is already the latest version of the CUDA variant, so there is nothing to upgrade to.
+Reported as [microsoft/foundry-local#1075](https://github.com/microsoft/foundry-local/issues/1075);
+[#1039](https://github.com/microsoft/foundry-local/issues/1039) is the same failure on
+`qwen3.5-9b-generic-gpu:3`, and the CUDA-suffixed name appearing while loading a *WebGPU*
+variant is what confirms these names travel inside the artifact.
+
+Counting the raw string in the file is **not** evidence of the bug — a name legitimately
+appears twice, once where it is produced and once where it is consumed. The graph has to
+be parsed.
 
 Two things follow. **An alias can select a variant that cannot run** — Foundry Local picks
 the hardware, and it picked this one — so resolving by alias is not a guarantee that a

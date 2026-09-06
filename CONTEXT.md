@@ -63,14 +63,29 @@ _Avoid_: offline, on-prem, edge, air-gapped
 
 ### Measurement
 
+**Workload**:
+Everything that has to be identical for two Benchmark Runs to be comparable: the prompt, the
+exact Frame — its bytes, not merely its resolution — and the limits the model generates
+under. A larger Frame is more work for the model, so the working resolution *bounds* a
+Workload; it does not on its own fix one.
+_Avoid_: task, job, prompt, request
+
 **Benchmark Run**:
-One measured execution of a fixed workload against one model on one Execution Provider. The
-workload is only fixed if the size of the Frame is too: a larger Frame is more work for the
-model, so two Benchmark Runs over differently sized Frames measure different things.
+One measured execution of one Workload against one model on one Execution Provider.
 _Avoid_: test, trial, profile, benchmark
 
+**Benchmark**:
+The set of comparable Benchmark Runs carried out in one sitting — every model, every
+repetition — and the unit that is persisted and read back later. A Benchmark Run is one
+number; a Benchmark is what is worth keeping.
+_Avoid_: run, suite, comparison, benchmark run
+
 **Hardware Profile**:
-The machine-and-Execution-Provider combination a Benchmark Run is attributed to. Two Benchmark Runs are only comparable when named against their Hardware Profiles — and only then if their workloads match, Frame size included.
+The machine-and-Execution-Provider combination a Benchmark Run is attributed to. Foundry
+Local names the Execution Provider; the machine is whatever the Operator declares it to be,
+so a Hardware Profile is only as trustworthy as what they wrote down. Two Benchmark Runs are
+only comparable when named against their Hardware Profiles — and only then if their
+Workloads match.
 _Avoid_: rig, environment, setup, config
 
 ### Action

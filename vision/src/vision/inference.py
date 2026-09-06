@@ -140,7 +140,15 @@ class VisionModel(Protocol):
         """Bring the model up on whichever Execution Provider it resolves to."""
         ...
 
-    def observe(self, workload: Workload) -> RawObservation: ...
+    def observe(self, workload: Workload) -> RawObservation:
+        """Answer this Workload, and answer it from its own Frame alone.
+
+        Every Observation is independent of the last. That is what an Observation is —
+        what the model reports about *a* Frame — and it is also what makes N Benchmark
+        Runs of one Workload N executions of the same work rather than a conversation
+        that grows by one image and one answer each time.
+        """
+        ...
 
     def unload(self) -> None:
         """Take the model back off the hardware, so the next one can have it.
@@ -299,6 +307,16 @@ class FoundryLocalModel:
         if self._session is None:
             raise VisionError(f"{self._model.id} was asked for an Observation before it was loaded")
 
+        # A ChatSession is a conversation, not a stateless endpoint: it accumulates turns,
+        # and the SDK offers `turn_count`/`undo_turns` precisely because it does. Left
+        # alone, the second Observation would carry the first Frame and the first answer
+        # as context — the prompt would grow with every call, and N Benchmark Runs of one
+        # Workload would silently become N different, ever-larger Workloads. Forgetting
+        # the turns before the request rather than after also drops whatever a call that
+        # failed part-way left behind. The session is kept open rather than rebuilt so
+        # that only the inference itself falls inside the measured time.
+        _forget_previous_turns(self._session)
+
         frame = workload.frame
         # parts stays referenced for the whole call: the MessageItem borrows their native
         # pointers without owning them, and releasing one would dangle the message.
@@ -323,6 +341,13 @@ class FoundryLocalModel:
             finish_reason=finish_reason,
             completion_tokens=completion_tokens,
         )
+
+
+def _forget_previous_turns(session: ChatSession) -> None:
+    """Take the session back to an empty conversation, so the next Frame stands alone."""
+    turns = session.turn_count
+    if turns:
+        session.undo_turns(turns)
 
 
 def _text_of(item: Item) -> str:

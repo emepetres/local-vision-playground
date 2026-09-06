@@ -154,6 +154,46 @@ fixture is the right Frame to hold it at.
 > [ADR-0004](./docs/adr/0004-target-foundry-local-2x-in-process.md). A reader comparing
 > this against Learn will find Learn describing a different API.
 
+### What it costs
+
+The same Workload against one Variant, several times over:
+
+```bash
+cd vision
+uv run benchmark
+```
+
+```
+Model        qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
+Frame        640x360 jpeg, fit to 640x480, from D:\dev\local-vision-playground\docs\fixtures\reference-frame.jpg
+Prompt       Describe what you see in this image in two or three sentences.
+Limits       at most 128 tokens, temperature 0.0
+Providers    4.138 s
+Load         3.251 s
+Repetitions  5 — the first reported apart, the median, minimum and maximum taken over the other 4
+
+                  First    Median       Min       Max
+Inference       2.500 s   2.000 s   1.800 s   2.200 s
+Tokens               30        25        22        28
+Tokens/second      12.0      12.1      11.8      14.0
+```
+
+The **Frame is read once** and those exact bytes go to every repetition — that is what makes
+the Workload identical, and it is why the live camera is refused: a different Frame each
+time is not a Workload. `--image <path>` measures a file of your own instead of the
+reference Frame; `--variant` and `--debug` behave as they do for `observe`.
+
+**Providers** sits outside the table because registering the Execution Providers is machine
+set-up paid once per process, not the price of an Execution Provider. **Load** sits outside
+it too: it is paid once per Variant, so a per-run column would invite it to be read as one.
+
+The **first repetition gets its own column** rather than being dropped — a cold model is
+the honest number — and the median, minimum and maximum are taken over the repetitions
+*after* it, so the summary describes the steady state. No mean and no standard deviation: a
+handful of samples does not support them. **Tokens/second** sits next to the latency so
+that a Variant which generated twice as much text is not credited with being twice as slow.
+`--repetitions N` takes more or fewer than the default five.
+
 ### Development
 
 ```bash
@@ -163,7 +203,7 @@ uv run mypy
 uv run ruff check .
 ```
 
-The tests drive the `observe` command end to end through a fake camera, a fake Foundry
+The tests drive both commands end to end through a fake camera, a fake Foundry
 and a fake clock. A fourth fake stands in for the Feed itself: it is what lets a test
 assert that the settling Frames really are discarded, and that the Frame observed is the
 one after them rather than the first one. They do **not** prove the Foundry Local SDK

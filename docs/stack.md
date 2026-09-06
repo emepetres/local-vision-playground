@@ -254,6 +254,21 @@ This playground targets **2.x, in-process** — see
 Learn (`reference-sdk-current`) still documents the 1.x API, so it is not a source for this
 path; the 2.0.1 release notes and the package's own README are.
 
+### A `ChatSession` is a conversation, not an endpoint **[verified 2026-09-06]**
+
+`ChatSession` accumulates turns. It exposes `turn_count` and `undo_turns(count)` precisely
+because it does, and the `openai`-compatible wrappers document themselves as "stateless — no
+turn history" by contrast: they build a fresh native session per call. Nothing warns a caller
+that holds one open.
+
+That is invisible while a command makes one request per process, and fatal the moment one
+makes N: the second request carries the first Frame and the first answer as context, the
+third carries two, and the prompt grows monotonically. A Benchmark built on it would report a
+latency curve that is its own conversation history rather than the hardware — and every
+number would look ordinary. `vision/` therefore clears the turns before each request rather
+than rebuilding the session, so that only the inference itself falls inside the measured
+time. The port says so: an Observation is answered from its own Frame alone.
+
 ## References
 
 ### Foundry Local

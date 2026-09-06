@@ -41,6 +41,19 @@ part of taking a Frame, not a sleep hidden in front of it: the discards happen i
 ``capture`` and so inside the capture time the Operator is told about.
 """
 
+REFERENCE_FRAME = Path(__file__).resolve().parents[3] / "docs" / "fixtures" / "reference-frame.jpg"
+"""The Frame a Benchmark measures when the Operator names no other.
+
+It is in the repository rather than taken from the camera because a Benchmark Run is only
+comparable to another when the Frame's exact bytes match (CONTEXT.md, "Workload") — and
+two machines can only match bytes they both have.
+
+Resolved from this module, like FRAMES_DIRECTORY, and with the same caveat: it walks out
+past the package root into the checkout, so it only exists when the project is installed
+in editable mode. That is what ``uv run`` gives us, and it is why a Benchmark says so
+rather than reporting a missing file when it is not.
+"""
+
 FRAMES_DIRECTORY = Path(__file__).resolve().parents[2] / "frames"
 """Where camera Frames are kept — ``vision/frames/``, git-ignored.
 

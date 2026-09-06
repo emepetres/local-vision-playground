@@ -83,6 +83,11 @@ class FakeVisionModel:
     a repeated measurement needs. ``downloads`` counts the downloads that were started,
     which is what lets a test pin a refusal ahead of one rather than merely ahead of the
     Observation. ``load_error`` is the Variant that will not load on this machine.
+
+    ``events`` is the journal the model writes what it was asked to do into. Handing the
+    same list to a FakeFoundry puts registering the Execution Providers, loading and
+    observing on one timeline, which is the only way to pin that the providers really were
+    registered before any model went onto the hardware.
     """
 
     def __init__(
@@ -93,7 +98,9 @@ class FakeVisionModel:
         is_cached: bool = True,
         download_progress: Sequence[float] = (),
         load_error: Exception | None = None,
+        events: list[str] | None = None,
     ) -> None:
+        self.events = events if events is not None else []
         self.identity = identity
         self.is_cached = is_cached
         self._observations = tuple(observations)
@@ -105,6 +112,7 @@ class FakeVisionModel:
         self.observed: list[Workload] = []
 
     def download(self, on_progress: Callable[[float], None]) -> None:
+        self.events.append("download")
         self.downloads += 1
         for percent in self._download_progress:
             on_progress(percent)
@@ -112,9 +120,11 @@ class FakeVisionModel:
     def load(self) -> None:
         if self._load_error is not None:
             raise self._load_error
+        self.events.append("load")
         self.loaded = True
 
     def unload(self) -> None:
+        self.events.append("unload")
         self.unloads += 1
         self.loaded = False
 
@@ -124,6 +134,7 @@ class FakeVisionModel:
             raise AssertionError(
                 "the fake model was asked for more Observations than the test prepared"
             )
+        self.events.append("observe")
         self.observed.append(workload)
         return self._observations[index]
 
@@ -137,8 +148,9 @@ class FakeFoundry:
 
     ``setup_lines`` are what registering the Execution Providers announces — an EP that
     could not be registered is the thing worth saying out loud. ``resolved`` keeps the
-    names it was asked for; ``events`` keeps only the order the port was called in, which
-    is how a test pins registration before a resolve.
+    names it was asked for; ``events`` keeps the order the port was called in, which is how
+    a test pins registration before a resolve. Handing the same list to a FakeVisionModel
+    puts the model's own loads and Observations on that timeline too.
     """
 
     def __init__(
@@ -147,19 +159,24 @@ class FakeFoundry:
         *,
         every_name: FakeVisionModel | None = None,
         setup_lines: Sequence[str] = (),
+        events: list[str] | None = None,
     ) -> None:
         self.models = dict(models)
         self._every_name = every_name
         self._setup_lines = tuple(setup_lines)
-        self.events: list[str] = []
+        self.events: list[str] = events if events is not None else []
         self.resolved: list[str] = []
 
     @classmethod
     def resolving_everything_to(
-        cls, model: FakeVisionModel, *, setup_lines: Sequence[str] = ()
+        cls,
+        model: FakeVisionModel,
+        *,
+        setup_lines: Sequence[str] = (),
+        events: list[str] | None = None,
     ) -> FakeFoundry:
         """One model under every name, for a caller that only ever resolves one."""
-        return cls({}, every_name=model, setup_lines=setup_lines)
+        return cls({}, every_name=model, setup_lines=setup_lines, events=events)
 
     def register_execution_providers(self, announce: Callable[[str], None]) -> None:
         self.events.append("register")

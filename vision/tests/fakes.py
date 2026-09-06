@@ -9,7 +9,7 @@ satisfy the ports the command declares.
 from __future__ import annotations
 
 import io
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from PIL import Image
 
@@ -21,6 +21,7 @@ from vision.inference import (
     ModelIdentity,
     RawObservation,
     VisionModel,
+    Workload,
 )
 
 
@@ -75,16 +76,19 @@ class FakeCameras:
 
 
 class FakeVisionModel:
-    """A model whose task, runtime and Observation are all declared up front.
+    """A model whose task, runtime and Observations are all declared up front.
 
-    ``downloads`` counts the downloads that were started, which is what lets a test pin a
-    refusal ahead of one rather than merely ahead of the Observation.
+    The Observations are a sequence, one per call, so a test that asks for several can
+    have them differ — in text, in finish reason or in completion tokens — which is what
+    a repeated measurement needs. ``downloads`` counts the downloads that were started,
+    which is what lets a test pin a refusal ahead of one rather than merely ahead of the
+    Observation. ``load_error`` is the Variant that will not load on this machine.
     """
 
     def __init__(
         self,
         identity: ModelIdentity,
-        observation: RawObservation,
+        observations: Sequence[RawObservation],
         *,
         is_cached: bool = True,
         download_progress: Sequence[float] = (),
@@ -92,12 +96,13 @@ class FakeVisionModel:
     ) -> None:
         self.identity = identity
         self.is_cached = is_cached
-        self._observation = observation
+        self._observations = tuple(observations)
         self._download_progress = tuple(download_progress)
         self._load_error = load_error
         self.loaded = False
         self.downloads = 0
-        self.observed: list[tuple[Frame, str]] = []
+        self.unloads = 0
+        self.observed: list[Workload] = []
 
     def download(self, on_progress: Callable[[float], None]) -> None:
         self.downloads += 1
@@ -109,13 +114,26 @@ class FakeVisionModel:
             raise self._load_error
         self.loaded = True
 
-    def observe(self, frame: Frame, prompt: str) -> RawObservation:
-        self.observed.append((frame, prompt))
-        return self._observation
+    def unload(self) -> None:
+        self.unloads += 1
+        self.loaded = False
+
+    def observe(self, workload: Workload) -> RawObservation:
+        index = len(self.observed)
+        if index >= len(self._observations):
+            raise AssertionError(
+                "the fake model was asked for more Observations than the test prepared"
+            )
+        self.observed.append(workload)
+        return self._observations[index]
 
 
 class FakeFoundry:
-    """Resolves every name to the one model it was given.
+    """Resolves each name to the model registered under it.
+
+    A mapping is the honest shape: a caller that measures two Variants asks for two names
+    and has to get two different models back. ``resolving_everything_to`` is the one
+    exception, for a test that does not care which name its single model answers to.
 
     ``setup_lines`` are what registering the Execution Providers announces — an EP that
     could not be registered is the thing worth saying out loud. ``resolved`` keeps the
@@ -123,11 +141,25 @@ class FakeFoundry:
     is how a test pins registration before a resolve.
     """
 
-    def __init__(self, model: FakeVisionModel, *, setup_lines: Sequence[str] = ()) -> None:
-        self.model = model
+    def __init__(
+        self,
+        models: Mapping[str, FakeVisionModel],
+        *,
+        every_name: FakeVisionModel | None = None,
+        setup_lines: Sequence[str] = (),
+    ) -> None:
+        self.models = dict(models)
+        self._every_name = every_name
         self._setup_lines = tuple(setup_lines)
         self.events: list[str] = []
         self.resolved: list[str] = []
+
+    @classmethod
+    def resolving_everything_to(
+        cls, model: FakeVisionModel, *, setup_lines: Sequence[str] = ()
+    ) -> FakeFoundry:
+        """One model under every name, for a caller that only ever resolves one."""
+        return cls({}, every_name=model, setup_lines=setup_lines)
 
     def register_execution_providers(self, announce: Callable[[str], None]) -> None:
         self.events.append("register")
@@ -137,7 +169,12 @@ class FakeFoundry:
     def resolve(self, name: str) -> FakeVisionModel:
         self.events.append("resolve")
         self.resolved.append(name)
-        return self.model
+        if self._every_name is not None:
+            return self._every_name
+        model = self.models.get(name)
+        if model is None:
+            raise VisionError(f"Foundry Local has no model called {name!r}")
+        return model
 
 
 class FakeClock:
@@ -168,8 +205,11 @@ def make_identity(
 def make_observation(
     text: str = "A wooden desk with a laptop, a coffee mug and an open notebook.",
     finish_reason: FinishReason = FinishReason.COMPLETE,
+    completion_tokens: int = 24,
 ) -> RawObservation:
-    return RawObservation(text=text, finish_reason=finish_reason)
+    return RawObservation(
+        text=text, finish_reason=finish_reason, completion_tokens=completion_tokens
+    )
 
 
 def make_images(colours: Sequence[tuple[int, int, int]]) -> list[Image.Image]:
@@ -217,5 +257,5 @@ def make_frame(
 _camera: Camera = FakeCamera([])
 _feed: Feed = FakeFeed([])
 _open_feed: OpenFeed = FakeCameras({})
-_model: VisionModel = FakeVisionModel(make_identity(), make_observation())
-_foundry: FoundryLocal = FakeFoundry(FakeVisionModel(make_identity(), make_observation()))
+_model: VisionModel = FakeVisionModel(make_identity(), [make_observation()])
+_foundry: FoundryLocal = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})

@@ -25,6 +25,9 @@ if TYPE_CHECKING:
 PROMPT = "Describe what you see in this image in two or three sentences."
 """The fixed workload's prompt. The length bound lives here; the token limit is a net."""
 
+# The generation limits a Workload takes when a caller does not say otherwise. They are
+# defaults on the Workload rather than constants read inside the model, so that the caller
+# measuring one Workload against another can see — and record — what it ran under (ADR-0005).
 MAX_OUTPUT_TOKENS = 128
 TEMPERATURE = 0.0
 
@@ -56,14 +59,33 @@ class ModelIdentity:
 
 
 @dataclass(frozen=True)
+class Workload:
+    """Everything that has to be identical for two Benchmark Runs to be comparable.
+
+    The prompt, the exact Frame — its bytes, not merely its resolution — and the limits
+    the model generates under. The limits live here rather than inside the Foundry Local
+    implementation so that the caller who measures a Workload is the caller who fixed it
+    (ADR-0005).
+    """
+
+    prompt: str
+    frame: Frame
+    max_output_tokens: int = MAX_OUTPUT_TOKENS
+    temperature: float = TEMPERATURE
+
+
+@dataclass(frozen=True)
 class RawObservation:
     """What the model reports about a Frame, already copied out of the native response.
 
     An Observation without the provenance and the timings the command wraps around it.
+    ``completion_tokens`` is what the model generated, which is what makes two latencies
+    comparable: a Variant that generated twice as much text is not twice as slow.
     """
 
     text: str
     finish_reason: FinishReason
+    completion_tokens: int
 
 
 @dataclass(frozen=True)
@@ -118,7 +140,16 @@ class VisionModel(Protocol):
         """Bring the model up on whichever Execution Provider it resolves to."""
         ...
 
-    def observe(self, frame: Frame, prompt: str) -> RawObservation: ...
+    def observe(self, workload: Workload) -> RawObservation: ...
+
+    def unload(self) -> None:
+        """Take the model back off the hardware, so the next one can have it.
+
+        Measuring two Variants in one process is the reason this is on the port: two
+        loaded models compete for the same device, and a Benchmark that leaves the first
+        one resident is measuring the second one under conditions it cannot report.
+        """
+        ...
 
 
 class FoundryLocal(Protocol):
@@ -240,7 +271,22 @@ class FoundryLocalModel:
         self._model.load()
         self._session = ChatSession(self._model)
 
-    def observe(self, frame: Frame, prompt: str) -> RawObservation:
+    def unload(self) -> None:
+        """Release the session, then take the model off the hardware.
+
+        In that order, and deterministically: the session holds a native handle onto the
+        loaded model, and unloading underneath a live session leaves that handle pointing
+        at a model that is no longer there. ``Session`` exposes its release as ``__exit__``
+        rather than as a ``close``, and dropping the reference alone would leave the
+        release to whenever the last one goes — a traceback frame is enough to delay it
+        past the unload.
+        """
+        session, self._session = self._session, None
+        if session is not None:
+            session.__exit__()
+        self._model.unload()
+
+    def observe(self, workload: Workload) -> RawObservation:
         from foundry_local_sdk import (
             ImageItem,
             MessageItem,
@@ -253,20 +299,30 @@ class FoundryLocalModel:
         if self._session is None:
             raise VisionError(f"{self._model.id} was asked for an Observation before it was loaded")
 
+        frame = workload.frame
         # parts stays referenced for the whole call: the MessageItem borrows their native
         # pointers without owning them, and releasing one would dangle the message.
-        parts = [TextItem(prompt), ImageItem(frame.codec, frame.data)]
+        parts = [TextItem(workload.prompt), ImageItem(frame.codec, frame.data)]
         message = MessageItem.user(parts)
         options = RequestOptions(
-            search=SearchOptions(temperature=TEMPERATURE, max_output_tokens=MAX_OUTPUT_TOKENS)
+            search=SearchOptions(
+                temperature=workload.temperature,
+                max_output_tokens=workload.max_output_tokens,
+            )
         )
 
         with Request().add_item(message).set_options(options) as request:
             with self._session.process_request(request) as response:
                 text = "".join(_text_of(item) for item in response)
                 finish_reason = _finish_reason(response)
+                # Read inside the response's scope, like the text: nothing native escapes.
+                completion_tokens = response.get_usage().completion_tokens
 
-        return RawObservation(text=text.strip(), finish_reason=finish_reason)
+        return RawObservation(
+            text=text.strip(),
+            finish_reason=finish_reason,
+            completion_tokens=completion_tokens,
+        )
 
 
 def _text_of(item: Item) -> str:

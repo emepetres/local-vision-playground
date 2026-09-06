@@ -35,13 +35,13 @@ from vision.capture import (
 from vision.errors import VisionError
 from vision.inference import (
     DEFAULT_ALIAS,
-    MAX_OUTPUT_TOKENS,
     PROMPT,
     FoundryLocal,
     ModelIdentity,
     Observation,
     Timings,
     VisionModel,
+    Workload,
     require_vision_task,
 )
 
@@ -85,7 +85,7 @@ def main(
 
             clock = perf_counter
 
-        frame, observation, saved = _observe(
+        workload, observation, saved = _observe(
             camera=camera,
             foundry=foundry,
             clock=clock,
@@ -102,7 +102,7 @@ def main(
         for close in owned:
             close()
 
-    _render(observation, frame, saved, out=out)
+    _render(observation, workload, saved, out=out)
     return 0
 
 
@@ -172,7 +172,7 @@ def _observe(
     model_name: str,
     out: TextIO,
     keep_in: Path | None,
-) -> tuple[Frame, Observation, Path | None]:
+) -> tuple[Workload, Observation, Path | None]:
     # Refusing a model that cannot see a Frame comes first, ahead of every download this
     # command can start — the Execution Providers are fetched on a first run too, and
     # waiting for those in order to be told the model was never a vision-language model
@@ -189,7 +189,8 @@ def _observe(
     # Kept before inference runs: a Frame worth explaining is worth keeping even when the
     # Observation that would have prompted the question never arrives.
     saved = save_frame(frame, keep_in) if keep_in is not None else None
-    raw, inference = _timed(clock, lambda: model.observe(frame, PROMPT))
+    workload = Workload(prompt=PROMPT, frame=frame)
+    raw, inference = _timed(clock, lambda: model.observe(workload))
 
     observation = Observation(
         text=raw.text,
@@ -197,7 +198,7 @@ def _observe(
         finish_reason=raw.finish_reason,
         timings=Timings(providers=providers, load=load, capture=capture, inference=inference),
     )
-    return frame, observation, saved
+    return workload, observation, saved
 
 
 def _register_execution_providers(
@@ -279,15 +280,23 @@ def _timed[T](clock: Clock, work: Callable[[], T]) -> tuple[T, float]:
     return result, clock() - start
 
 
-def _render(observation: Observation, frame: Frame, saved: Path | None, *, out: TextIO) -> None:
-    for label, value in _report(observation, frame, saved):
+def _render(
+    observation: Observation, workload: Workload, saved: Path | None, *, out: TextIO
+) -> None:
+    """Print the report, the Observation, and the limit it ran into if it ran into one.
+
+    The token limit is read off the Workload rather than off a constant: the number an
+    Operator is shown is the one the Observation was actually generated under.
+    """
+    for label, value in _report(observation, workload.frame, saved):
         print(f"{label:<{LABEL_WIDTH}}{value}", file=out)
     print(file=out)
     print(observation.text, file=out)
     if observation.truncated:
         print(file=out)
         print(
-            f"(truncated: the Observation hit the {MAX_OUTPUT_TOKENS}-token output limit)", file=out
+            f"(truncated: the Observation hit the {workload.max_output_tokens}-token output limit)",
+            file=out,
         )
 
 

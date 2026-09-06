@@ -6,7 +6,10 @@ command because the two of them measuring it differently is exactly the drift a 
 cannot survive — ``observe`` reporting a Load that ``benchmark`` computes another way
 would make the two sets of numbers incomparable while looking identical.
 
-The order these are paid in is not arbitrary, and the reason is on each function.
+The three are separate functions rather than one because a Benchmark pays them at
+different rates: accepting a Variant and bringing it up happen once per Variant, while
+registering the Execution Providers happens once for the whole sitting. The order they are
+paid in is not arbitrary, and the reason is on each function.
 """
 
 from __future__ import annotations
@@ -29,39 +32,35 @@ Clock = Callable[[], float]
 class ReadyModel:
     """A Variant that is on the hardware, and what getting it there cost.
 
-    ``providers`` is machine set-up rather than the price of this Variant, which is why it
-    travels beside the load rather than folded into it.
+    Registering the Execution Providers is machine set-up rather than the price of this
+    Variant, which is why it is not here: it is paid once per process, by whoever is
+    measuring, and a Benchmark of several Variants pays it once for all of them.
     """
 
     model: VisionModel
     identity: ModelIdentity
-    providers: float
     load: float
 
 
-def prepare(
-    *,
-    foundry: FoundryLocal,
-    clock: Clock,
-    model_name: str,
-    out: TextIO,
-) -> ReadyModel:
-    """Resolve a Variant, register the Execution Providers, and bring the model up.
+def accept_variant(foundry: FoundryLocal, model_name: str) -> VisionModel:
+    """Resolve a Variant and refuse it if it cannot see a Frame.
 
-    Refusing a model that cannot see a Frame comes first, ahead of every download this can
-    start — the Execution Providers are fetched on a first run too, and waiting for those
-    in order to be told the model was never a vision-language model is the same failure the
-    refusal exists to prevent.
+    Kept apart from bringing the model up, and ahead of every download either can start —
+    the Execution Providers are fetched on a first run too, and waiting for those in order
+    to be told the model was never a vision-language model is the same failure the refusal
+    exists to prevent. A caller measuring several Variants accepts all of them first, so a
+    name that names nothing is caught before the first measurement rather than after it.
     """
     model = foundry.resolve(model_name)
-    identity = model.identity
-    require_vision_task(identity)
+    require_vision_task(model.identity)
+    return model
 
-    providers = register_execution_providers(foundry, clock=clock, out=out)
+
+def bring_up(model: VisionModel, *, clock: Clock, out: TextIO) -> ReadyModel:
+    """Fetch the weights if they are not here, then load the model, timing the load."""
     download(model, clock=clock, out=out)
     _, load = timed(clock, lambda: load_model(model))
-
-    return ReadyModel(model=model, identity=identity, providers=providers, load=load)
+    return ReadyModel(model=model, identity=model.identity, load=load)
 
 
 def register_execution_providers(

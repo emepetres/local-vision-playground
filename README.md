@@ -119,13 +119,13 @@ why it happens *after* the model has been resolved and checked: nothing is fetch
 the model has said it can see a Frame.
 
 By default the model is resolved by **alias**, letting Foundry Local pick the hardware.
-`--variant` pins an exact **variant id**, version suffix included, and with it the
-Execution Provider the work runs on — `--variant qwen3-vl-2b-instruct-generic-cpu:2`
-runs the same workload on the CPU. That is the only lever there is; nothing selects an
-Execution Provider directly (see [`docs/stack.md`](./docs/stack.md), Constraint 3),
-which is why the Model line names the variant that was actually resolved and what it
-was built for — that pair is what a Benchmark Run is attributed to. `--debug` restores
-the full traceback behind a one-line failure.
+`--variant` pins a **variant**, and with it the Execution Provider the work runs on —
+`--variant qwen3-vl-2b-instruct-generic-cpu` runs the same workload on the CPU, on whatever
+version the catalogue offers today, and adding `:2` pins that version too. That is the only
+lever there is; nothing selects an Execution Provider directly (see
+[`docs/stack.md`](./docs/stack.md), Constraint 3), which is why the Model line names the
+variant that was actually resolved and what it was built for — that pair is what a Benchmark
+Run is attributed to. `--debug` restores the full traceback behind a one-line failure.
 
 Pinning is also the answer when a model will not load at all. An alias picks the hardware,
 and it can pick a variant that cannot run — `qwen3.5-0.8b-cuda-gpu:3` ships a graph ONNX
@@ -156,7 +156,9 @@ fixture is the right Frame to hold it at.
 
 ### What it costs
 
-The same Workload against one Variant, several times over:
+The same Workload against several Variants, several times each. By default the CUDA-GPU one
+and the CPU one — the GPU-versus-CPU answer the demo is about, without orchestrating two
+runs by hand and hoping they were measured under the same conditions:
 
 ```bash
 cd vision
@@ -164,28 +166,64 @@ uv run benchmark
 ```
 
 ```
-Model        qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
 Frame        640x360 jpeg, fit to 640x480, from D:\dev\local-vision-playground\docs\fixtures\reference-frame.jpg
 Prompt       Describe what you see in this image in two or three sentences.
 Limits       at most 128 tokens, temperature 0.0
-Providers    4.138 s
-Load         3.251 s
-Repetitions  5 — the first reported apart, the median, minimum and maximum taken over the other 4
+Providers    4.070 s
+Repetitions  5 per Variant — the first reported apart, the median, minimum and maximum taken over the other 4
+
+Model        qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
+Measured     1st of 2
+Load         2.917 s
 
                   First    Median       Min       Max
-Inference       2.500 s   2.000 s   1.800 s   2.200 s
-Tokens               30        25        22        28
-Tokens/second      12.0      12.1      11.8      14.0
+Inference       1.770 s   1.382 s   1.348 s   1.481 s
+Tokens               96        96        96        96
+Tokens/second      54.2      69.5      64.8      71.2
+
+Model        qwen3-vl-2b-instruct-generic-cpu:2 (alias qwen3-vl-2b-instruct, CPU / CPUExecutionProvider)
+Measured     2nd of 2
+Load         4.397 s
+
+                  First    Median       Min       Max
+Inference       5.037 s   5.040 s   4.970 s   5.058 s
+Tokens              104       104       104       104
+Tokens/second      20.6      20.6      20.6      20.9
 ```
 
-The **Frame is read once** and those exact bytes go to every repetition — that is what makes
-the Workload identical, and it is why the live camera is refused: a different Frame each
-time is not a Workload. `--image <path>` measures a file of your own instead of the
-reference Frame; `--variant` and `--debug` behave as they do for `observe`.
+Taken on the development machine (RTX 4090 + i7-13700KF) with both Variants already
+downloaded. Note the two columns of Tokens differ — 96 against 104 — so this is not quite a
+like-for-like comparison of the same amount of work. Tokens/second is the number to read.
 
-**Providers** sits outside the table because registering the Execution Providers is machine
-set-up paid once per process, not the price of an Execution Provider. **Load** sits outside
-it too: it is paid once per Variant, so a per-run column would invite it to be read as one.
+The **Frame is read once** and those exact bytes go to every repetition of every Variant —
+that is what makes the whole sitting comparable, and it is why the live camera is refused: a
+different Frame each time is not a Workload. `--image <path>` measures a file of your own
+instead of the reference Frame; `--debug` behaves as it does for `observe`.
+
+**Variants are resolved through the catalogue**, not by a version suffix written into the
+source, so the command does not break the day the catalogue publishes a new version — and
+the Model line names the exact Variant id that was resolved, so the numbers say which build
+produced them. `--variant` takes an alias (`qwen3-vl-2b-instruct`), a variant name whose
+version the catalogue picks (`qwen3-vl-2b-instruct-generic-cpu`), or a variant id, which
+pins the version too (`…-generic-cpu:2`). Repeating it measures several, and **any use of it
+replaces the default pair entirely** — which is what lets two model sizes be compared on
+fixed hardware, or an NPU Variant added later, without changing code:
+
+```bash
+uv run benchmark --variant qwen3-vl-2b-instruct-generic-cpu --variant qwen3-vl-4b-instruct-generic-cpu
+```
+
+Each Variant is **unloaded before the next is loaded** — two loaded models compete for the
+same device, and a Benchmark that left the first one resident would be measuring the second
+under conditions it cannot report. **Measured** records which turn each one took, so a
+result you suspect was contaminated by the previously loaded model can be checked by naming
+the Variants the other way round.
+
+**Providers** sits above every table because registering the Execution Providers is machine
+set-up paid once per process, not the price of an Execution Provider. **Load** sits above
+its own table for the other reason: it is paid once per Variant, so a per-run column would
+invite it to be read as one. Every table is laid out to the same column widths, so the GPU's
+median sits directly above the CPU's.
 
 The **first repetition gets its own column** rather than being dropped — a cold model is
 the honest number — and the median, minimum and maximum are taken over the repetitions
@@ -193,6 +231,13 @@ the honest number — and the median, minimum and maximum are taken over the rep
 handful of samples does not support them. **Tokens/second** sits next to the latency so
 that a Variant which generated twice as much text is not credited with being twice as slow.
 `--repetitions N` takes more or fewer than the default five.
+
+Two Variants including a CPU one takes minutes, so each gets a **progress bar** while it
+runs, carrying the last latency and the running median so the numbers are visibly moving
+while an audience waits. The median on the bar is the one the table is about to print —
+over the repetitions after the first — because a bar quoting a different median would be
+worse than no bar. It takes itself off when the output is not a terminal, exactly as the
+download bar does, so output captured in a pipe or in CI is just the report above.
 
 ### Development
 

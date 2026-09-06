@@ -60,6 +60,13 @@ One build of a model for one Execution Provider, version suffix included —
 `qwen3-vl-2b-instruct-generic-cpu:2`. Naming a Variant instead of an Alias is the only
 lever there is over which hardware the work runs on; nothing selects an Execution
 Provider directly.
+
+A Variant is *identified* by its **Variant id**, which carries the version, and *named* by
+its **Variant name**, which does not — `qwen3-vl-2b-instruct-generic-cpu`. The name is the
+Variant across every version of it, so naming one leaves the version to the catalogue,
+exactly as an Alias leaves the Execution Provider to Foundry Local. That is what lets a
+Variant be named in source without a version being written there with it — and it is why
+the id that was actually resolved is always reported.
 _Avoid_: build, flavour, SKU, model version
 
 **Local-First**:
@@ -79,10 +86,18 @@ _Avoid_: task, job, prompt, request
 One measured execution of one Workload against one model on one Execution Provider.
 _Avoid_: test, trial, profile, benchmark
 
+**Measured Variant**:
+Every Benchmark Run taken against one [[Variant]] within one Benchmark, what loading it
+cost, and which turn it took. The turn is part of it, not bookkeeping around it: a Variant
+measured second was measured on a machine that had just had another model taken off it,
+and reversing the order is the only way to check whether that mattered.
+_Avoid_: result, entry, row, per-variant benchmark
+
 **Benchmark**:
 The set of comparable Benchmark Runs carried out in one sitting — every model, every
-repetition — and the unit that is persisted and read back later. A Benchmark Run is one
-number; a Benchmark is what is worth keeping.
+repetition — and the unit that is persisted and read back later. One Workload for the
+whole sitting is what makes its Measured Variants comparable at all. A Benchmark Run is
+one number; a Benchmark is what is worth keeping.
 _Avoid_: run, suite, comparison, benchmark run
 
 **Hardware Profile**:

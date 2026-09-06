@@ -34,6 +34,19 @@ TEMPERATURE = 0.0
 DEFAULT_ALIAS = "qwen3-vl-2b-instruct"
 """Resolved when no variant is pinned, so Foundry Local picks the hardware."""
 
+DEFAULT_VARIANTS = (f"{DEFAULT_ALIAS}-cuda-gpu", f"{DEFAULT_ALIAS}-generic-cpu")
+"""The two Variants a Benchmark measures when the Operator names none: CUDA-GPU and CPU.
+
+That pair is the Execution Provider axis this project can actually demonstrate (see
+docs/stack.md, Constraint 3) — and it is the comparison the demo exists to make.
+
+These are Variant *names*, carrying no version suffix, and the version is whatever the
+catalogue offers on the day. Writing `-cuda-gpu:2` here instead would break the command
+the morning the catalogue publishes `:3`, and would quietly measure a build nobody chose.
+The exact Variant id that was resolved is reported, so the Benchmark still says which
+build produced its numbers.
+"""
+
 VISION_TASK = "vision-language-chat"
 """Match on the task, never on the alias prefix: qwen3.5-2b-text is a text-only sibling."""
 
@@ -235,15 +248,54 @@ class InProcessFoundryLocal:
             )
 
     def resolve(self, name: str) -> FoundryLocalModel:
+        """Resolve an alias, an exact variant id, or a variant name with no version.
+
+        The third is what lets a Variant be named in source without a version suffix
+        being written there with it: `qwen3-vl-2b-instruct-cuda-gpu` is answered with
+        whatever version the catalogue offers today. It is tried last, so an Operator who
+        pinned `…-cuda-gpu:2` gets that build and not the newest one.
+        """
         catalog = self._manager.catalog
         model = catalog.get_model(name) or catalog.get_model_variant(name)
         if model is None:
+            model = self._latest_named(name)
+        if model is None:
             raise VisionError(
-                f"Foundry Local has no model called {name!r} — an alias has no version"
-                " but a variant id does (qwen3-vl-2b-instruct-generic-cpu:2);"
+                f"Foundry Local has no model called {name!r} — that is an alias"
+                " (qwen3-vl-2b-instruct), a variant name (qwen3-vl-2b-instruct-generic-cpu)"
+                " or a variant id, which carries a version (qwen3-vl-2b-instruct-generic-cpu:2);"
                 " run `foundry model list` to see what this machine is offered"
             )
         return FoundryLocalModel(model)
+
+    def _latest_named(self, variant_name: str) -> IModel | None:
+        """The newest catalogue version of the Variant with this name, if there is one.
+
+        Every alias is asked for its variants rather than the name being taken apart: a
+        variant name looks like its alias with a hardware suffix, but nothing guarantees
+        that, and a Variant resolved by pattern-matching a string is not resolved through
+        the catalogue at all.
+
+        ``list_models`` is used rather than the two calls that look purpose-built for this,
+        because on 2.0.1 neither answers **[verified 2026-09-06]**. `get_model_versions`,
+        the documented "every version for an alias", returned `[]` for
+        `qwen3-vl-2b-instruct-cuda-gpu` and only the CPU Variant for the bare alias, on a
+        machine where `get_model_variant("…-cuda-gpu:2")` resolves that exact build.
+        `get_latest_version` needs an `IModel` to start from, which is the thing being
+        looked for. `list_models` is the one call that reports every Variant of every alias
+        — asking an alias directly answers with the single Variant Foundry Local would pick
+        for it. What the catalogue lists varies with which region serves it, so this is a
+        best effort against a moving target, not a guarantee.
+        """
+        versions = [
+            variant
+            for model in self._manager.catalog.list_models()
+            for variant in model.variants
+            if variant.info.name == variant_name
+        ]
+        if not versions:
+            return None
+        return max(versions, key=lambda variant: variant.info.version)
 
     def close(self) -> None:
         self._manager.close()

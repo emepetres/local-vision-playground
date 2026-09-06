@@ -164,6 +164,33 @@ Benchmark Run selects hardware by naming a variant, not by configuring a backend
 variant pinning is inferred from the sample's own `get_model_variant` fallback and its usage
 line; no Learn page says it in words.
 
+### Naming a variant without pinning its version **[verified 2026-09-06]**
+
+A **variant id** carries a version (`qwen3-vl-2b-instruct-generic-cpu:2`) and pins one build.
+Writing one into source means the code breaks the day the catalogue publishes the next
+version, so a variant is better named without one — and the catalogue asked which version
+that name resolves to today. Two `Catalog` calls look purpose-built for that. Neither works:
+
+- **`get_model_versions(alias, model_name)`**, documented as "all versions of a model alias",
+  returned `[]` for `("qwen3-vl-2b-instruct", "qwen3-vl-2b-instruct-cuda-gpu")` and only the
+  `generic-cpu` variant for the bare alias — on a machine where
+  `get_model_variant("qwen3-vl-2b-instruct-cuda-gpu:2")` resolves that exact build, GPU
+  runtime and all.
+- **`get_latest_version(model_or_variant)`** takes an `IModel`, so it can only refine a
+  variant already in hand — not find one from a name.
+- **`get_model(alias).variants`** returns just the one variant Foundry Local would itself
+  pick for the alias, not every variant of it.
+
+What does work is `list_models()`, whose per-alias `IModel`s do carry the full `variants`
+list, with `info.name` (no version) and `info.version` on each. That is the sweep this
+project resolves a variant name through.
+
+Two caveats. **What the catalogue lists is not stable**: on one afternoon, successive runs
+listed both `qwen3-vl-2b-instruct` variants, then only `generic-cpu`, alongside a
+`RegionFallback: region 'westeurope' unhealthy` warning — so a variant name that resolved an
+hour ago can fail to resolve now, while the fully versioned id still resolves. And the
+catalogue is hardware-filtered per device on top of that.
+
 For reporting which Execution Provider a Benchmark Run *actually* used, the C#/JS SDKs expose
 `DiscoverEps()` / `discoverEps()`, returning each EP's `Name` and `IsRegistered`. Not a
 switch, but it is the first-party way to evidence a Hardware Profile.

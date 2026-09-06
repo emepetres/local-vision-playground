@@ -10,9 +10,9 @@ rather than part of any Observation; loading the model, preparing the Frame and 
 inference are three further costs of wildly different magnitude, and only the last is the
 latency of the Observation. Nothing is warmed up: the first run is the honest run.
 
-``benchmark`` answers *what does it cost?* — the same Workload against one Variant, several
-times over, printed as a table. Where ``observe`` will take a Frame from the live camera,
-``benchmark`` refuses one: a different Frame per repetition is not a Workload.
+``benchmark`` answers *what does it cost?* — the same Workload against several Variants,
+several times each, printed as a table apiece. Where ``observe`` will take a Frame from the
+live camera, ``benchmark`` refuses one: a different Frame per repetition is not a Workload.
 """
 
 from __future__ import annotations
@@ -35,9 +35,23 @@ from vision.capture import (
     save_frame,
 )
 from vision.errors import VisionError
-from vision.inference import DEFAULT_ALIAS, PROMPT, FoundryLocal, Observation, Timings, Workload
+from vision.inference import (
+    DEFAULT_ALIAS,
+    DEFAULT_VARIANTS,
+    PROMPT,
+    FoundryLocal,
+    Observation,
+    Timings,
+    Workload,
+)
 from vision.reporting import render_benchmark, render_observation
-from vision.startup import Clock, prepare, timed
+from vision.startup import (
+    Clock,
+    accept_variant,
+    bring_up,
+    register_execution_providers,
+    timed,
+)
 
 
 def main(
@@ -95,9 +109,10 @@ def benchmark_main(
     out: TextIO | None = None,
     err: TextIO | None = None,
 ) -> int:
-    """Run ``benchmark``. One Variant, N Benchmark Runs over one Workload, one table."""
+    """Run ``benchmark``. Several Variants, N Benchmark Runs each over one Workload."""
     args = _benchmark_parser().parse_args(argv)
     out, err = _streams(out, err)
+    variants = args.variants if args.variants else DEFAULT_VARIANTS
 
     owned: list[Callable[[], None]] = []
     try:
@@ -114,7 +129,7 @@ def benchmark_main(
         benchmark = measure(
             foundry=foundry,
             clock=clock,
-            model_name=args.model,
+            variants=variants,
             workload=workload,
             repetitions=args.repetitions,
             out=out,
@@ -147,7 +162,7 @@ def _observe_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="index of the camera to open the Feed on (default: 0)",
     )
-    _add_variant(parser)
+    _add_pinned_variant(parser)
     _add_debug(parser)
     return parser
 
@@ -156,7 +171,8 @@ def _benchmark_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="benchmark",
         description=(
-            "Run the same Workload against one Variant several times and print what it cost."
+            "Run the same Workload against several Variants, several times each,"
+            " and print what each one cost."
         ),
     )
     source = parser.add_mutually_exclusive_group()
@@ -183,25 +199,52 @@ def _benchmark_parser() -> argparse.ArgumentParser:
         default=REPETITIONS,
         metavar="N",
         help=(
-            "how many Benchmark Runs to take against the Variant"
+            "how many Benchmark Runs to take against each Variant"
             f" (default: {REPETITIONS}; the first is reported apart from the rest)"
         ),
     )
-    _add_variant(parser)
+    _add_variants(parser)
     _add_debug(parser)
     return parser
 
 
-def _add_variant(parser: argparse.ArgumentParser) -> None:
+def _add_variants(parser: argparse.ArgumentParser) -> None:
+    """The Variants to measure, replacing the default pair rather than adding to it.
+
+    Repeatable, and repeating it is the whole point: naming two Variants of two different
+    aliases compares two model sizes on fixed hardware, and naming an NPU one compares an
+    Execution Provider this catalogue does not offer yet — neither needing a change here.
+    Replacing rather than extending is what makes that possible: a flag that only added to
+    the default pair could never measure anything without the CUDA-GPU Variant in it.
+    """
+    parser.add_argument(
+        "--variant",
+        metavar="ID",
+        dest="variants",
+        action="append",
+        help=(
+            "measure this Variant instead of the default pair, and repeat the flag to"
+            " measure several — an alias (qwen3-vl-2b-instruct), a variant name, whose"
+            " version the catalogue picks (qwen3-vl-2b-instruct-generic-cpu), or a variant"
+            " id, which pins the version too (qwen3-vl-2b-instruct-generic-cpu:2)."
+            f" Default: {', '.join(DEFAULT_VARIANTS)}"
+        ),
+    )
+
+
+def _add_pinned_variant(parser: argparse.ArgumentParser) -> None:
+    """The single Variant ``observe`` runs against. ``benchmark`` takes a list instead."""
     parser.add_argument(
         "--variant",
         metavar="ID",
         dest="model",
         default=DEFAULT_ALIAS,
         help=(
-            "pin this exact model variant, version suffix included, and with it the"
-            " Execution Provider the work runs on (default: resolve the alias"
-            f" {DEFAULT_ALIAS}, letting Foundry Local pick the hardware)"
+            "pin the model variant, and with it the Execution Provider the work runs on"
+            " — a variant name, whose version the catalogue picks"
+            " (qwen3-vl-2b-instruct-generic-cpu), or a variant id, which pins the version"
+            f" too (…-generic-cpu:2). Default: resolve the alias {DEFAULT_ALIAS},"
+            " letting Foundry Local pick the hardware"
         ),
     )
 
@@ -303,7 +346,13 @@ def _observe(
     out: TextIO,
     keep_in: Path | None,
 ) -> tuple[Workload, Observation, Path | None]:
-    ready = prepare(foundry=foundry, clock=clock, model_name=model_name, out=out)
+    # Accepted before the Execution Providers are registered, and so before anything at
+    # all is downloaded: a first run fetches the providers too, and waiting for those to
+    # be told the model was never a vision-language model is the failure the refusal
+    # exists to prevent.
+    model = accept_variant(foundry, model_name)
+    providers = register_execution_providers(foundry, clock=clock, out=out)
+    ready = bring_up(model, clock=clock, out=out)
 
     frame, capture = timed(clock, camera.capture)
     # Kept before inference runs: a Frame worth explaining is worth keeping even when the
@@ -316,9 +365,7 @@ def _observe(
         text=raw.text,
         model=ready.identity,
         finish_reason=raw.finish_reason,
-        timings=Timings(
-            providers=ready.providers, load=ready.load, capture=capture, inference=inference
-        ),
+        timings=Timings(providers=providers, load=ready.load, capture=capture, inference=inference),
     )
     return workload, observation, saved
 

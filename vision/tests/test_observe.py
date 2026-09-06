@@ -221,6 +221,27 @@ def test_refuses_a_model_that_cannot_see_a_frame_before_the_download_starts() ->
     )
 
 
+def test_says_a_model_declaring_no_task_is_the_catalogues_gap_not_the_commands() -> None:
+    # Foundry Local's own catalogue is what is incomplete here: `foundry model list` on
+    # 0.8.119 already fails to process nine entries (docs/stack.md). Saying so keeps an
+    # Operator from reading the refusal as a fault of this command.
+    model = FakeVisionModel(
+        make_identity(task=None, variant="gemma-4-e2b-it-generic-cpu:1"),
+        make_observation(),
+        is_cached=False,
+    )
+    result = run(["--image", "a.jpg"], model=model)
+
+    assert result.model.downloads == 0
+    assert result.code == 1
+    assert result.err == (
+        "error: gemma-4-e2b-it-generic-cpu:1 declares no task in the Foundry Local"
+        " catalogue, so nothing says whether it can see a Frame — the incomplete entry"
+        " is Foundry Local's, not this command's; pick a model that declares"
+        " vision-language-chat (run `foundry model list`)\n"
+    )
+
+
 def test_reports_a_missing_image_in_one_line_and_exits_non_zero(tmp_path: Path) -> None:
     missing = tmp_path / "nope.jpg"
     out, err = io.StringIO(), io.StringIO()

@@ -159,7 +159,7 @@ def make_identity(
     *,
     alias: str = "qwen3-vl-2b-instruct",
     variant: str = "qwen3-vl-2b-instruct-cuda-gpu:2",
-    task: str = "vision-language-chat",
+    task: str | None = "vision-language-chat",
     runtime: str | None = "GPU / NvTensorRtRtxExecutionProvider",
 ) -> ModelIdentity:
     return ModelIdentity(alias=alias, variant=variant, task=task, runtime=runtime)

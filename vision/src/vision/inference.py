@@ -138,7 +138,22 @@ class FoundryLocal(Protocol):
 
 
 def require_vision_task(identity: ModelIdentity) -> None:
-    """Refuse a model that cannot see a Frame, before anything expensive happens."""
+    """Refuse a model that cannot see a Frame, before anything expensive happens.
+
+    A model that declares no task at all gets its own refusal. It is the same outcome —
+    nothing here will send a Frame to a model that has not said it can see one — but a
+    different fault: the catalogue entry is incomplete on Foundry Local's side, and
+    `foundry model list` failing to process nine entries on 0.8.119 (docs/stack.md) is
+    the same gap seen from the CLI. Saying so keeps an Operator from hunting for a bug in
+    this command that is not there.
+    """
+    if identity.task is None:
+        raise VisionError(
+            f"{identity.variant} declares no task in the Foundry Local catalogue,"
+            " so nothing says whether it can see a Frame — the incomplete entry is"
+            " Foundry Local's, not this command's; pick a model that declares"
+            f" {VISION_TASK} (run `foundry model list`)"
+        )
     if identity.task != VISION_TASK:
         raise VisionError(
             f"{identity.variant} has task {identity.task!r}, not {VISION_TASK!r},"

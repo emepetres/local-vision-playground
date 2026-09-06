@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
+import vision.capture
 from tests.fakes import (
     SETTLED_COLOUR,
     FakeCamera,
@@ -22,7 +24,7 @@ from tests.fakes import (
     make_observation,
     settling_feed,
 )
-from vision.capture import SETTLING_FRAMES
+from vision.capture import SETTLING_FRAMES, WORKING_RESOLUTION
 from vision.cli import main
 from vision.inference import FinishReason
 
@@ -48,6 +50,17 @@ REPORT = (
 OBSERVATION = "A wooden desk with a laptop, a coffee mug and an open notebook.\n"
 
 
+class FrozenClock:
+    """A stand-in for ``datetime`` that always reports the same instant."""
+
+    @staticmethod
+    def now() -> FrozenClock:
+        return FrozenClock()
+
+    def strftime(self, fmt: str) -> str:
+        return "fixed"
+
+
 @dataclass
 class Run:
     """One invocation of the command, and everything it was driven through."""
@@ -55,7 +68,6 @@ class Run:
     code: int
     out: str
     err: str
-    camera: FakeCamera
     foundry: FakeFoundry
     model: FakeVisionModel
 
@@ -73,7 +85,31 @@ def run(
     foundry = FakeFoundry(model, setup_lines=setup_lines)
     out, err = io.StringIO(), io.StringIO()
     code = main(argv, camera=camera, foundry=foundry, clock=FakeClock(readings), out=out, err=err)
-    return Run(code, out.getvalue(), err.getvalue(), camera, foundry, model)
+    return Run(code, out.getvalue(), err.getvalue(), foundry, model)
+
+
+def write_image(path: Path, size: tuple[int, int], mode: str = "RGB") -> Path:
+    Image.new(mode, size, color=(20, 120, 200)).save(path)
+    return path
+
+
+def run_on_file(path: Path) -> Run:
+    """One invocation with no Camera injected, so the real image-file capture runs.
+
+    Rescaling and encoding are the two things the spec asks be exercised for real rather
+    than faked, and this is the seam that does it without reaching past the command.
+    """
+    model = FakeVisionModel(make_identity(), make_observation())
+    foundry = FakeFoundry(model)
+    out, err = io.StringIO(), io.StringIO()
+    code = main(
+        ["--image", str(path)],
+        foundry=foundry,
+        clock=FakeClock(CACHED_READINGS),
+        out=out,
+        err=err,
+    )
+    return Run(code, out.getvalue(), err.getvalue(), foundry, model)
 
 
 def test_reports_the_observation_the_model_the_resolution_and_what_it_cost() -> None:
@@ -89,6 +125,58 @@ def test_names_the_working_resolution_even_when_the_frame_does_not_fill_it() -> 
     result = run(["--image", "wide.jpg"], camera=camera)
 
     assert "Frame      640x360 jpeg, fit to 640x480, from wide.jpg\n" in result.out
+
+
+def test_rescales_the_long_edge_down_to_the_working_resolution(tmp_path: Path) -> None:
+    source = write_image(tmp_path / "wide.png", (1920, 1080))
+
+    result = run_on_file(source)
+
+    assert result.code == 0
+    assert f"Frame      640x360 jpeg, fit to 640x480, from {source}\n" in result.out
+
+
+def test_rescales_a_tall_frame_on_its_long_edge_too(tmp_path: Path) -> None:
+    result = run_on_file(write_image(tmp_path / "tall.png", (1000, 4000)))
+
+    assert "Frame      120x480 jpeg" in result.out
+
+
+def test_never_crops(tmp_path: Path) -> None:
+    result = run_on_file(write_image(tmp_path / "square.png", (2000, 2000)))
+
+    assert "Frame      480x480 jpeg" in result.out
+
+
+def test_leaves_a_frame_already_at_the_working_resolution_alone(tmp_path: Path) -> None:
+    result = run_on_file(write_image(tmp_path / "exact.png", WORKING_RESOLUTION))
+
+    assert "Frame      640x480 jpeg" in result.out
+
+
+def test_encodes_as_jpeg_whatever_went_in(tmp_path: Path) -> None:
+    source = write_image(tmp_path / "transparent.png", (800, 600), mode="RGBA")
+
+    result = run_on_file(source)
+
+    (observed, _) = result.model.observed[0]
+    with Image.open(io.BytesIO(observed.data)) as decoded:
+        assert decoded.format == "JPEG"
+        assert decoded.size == (640, 480)
+
+
+def test_says_what_to_do_when_the_file_is_not_an_image(tmp_path: Path) -> None:
+    source = tmp_path / "notes.txt"
+    source.write_text("not an image")
+
+    result = run_on_file(source)
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.err == (
+        f"error: {source} is not an image Pillow can read"
+        " — pass a JPEG, PNG, BMP, GIF or WebP to --image\n"
+    )
 
 
 def test_reports_the_download_outside_the_three_latencies() -> None:
@@ -151,9 +239,10 @@ def test_labels_an_observation_cut_short_by_the_output_limit_as_truncated() -> N
 
 
 def test_sends_the_fixed_prompt_and_the_captured_frame_to_the_model() -> None:
-    result = run(["--image", "a.jpg"], camera=FakeCamera([make_frame(provenance="a.jpg")]))
+    camera = FakeCamera([make_frame(provenance="a.jpg")])
+    result = run(["--image", "a.jpg"], camera=camera)
 
-    assert result.camera.captures == 1
+    assert camera.captures == 1
     assert result.model.loaded
     (observed_frame, prompt) = result.model.observed[0]
     assert observed_frame.provenance == "a.jpg"
@@ -184,10 +273,11 @@ def test_pins_a_variant_and_reports_the_one_that_answered() -> None:
     ) in result.out
 
 
-def test_registers_the_execution_providers_before_resolving_a_model() -> None:
+def test_registers_the_execution_providers_before_loading_the_model() -> None:
     result = run(["--image", "a.jpg"])
 
-    assert result.foundry.events == ["register", "resolve"]
+    assert result.foundry.events == ["resolve", "register"]
+    assert result.model.loaded
 
 
 def test_says_which_execution_provider_could_not_be_registered() -> None:
@@ -200,10 +290,11 @@ def test_says_which_execution_provider_could_not_be_registered() -> None:
     )
 
 
-def test_refuses_a_model_that_cannot_see_a_frame_before_the_download_starts() -> None:
-    # Not cached, which is the only case a download could start in: discovering after
-    # several gigabytes that the model was never a vision-language model is the worst
-    # failure this command has.
+def test_refuses_a_model_that_cannot_see_a_frame_before_anything_is_downloaded() -> None:
+    # Not cached, which is the only case a model download could start in: discovering
+    # after several gigabytes that the model was never a vision-language model is the
+    # worst failure this command has. The Execution Providers are the other download —
+    # a first run fetches those too — so the refusal has to land ahead of both.
     model = FakeVisionModel(
         make_identity(task="chat", variant="qwen3.5-2b-text-generic-cpu:2"),
         make_observation(),
@@ -212,6 +303,7 @@ def test_refuses_a_model_that_cannot_see_a_frame_before_the_download_starts() ->
     result = run(["--image", "a.jpg"], model=model)
 
     assert result.model.downloads == 0
+    assert result.foundry.events == ["resolve"]
     assert result.code == 1
     assert result.out == ""
     assert result.err == (
@@ -233,6 +325,7 @@ def test_says_a_model_declaring_no_task_is_the_catalogues_gap_not_the_commands()
     result = run(["--image", "a.jpg"], model=model)
 
     assert result.model.downloads == 0
+    assert result.foundry.events == ["resolve"]
     assert result.code == 1
     assert result.err == (
         "error: gemma-4-e2b-it-generic-cpu:1 declares no task in the Foundry Local"
@@ -380,6 +473,44 @@ def test_says_what_to_do_when_another_application_is_holding_the_camera(tmp_path
         "error: camera 0 opened but gave no Frame — another application is holding it;"
         " close that application, or observe an image file with --image <path>\n"
     )
+
+
+def test_releases_the_camera_it_opened(tmp_path: Path) -> None:
+    """A Feed left open holds the camera against every other application."""
+    feed = settling_feed()
+
+    run_live([], tmp_path, feeds={0: feed})
+
+    assert feed.closed
+
+
+def test_releases_the_camera_even_when_another_application_is_holding_it(tmp_path: Path) -> None:
+    feed = FakeFeed([], gives_nothing=True)
+
+    run_live([], tmp_path, feeds={0: feed})
+
+    assert feed.closed
+
+
+def test_keeps_every_camera_frame_in_its_own_file(tmp_path: Path) -> None:
+    run_live([], tmp_path)
+    run_live([], tmp_path)
+
+    first, second = sorted(tmp_path.glob("*.jpg"))
+    assert first.read_bytes() == second.read_bytes()
+
+
+def test_keeps_both_frames_when_the_clock_hands_out_the_same_stamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Windows clock is coarse enough that this is the ordinary case, not a corner."""
+    monkeypatch.setattr(vision.capture, "datetime", FrozenClock)
+
+    run_live([], tmp_path)
+    run_live([], tmp_path)
+
+    names = {path.name for path in tmp_path.glob("*.jpg")}
+    assert names == {"frame-fixed.jpg", "frame-fixed-1.jpg"}
 
 
 def test_refuses_an_image_file_and_a_camera_at_once(tmp_path: Path) -> None:

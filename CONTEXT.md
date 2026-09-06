@@ -24,6 +24,11 @@ _Avoid_: snapshot, capture, still, photo
 What the model reports about a Frame — what is present in it and how it is described.
 _Avoid_: detection, caption, description, result, inference
 
+The avoided words name the Observation. "Inference" is still the name of the *act* of
+running the model over a Frame, which is a different thing and has no other name: hence
+the `inference` module and the inference latency, which is the cost of that act and the
+one cost that is the latency of the Observation.
+
 **Structured Observation**:
 An Observation the model is asked to return as a fixed shape — a list of the objects
 present in a Frame rather than free-form prose. Same concept as an Observation, asked

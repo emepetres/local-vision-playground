@@ -110,12 +110,13 @@ The first run downloads the model, and reports that time separately — it is no
 the latencies. Nothing is warmed up afterwards either: the first Observation is the
 honest one.
 
-**Providers** is what registering this machine's Execution Providers cost. It happens
-at start-up, before a model is resolved, and is timed on its own because it is machine
-setup rather than part of the Observation — but it is not optional: it is what makes a
-GPU variant loadable at all, and skipping it would leave a pinned CUDA variant with
-nothing to load onto. Registration is per-process, so every run pays it; only the first
-run on a machine also downloads the providers.
+**Providers** is what registering this machine's Execution Providers cost. It is timed on
+its own because it is machine setup rather than part of the Observation — but it is not
+optional: it is what makes a GPU variant loadable at all, and skipping it would leave a
+pinned CUDA variant with nothing to load onto. Registration is per-process, so every run
+pays it; only the first run on a machine also downloads the providers. That download is
+why it happens *after* the model has been resolved and checked: nothing is fetched before
+the model has said it can see a Frame.
 
 By default the model is resolved by **alias**, letting Foundry Local pick the hardware.
 `--variant` pins an exact **variant id**, version suffix included, and with it the
@@ -138,6 +139,13 @@ camera at 1280×720 and put through the same rescale-and-encode every Frame goes
 It is 640×360, and that is not a mistake: a 16:9 camera fits the 640×480 working
 resolution at 640×360, because a Frame is **rescaled on its long edge, never cropped**.
 Which is why the report names both numbers.
+
+It does mean the fixture is not interchangeable with a Frame from a 4:3 camera: at 640×360
+it carries a quarter fewer pixels, and image tokens scale with area. The working
+resolution bounds the workload; it does not by itself fix it. A Benchmark Run therefore
+has to hold the Frame size constant as well as the working resolution — which is what
+[`CONTEXT.md`](./CONTEXT.md) already requires of a Hardware Profile comparison — and the
+fixture is the right Frame to hold it at.
 
 > **Note on the SDK.** Microsoft Learn documents the **1.x** Foundry Local API — the
 > `get_chat_client()` shape every quickstart shows. This code targets **2.x** and calls
@@ -170,7 +178,7 @@ mirrored here.
 
 ### Committed
 
-- [ ] **1. One Observation, on demand.** Capture a Frame from the camera (or take an
+- [x] **1. One Observation, on demand.** Capture a Frame from the camera (or take an
       image file), send it to the local model, print the Observation and the latency it
       took. Runs and exits.
 - [ ] **2. Benchmark Runs across Execution Providers.** The same fixed workload against

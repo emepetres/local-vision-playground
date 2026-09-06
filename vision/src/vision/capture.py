@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from itertools import count
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING, Protocol
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -87,7 +88,11 @@ OpenFeed = Callable[[int], "Feed | None"]
 
 
 class ImageFileCamera:
-    """A Camera whose Feed is one image on disk."""
+    """A Camera that takes its Frame from an image file rather than from a Feed.
+
+    A Feed is a camera's continuous stream (see CONTEXT.md); a file on disk is not one of
+    those, it is simply another place a Frame comes from.
+    """
 
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -159,9 +164,23 @@ def open_camera_feed(index: int) -> Feed | None:
     and every ``read`` comes back empty. That second half is not decided here: a Feed that
     reads nothing is what ``LiveCamera`` turns into the message.
     """
+    device = _cv2().VideoCapture(index)
+    if not device.isOpened():
+        device.release()
+        return None
+    return OpenCVFeed(device)
+
+
+def _cv2() -> ModuleType:
+    """Import OpenCV with the two settings that have to be in place around it.
+
+    Single-sited because both of them are easy to lose: the FFMPEG priority is read when
+    ``cv2`` is first imported, so it has to be set before the import — which is why the
+    import is deferred rather than at module scope — and the log level has to be lowered
+    however the module is reached. Both are idempotent, so every caller goes through here.
+    """
     # FFMPEG is not a camera backend, but OpenCV probes it anyway and prints a warning
-    # saying so. Taking it out of the running is what stops the warning; the priority is
-    # read when cv2 is first imported, which is why the import below is deferred.
+    # saying so. Taking it out of the running is what stops the warning.
     os.environ.setdefault("OPENCV_VIDEOIO_PRIORITY_FFMPEG", "0")
 
     import cv2
@@ -169,12 +188,7 @@ def open_camera_feed(index: int) -> Feed | None:
     # OpenCV narrates its backend probing on stderr — a wall of native warnings in front
     # of the one line the Operator is meant to read. A failure here has its own message.
     cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_SILENT)
-
-    device = cv2.VideoCapture(index)
-    if not device.isOpened():
-        device.release()
-        return None
-    return OpenCVFeed(device)
+    return cv2
 
 
 class OpenCVFeed:
@@ -184,11 +198,10 @@ class OpenCVFeed:
         self._device = device
 
     def read(self) -> Image.Image | None:
-        import cv2
-
         ok, array = self._device.read()
         if not ok or array is None:
             return None
+        cv2 = _cv2()
         return Image.fromarray(cv2.cvtColor(array, cv2.COLOR_BGR2RGB))
 
     def close(self) -> None:

@@ -212,11 +212,17 @@ talks to, but `vision/` does not start it: serving it is Foundry Local's job, an
 on the Python side speaks HTTP. See
 [ADR-0004](./adr/0004-target-foundry-local-2x-in-process.md).
 
-Shape: `Configuration(app_name=…)` → `FoundryLocalManager.initialize(config)` →
+Shape: `Configuration(app_name=…)` → `FoundryLocalManager(config)` →
 `manager.catalog.get_model(alias)` (falling back to `get_model_variant(id)` for a pinned
 variant) → `model.download()` → `model.load()` → call `openai.responses.create` against
 `manager.urls[0].rstrip("/") + "/v1"` with `model=model.id`. The sample tears down in the
 order `openai.close()` → `manager.stop_web_service()` → `model.unload()`.
+
+The samples call `FoundryLocalManager.initialize(config)`, which reads as the way in but is
+a `@staticmethod` doing nothing but `FoundryLocalManager(config)` and dropping the instance
+(verified against 2.0.1's `foundry_local_manager.py`). The manager is a singleton whose
+constructor raises once one exists, so `initialize()` followed by a construction is an
+error, not a sequence — a caller that needs the manager constructs it and keeps it.
 
 `get_model_variant` is **not** in the SDK reference's Core API table — it is evidenced only
 by the sample source. Constraint 3's only hardware lever rests on an under-documented call;

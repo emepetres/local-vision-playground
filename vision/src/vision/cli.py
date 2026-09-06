@@ -5,10 +5,10 @@ arrive as ports rather than being constructed here, which is the injection point
 benchmarking feature will need — and what lets the tests drive the whole command with
 fakes.
 
-The latency is not one number. Registering the Execution Providers is machine setup paid
-before anything else; loading the model, preparing the Frame and running inference are
-three further costs of wildly different magnitude, and only the last is the latency of the
-Observation. Nothing is warmed up: the first run is the honest run.
+The latency is not one number. Registering the Execution Providers is machine setup rather
+than part of any Observation; loading the model, preparing the Frame and running inference
+are three further costs of wildly different magnitude, and only the last is the latency of
+the Observation. Nothing is warmed up: the first run is the honest run.
 """
 
 from __future__ import annotations
@@ -74,8 +74,9 @@ def main(
 
     owned: list[Callable[[], None]] = []
     try:
+        default_camera, keep_in = _source(args, open_feed, frames_dir)
         if camera is None:
-            camera = _camera_from(args, open_feed)
+            camera = default_camera
         if foundry is None:
             foundry, close = _foundry()
             owned.append(close)
@@ -90,8 +91,7 @@ def main(
             clock=clock,
             model_name=args.model,
             out=out,
-            # A Frame from an image file is already on disk; only the camera's is not.
-            keep_in=frames_dir if args.image is None else None,
+            keep_in=keep_in,
         )
     except Exception as error:
         if args.debug:
@@ -143,10 +143,18 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _camera_from(args: argparse.Namespace, open_feed: OpenFeed) -> Camera:
+def _source(
+    args: argparse.Namespace, open_feed: OpenFeed, frames_dir: Path
+) -> tuple[Camera, Path | None]:
+    """Where the Frame comes from, and where — if anywhere — it has to be kept.
+
+    One decision rather than two: a Frame from an image file is already on disk, so it is
+    the same fact that says which Camera to build and that only the camera's Frame needs
+    writing out.
+    """
     if args.image is not None:
-        return ImageFileCamera(args.image)
-    return LiveCamera(args.camera, open_feed)
+        return ImageFileCamera(args.image), None
+    return LiveCamera(args.camera, open_feed), frames_dir
 
 
 def _foundry() -> tuple[FoundryLocal, Callable[[], None]]:
@@ -165,15 +173,18 @@ def _observe(
     out: TextIO,
     keep_in: Path | None,
 ) -> tuple[Frame, Observation, Path | None]:
-    providers = _register_execution_providers(foundry, clock=clock, out=out)
-
+    # Refusing a model that cannot see a Frame comes first, ahead of every download this
+    # command can start — the Execution Providers are fetched on a first run too, and
+    # waiting for those in order to be told the model was never a vision-language model
+    # is the same failure the refusal exists to prevent.
     model = foundry.resolve(model_name)
     identity = model.identity
     require_vision_task(identity)
 
-    _download(model, identity, clock=clock, out=out)
+    providers = _register_execution_providers(foundry, clock=clock, out=out)
+    _download(model, clock=clock, out=out)
 
-    _, load = _timed(clock, lambda: _load(model, identity))
+    _, load = _timed(clock, lambda: _load(model))
     frame, capture = _timed(clock, camera.capture)
     # Kept before inference runs: a Frame worth explaining is worth keeping even when the
     # Observation that would have prompted the question never arrives.
@@ -198,7 +209,7 @@ def _register_execution_providers(
     """Register the Execution Providers, timing and announcing what the port reports.
 
     Timed apart from the three latencies because it is not one of them: it is paid once
-    per process, before a model is resolved. Why it is not optional is on the port.
+    per process, before a model is loaded. Why it is not optional is on the port.
     """
     announced = False
 
@@ -213,7 +224,7 @@ def _register_execution_providers(
     return seconds
 
 
-def _load(model: VisionModel, identity: ModelIdentity) -> None:
+def _load(model: VisionModel) -> None:
     """Load the model, turning a native load failure into something to act on.
 
     A variant that will not load is not a rare accident: Foundry Local picks the hardware
@@ -227,6 +238,7 @@ def _load(model: VisionModel, identity: ModelIdentity) -> None:
     except VisionError:
         raise
     except Exception as error:
+        identity = model.identity
         on = f" on {identity.runtime}" if identity.runtime is not None else ""
         raise VisionError(
             f"{identity.variant} would not load{on} — pin a different variant with"
@@ -235,13 +247,7 @@ def _load(model: VisionModel, identity: ModelIdentity) -> None:
         ) from error
 
 
-def _download(
-    model: VisionModel,
-    identity: ModelIdentity,
-    *,
-    clock: Clock,
-    out: TextIO,
-) -> None:
+def _download(model: VisionModel, *, clock: Clock, out: TextIO) -> None:
     """Fetch the weights on first run. Its cost is reported outside the three latencies."""
     if model.is_cached:
         return
@@ -252,7 +258,7 @@ def _download(
     # which is what keeps the rendered output assertable in the tests.
     with tqdm(
         total=100,
-        desc=f"Downloading {identity.variant}",
+        desc=f"Downloading {model.identity.variant}",
         unit="%",
         bar_format="{desc} |{bar}| {n:.0f}% [{elapsed}<{remaining}]",
         file=out,

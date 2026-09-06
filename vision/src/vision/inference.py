@@ -128,7 +128,10 @@ class FoundryLocal(Protocol):
         """Make this machine's Execution Providers available, reporting what is worth saying.
 
         Start-up work, not part of any Observation — but it is what makes a GPU variant
-        loadable at all, so it happens before a model is resolved and is timed on its own.
+        loadable at all, so it happens before a model is loaded and is timed on its own.
+        It is not the first thing the command does: on a first run this downloads the
+        providers, and nothing may be downloaded before the model is known to be one that
+        can see a Frame.
         """
         ...
 
@@ -176,7 +179,8 @@ class InProcessFoundryLocal:
         This is the only thing that makes a GPU variant available at all — nothing
         selects an Execution Provider explicitly (see docs/stack.md, Constraint 3).
         Registration is per-process, so it happens on every run; only the first run pays
-        to download an EP. An Operator is told it is happening and told when one fails —
+        to download an EP, which is why it waits until the model has been accepted. An
+        Operator is told it is happening and told when one fails —
         which one was ultimately chosen shows up on the Model line instead.
         """
         pending = [ep.name for ep in self._manager.discover_eps() if not ep.is_registered]

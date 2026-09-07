@@ -233,6 +233,7 @@ def _observe_parser() -> argparse.ArgumentParser:
         help="index of the camera to open the Feed on (default: 0)",
     )
     _add_pinned_variant(parser)
+    _add_keep_frames(parser)
     _add_debug(parser)
     return parser
 
@@ -326,6 +327,26 @@ def _add_pinned_variant(parser: argparse.ArgumentParser) -> None:
             " (qwen3-vl-2b-instruct-generic-cpu), or a variant id, which pins the version"
             f" too (…-generic-cpu:2). Default: resolve the alias {DEFAULT_ALIAS},"
             " letting Foundry Local pick the hardware"
+        ),
+    )
+
+
+def _add_keep_frames(parser: argparse.ArgumentParser) -> None:
+    """Opting in to keeping the Frame, which is not the same choice as --debug.
+
+    Kept apart deliberately: an Operator who wants a surprising Observation to stay
+    explainable afterwards should not have to accept a stack trace in front of an
+    audience to get it — and the Observation worth explaining is precisely the one that
+    did not raise.
+    """
+    parser.add_argument(
+        "--keep-frames",
+        action="store_true",
+        help=(
+            "write the observed camera Frame to disk and report the path, so that a"
+            " surprising Observation can still be explained after the process is gone"
+            " (default: nothing is written; a Frame taken from --image is already on disk"
+            " and is never written out)"
         ),
     )
 
@@ -435,12 +456,13 @@ def _source(
     """Where the Frame comes from, and where — if anywhere — it has to be kept.
 
     One decision rather than two: a Frame from an image file is already on disk, so it is
-    the same fact that says which Camera to build and that only the camera's Frame needs
-    writing out.
+    the same fact that says which Camera to build and that only the camera's Frame could
+    need writing out. Whether it is then kept is the Operator's own choice, made with
+    ``--keep-frames`` and defaulting to keeping nothing.
     """
     if args.image is not None:
         return ImageFileCamera(args.image), None
-    return LiveCamera(args.camera, open_feed), frames_dir
+    return LiveCamera(args.camera, open_feed), (frames_dir if args.keep_frames else None)
 
 
 def _observe(

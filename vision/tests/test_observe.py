@@ -462,8 +462,8 @@ def test_counts_the_settling_discards_inside_the_reported_capture_time(tmp_path:
     ) in result.out
 
 
-def test_keeps_the_camera_frame_and_says_where(tmp_path: Path) -> None:
-    result = run_live([], tmp_path)
+def test_keeps_the_camera_frame_and_says_where_when_asked_to(tmp_path: Path) -> None:
+    result = run_live(["--keep-frames"], tmp_path)
 
     (saved,) = sorted(tmp_path.glob("*.jpg"))
     assert f"Saved      {saved}\n" in result.out
@@ -471,10 +471,35 @@ def test_keeps_the_camera_frame_and_says_where(tmp_path: Path) -> None:
     assert saved.read_bytes() == observed.data
 
 
-def test_does_not_keep_a_frame_that_came_from_an_image_file(tmp_path: Path) -> None:
+@pytest.mark.parametrize("flags", [[], ["--debug"]])
+def test_keeps_no_camera_frame_and_prints_no_saved_line_unless_asked_to(
+    tmp_path: Path, flags: list[str]
+) -> None:
+    """The default leaves no images of the Operator's room behind, and --debug — which is
+    a different choice — does not quietly opt in to keeping them.
+    """
+    result = run_live(flags, tmp_path)
+
+    assert result.code == 0
+    assert list(tmp_path.glob("*.jpg")) == []
+    assert "Saved" not in result.out
+
+
+def test_keeping_frames_does_not_restore_the_traceback(tmp_path: Path) -> None:
+    """The other direction of the same separation, on the failure --debug is about."""
+    result = run_live(["--keep-frames"], tmp_path, feeds={})
+
+    assert result.code == 1
+    assert "there is no camera at index 0" in result.err
+
+
+@pytest.mark.parametrize("flags", [[], ["--keep-frames"]])
+def test_does_not_keep_a_frame_that_came_from_an_image_file(
+    tmp_path: Path, flags: list[str]
+) -> None:
     out, err = io.StringIO(), io.StringIO()
     main(
-        ["--image", "a.jpg"],
+        [*flags, "--image", "a.jpg"],
         camera=FakeCamera([make_frame()]),
         foundry=FakeFoundry.resolving_everything_to(
             FakeVisionModel(make_identity(), [make_observation()])
@@ -529,8 +554,8 @@ def test_releases_the_camera_even_when_another_application_is_holding_it(tmp_pat
 
 
 def test_keeps_every_camera_frame_in_its_own_file(tmp_path: Path) -> None:
-    run_live([], tmp_path)
-    run_live([], tmp_path)
+    run_live(["--keep-frames"], tmp_path)
+    run_live(["--keep-frames"], tmp_path)
 
     first, second = sorted(tmp_path.glob("*.jpg"))
     assert first.read_bytes() == second.read_bytes()
@@ -542,8 +567,8 @@ def test_keeps_both_frames_when_the_clock_hands_out_the_same_stamp(
     """The Windows clock is coarse enough that this is the ordinary case, not a corner."""
     monkeypatch.setattr(vision.capture, "datetime", FrozenClock)
 
-    run_live([], tmp_path)
-    run_live([], tmp_path)
+    run_live(["--keep-frames"], tmp_path)
+    run_live(["--keep-frames"], tmp_path)
 
     names = {path.name for path in tmp_path.glob("*.jpg")}
     assert names == {"frame-fixed.jpg", "frame-fixed-1.jpg"}

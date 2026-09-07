@@ -64,7 +64,8 @@ rather than reporting a missing file when it is not.
 """
 
 FRAMES_DIRECTORY = Path(__file__).resolve().parents[2] / "frames"
-"""Where camera Frames are kept — ``vision/frames/``, git-ignored.
+"""Where camera Frames are kept when an Operator asks for them — ``vision/frames/``,
+git-ignored. Nothing is written here unless they do.
 
 Resolved from this module rather than the working directory so that ``observe`` writes to
 the same place wherever it is run from. It relies on the project being installed in
@@ -524,8 +525,10 @@ class OpenCVFeed:
 def save_frame(frame: Frame, directory: Path) -> Path:
     """Write a Frame where it can be looked at after the process is gone.
 
-    A surprising Observation is only explainable if the Frame behind it outlives the run,
-    so every Frame the camera takes is kept rather than the last one overwritten.
+    Called only for a Frame an Operator asked to keep — whether any Frame is kept at all
+    is the caller's decision, not this function's. Every Frame it is handed gets its own
+    file rather than overwriting the last: a run that kept two Frames to explain an
+    Observation with has two to look at.
     """
     directory.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")

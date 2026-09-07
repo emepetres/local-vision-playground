@@ -77,7 +77,6 @@ Registering Execution Providers — the first run also downloads them
 
 Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
 Frame      640x480 jpeg, fit to 640x480, from camera 0
-Saved      D:\dev\local-vision-playground\vision\frames\frame-20260906-110354-829440.jpg
 Providers  4.138 s
 Load       3.251 s
 Capture    5.125 s (including 5 Frames discarded while the Feed settled)
@@ -98,9 +97,19 @@ happens inside the capture and is counted in the Capture number, which is why th
 is the wait the Operator actually sat through, and why it dwarfs the same number for an
 image file.
 
-Every Frame the camera takes is written to `vision/frames/` (git-ignored) and its path
-printed. A surprising Observation can then be explained afterwards, instead of vanishing
-with the process.
+`--keep-frames` writes the observed camera Frame to `vision/frames/` (git-ignored) and
+prints its path, so that a surprising Observation can be explained afterwards instead of
+vanishing with the process:
+
+```
+Saved      D:\dev\local-vision-playground\vision\frames\frame-20260906-110354-829440.jpg
+```
+
+Without it nothing is written — a demo run should not leave hundreds of images of the
+room behind. It is a separate choice from `--debug`: neither flag implies the other,
+because wanting the evidence should not also mean accepting a stack trace in front of an
+audience. A Frame taken from `--image` is already on disk and is never written out, with
+or without the flag.
 
 The two failures a live demo actually hits each get one line and a non-zero exit: no
 camera at that index — which points at `--image` — and a camera another application is

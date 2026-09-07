@@ -127,13 +127,17 @@ def make_gpu(
     )
 
 
+CPU_IDENTITY = make_identity(
+    variant="qwen3-vl-2b-instruct-generic-cpu:2", runtime="CPU / CPUExecutionProvider"
+)
+"""The other half of the default pair — the same alias built for the CPU."""
+
+
 def make_cpu(
     tokens: tuple[int, ...] = COMPLETION_TOKENS, *, events: list[str] | None = None
 ) -> FakeVisionModel:
     return FakeVisionModel(
-        make_identity(
-            variant="qwen3-vl-2b-instruct-generic-cpu:2", runtime="CPU / CPUExecutionProvider"
-        ),
+        CPU_IDENTITY,
         [make_observation(completion_tokens=count) for count in tokens],
         events=events,
     )
@@ -514,6 +518,147 @@ def test_takes_the_variant_off_the_hardware_even_when_a_benchmark_run_fails() ->
     assert result.cpu.observed == []
 
 
+INVALID_GRAPH = "the ONNX graph is invalid"
+"""What a published Variant that cannot be loaded says on the way out.
+
+Not hypothetical: `qwen3.5-0.8b-cuda-gpu:3` fails this way and no caller can work around it
+(microsoft/foundry-local#1075).
+"""
+
+WOULD_NOT_LOAD = (
+    "qwen3-vl-2b-instruct-cuda-gpu:2 would not load on GPU / NvTensorRtRtxExecutionProvider"
+    " — pin a different variant with --variant (run `foundry model list`; a -generic-cpu"
+    f" variant is the safe one). Foundry Local said: {INVALID_GRAPH}"
+)
+
+
+def make_unloadable() -> FakeVisionModel:
+    """The GPU Variant, resolved from the catalogue, that will not go onto this machine."""
+    return FakeVisionModel(make_identity(), [], load_error=RuntimeError(INVALID_GRAPH))
+
+
+def run_past_an_unloadable_gpu() -> Run:
+    """The default sitting with the GPU Variant broken: one Variant lost, one measured.
+
+    The GPU's clock readings collapse to the single one its failed load consumes, which is
+    what leaves the CPU Variant's numbers identical to the ones every other test asserts.
+    """
+    return run(gpu=make_unloadable(), readings=(*PROVIDER_READINGS, 10.0, *CPU_READINGS))
+
+
+def test_renders_a_variant_that_would_not_load_as_a_row_carrying_its_reason() -> None:
+    """A broken published Variant is an answer, not a crash — and the other Variant's
+    numbers are worth more than the traceback."""
+    result = run_past_an_unloadable_gpu()
+
+    assert result.out == (
+        f"{HEADER}\n"
+        "Model        qwen3-vl-2b-instruct-cuda-gpu:2"
+        " (alias qwen3-vl-2b-instruct, GPU / NvTensorRtRtxExecutionProvider)\n"
+        "Attempted    1st of 2\n"
+        f"Not measured {WOULD_NOT_LOAD}\n"
+        f"\n{CPU_BLOCK}"
+    )
+
+
+def test_carries_on_to_the_next_variant_when_one_will_not_load() -> None:
+    """The Variant that failed is the only one the failure costs: the next one is still
+    brought up, measured its full five times, and taken back off again."""
+    result = run_past_an_unloadable_gpu()
+
+    assert len(result.cpu.observed) == 5
+    assert result.events == ["resolve", "resolve", "register", "load", *["observe"] * 5, "unload"]
+
+
+def test_a_benchmark_that_measured_at_least_one_variant_exits_zero() -> None:
+    """A partial Benchmark is still an answer: reporting it to the shell as a failure would
+    have a script throw away the numbers that did survive."""
+    result = run_past_an_unloadable_gpu()
+
+    assert result.code == 0
+    assert result.err == ""
+
+
+def test_renders_a_variant_whose_weights_never_arrived_as_a_row_too() -> None:
+    """A fetch that fails is a load that fails seen a moment earlier — the Variant did not
+    get onto the hardware either way, and the lever the Operator has is the same one."""
+    result = run(
+        gpu=FakeVisionModel(
+            make_identity(), [], is_cached=False, download_error=OSError("connection reset")
+        ),
+        readings=(*PROVIDER_READINGS, 10.0, *CPU_READINGS),
+    )
+
+    assert result.code == 0
+    assert len(result.cpu.observed) == 5
+    assert (
+        "Not measured qwen3-vl-2b-instruct-cuda-gpu:2 could not be downloaded — check the"
+        " network, and the disk space the Foundry Local cache has left; --variant will name"
+        " a Variant that is already cached. Foundry Local said: connection reset\n"
+    ) in result.out
+
+
+def test_a_benchmark_in_which_nothing_could_be_measured_exits_non_zero() -> None:
+    """Nothing measured is a failure, and the shell is told so — but the reasons are still
+    printed, because they are the whole answer."""
+    result = run(
+        gpu=make_unloadable(),
+        cpu=FakeVisionModel(CPU_IDENTITY, [], load_error=RuntimeError(INVALID_GRAPH)),
+        readings=(*PROVIDER_READINGS, 10.0, 100.0),
+    )
+
+    assert result.code == 1
+    assert f"Not measured {WOULD_NOT_LOAD}\n" in result.out
+    assert "Not measured qwen3-vl-2b-instruct-generic-cpu:2 would not load" in result.out
+    assert result.err == (
+        "error: no Variant could be measured — every one of them is reported above with"
+        " the reason it was not\n"
+    )
+
+
+def test_warns_when_two_variants_generated_materially_different_amounts_of_text() -> None:
+    """Two Variants that did different amounts of work are not a hardware comparison, and
+    a table that only shows the latencies invites one to be quoted as though they were."""
+    result = run(cpu=make_cpu((60, 48, 44, 52, 56)))
+
+    assert result.code == 0
+    assert result.out.endswith(
+        "(qwen3-vl-2b-instruct-generic-cpu:2 generated 52 tokens against"
+        " qwen3-vl-2b-instruct-cuda-gpu:2's 26 — 100% more, so these Variants did not do the"
+        " same amount of work and their latencies are not a hardware comparison;"
+        " Tokens/second is the figure that survives it)\n"
+    )
+
+
+def test_says_nothing_when_the_variants_generated_much_the_same_amount_of_text() -> None:
+    """Ten percent is the line: a warning on every Benchmark is a warning nobody reads."""
+    result = run(cpu=make_cpu((32, 26, 24, 28, 30)))
+
+    assert result.code == 0
+    assert "did not do the same amount of work" not in result.out
+
+
+def test_carries_the_divergence_on_the_benchmark_rather_than_only_printing_it() -> None:
+    """So it travels into the persisted record, instead of living in the terminal alone."""
+    from vision.benchmark import TokenDivergence
+
+    benchmark = _benchmark_of((30, 24, 22, 26, 28), (60, 48, 44, 52, 56))
+
+    assert benchmark.divergence == TokenDivergence(
+        fewest=make_identity(), fewest_tokens=26.0, most=CPU_IDENTITY, most_tokens=52.0
+    )
+    assert _benchmark_of(COMPLETION_TOKENS, COMPLETION_TOKENS).divergence is None
+
+
+def test_a_lone_variant_has_nothing_to_diverge_from() -> None:
+    """A Token Divergence is a property of a comparison, so fewer than two Measured
+    Variants is not a small divergence but no comparison at all."""
+    result = run(["--variant", GPU_VARIANT], readings=ONE_VARIANT_READINGS)
+
+    assert result.code == 0
+    assert "did not do the same amount of work" not in result.out
+
+
 def test_says_how_many_benchmark_runs_the_output_limit_cut_short_under_the_variant() -> None:
     """Two Variants do not truncate the same number of times, so the note sits with the
     numbers it accuses rather than at the bottom of the report."""
@@ -658,28 +803,28 @@ def test_renders_a_benchmark_that_no_clock_and_no_model_ever_touched() -> None:
     """The reporting is exercised on its own, which is the point of it being its own module."""
     from vision.reporting import render_benchmark
 
-    benchmark = Benchmark(
+    assert render_benchmark(_benchmark_of(COMPLETION_TOKENS, COMPLETION_TOKENS)) == REPORT
+
+
+def _benchmark_of(gpu_tokens: tuple[int, ...], cpu_tokens: tuple[int, ...]) -> Benchmark:
+    """The two-Variant Benchmark the report above is rendered from, with no clock in sight."""
+    return Benchmark(
         workload=Workload(prompt=PROMPT, frame=make_frame(width=640, height=360)),
         providers=0.5,
+        repetitions=5,
         variants=(
-            _measured(1, make_identity(), 1.25, (2.5, 2.0, 1.8, 2.2, 2.0)),
-            _measured(
-                2,
-                make_identity(
-                    variant="qwen3-vl-2b-instruct-generic-cpu:2",
-                    runtime="CPU / CPUExecutionProvider",
-                ),
-                0.8,
-                (20.0, 18.0, 17.5, 18.5, 18.0),
-            ),
+            _measured(1, make_identity(), 1.25, (2.5, 2.0, 1.8, 2.2, 2.0), gpu_tokens),
+            _measured(2, CPU_IDENTITY, 0.8, (20.0, 18.0, 17.5, 18.5, 18.0), cpu_tokens),
         ),
     )
 
-    assert render_benchmark(benchmark) == REPORT
-
 
 def _measured(
-    order: int, identity: ModelIdentity, load: float, latencies: tuple[float, ...]
+    order: int,
+    identity: ModelIdentity,
+    load: float,
+    latencies: tuple[float, ...],
+    tokens: tuple[int, ...] = COMPLETION_TOKENS,
 ) -> MeasuredVariant:
     return MeasuredVariant(
         model=identity,
@@ -688,9 +833,9 @@ def _measured(
         runs=tuple(
             BenchmarkRun(
                 inference=inference,
-                completion_tokens=tokens,
+                completion_tokens=count,
                 finish_reason=FinishReason.COMPLETE,
             )
-            for inference, tokens in zip(latencies, COMPLETION_TOKENS, strict=True)
+            for inference, count in zip(latencies, tokens, strict=True)
         ),
     )

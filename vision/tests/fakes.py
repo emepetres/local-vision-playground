@@ -82,7 +82,9 @@ class FakeVisionModel:
     have them differ — in text, in finish reason or in completion tokens — which is what
     a repeated measurement needs. ``downloads`` counts the downloads that were started,
     which is what lets a test pin a refusal ahead of one rather than merely ahead of the
-    Observation. ``load_error`` is the Variant that will not load on this machine.
+    Observation. ``load_error`` is the Variant that will not load on this machine, and
+    ``download_error`` the one whose weights never arrive — the two ways a Variant fails to
+    get onto the hardware at all.
 
     ``events`` is the journal the model writes what it was asked to do into. Handing the
     same list to a FakeFoundry puts registering the Execution Providers, loading and
@@ -97,6 +99,7 @@ class FakeVisionModel:
         *,
         is_cached: bool = True,
         download_progress: Sequence[float] = (),
+        download_error: Exception | None = None,
         load_error: Exception | None = None,
         events: list[str] | None = None,
     ) -> None:
@@ -105,6 +108,7 @@ class FakeVisionModel:
         self.is_cached = is_cached
         self._observations = tuple(observations)
         self._download_progress = tuple(download_progress)
+        self._download_error = download_error
         self._load_error = load_error
         self.loaded = False
         self.downloads = 0
@@ -114,6 +118,10 @@ class FakeVisionModel:
     def download(self, on_progress: Callable[[float], None]) -> None:
         self.events.append("download")
         self.downloads += 1
+        # Counted before it fails: a download that was started and then broke off is still
+        # a download this Variant was allowed to begin, which is what `downloads` is asked.
+        if self._download_error is not None:
+            raise self._download_error
         for percent in self._download_progress:
             on_progress(percent)
 

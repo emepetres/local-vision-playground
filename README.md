@@ -239,6 +239,52 @@ over the repetitions after the first — because a bar quoting a different media
 worse than no bar. It takes itself off when the output is not a terminal, exactly as the
 download bar does, so output captured in a pipe or in CI is just the report above.
 
+#### When a Variant will not load
+
+A **Variant that will not go onto the hardware is a row, not a crash** — the Benchmark
+carries on to the next one, so the other Variant's numbers still survive:
+
+```
+Model        qwen3.5-0.8b-cuda-gpu:3 (alias qwen3.5-0.8b, GPU / CUDAExecutionProvider)
+Attempted    1st of 2
+Not measured qwen3.5-0.8b-cuda-gpu:3 would not load on GPU / CUDAExecutionProvider — pin a different variant with --variant (run `foundry model list`; a -generic-cpu variant is the safe one). Foundry Local said: …
+```
+
+That is not hypothetical: `qwen3.5-0.8b-cuda-gpu:3` is published and fails to load with an
+invalid-graph error no caller can work around
+([foundry-local#1075](https://github.com/microsoft/foundry-local/issues/1075)). It says
+`Attempted` rather than `Measured` because the turn is still worth recording while the row
+is not a measurement. **The exit status follows the Benchmark, not the Variants**: zero when
+at least one Variant was measured, non-zero only when none was — a partial result reported
+to the shell as a failure is a script that bins the numbers that did survive. See
+[ADR-0007](./docs/adr/0007-a-variant-that-will-not-load-is-a-row.md).
+
+Weights that never arrive are a row on the same terms — a fetch that fails is a load that
+fails seen a moment earlier, and `--variant` is the lever either way. But only *getting the
+Variant onto the hardware* fails this softly: a Benchmark Run that fails once the model is
+loaded still ends the Benchmark, because that is a fault in this code rather than a verdict
+on the catalogue, and it gets a traceback.
+
+A model whose task is not `vision-language-chat` is **refused before anything is
+downloaded** — a Benchmark aimed at a text-only sibling fails in seconds rather than after
+fetching gigabytes.
+
+#### When the comparison is not a comparison
+
+Two Variants that generated materially different amounts of text were not doing the same
+amount of work, and a table of seconds looks like a hardware result whether or not it is
+one. More than **ten percent apart on completion tokens** and the Benchmark says so:
+
+```
+(qwen3-vl-2b-instruct-generic-cpu:2 generated 104 tokens against qwen3-vl-2b-instruct-cuda-gpu:2's 88 — 18% more, so these Variants did not do the same amount of work and their latencies are not a hardware comparison; Tokens/second is the figure that survives it)
+```
+
+Ten percent is deliberately loose: a decoder is not deterministic across Execution
+Providers, so a few tokens either way is the normal state of affairs — the 96-against-104 in
+the report above is inside it — and a warning on every Benchmark is a warning nobody reads.
+The divergence is carried on the Benchmark rather than only printed, so it travels into the
+persisted record instead of living in a terminal that has since scrolled.
+
 ### Development
 
 ```bash

@@ -93,6 +93,23 @@ measured second was measured on a machine that had just had another model taken 
 and reversing the order is the only way to check whether that mattered.
 _Avoid_: result, entry, row, per-variant benchmark
 
+**Unmeasured Variant**:
+A [[Variant]] that never got onto the hardware within a Benchmark, and the reason it did
+not. It is part of the Benchmark, not an error that ended one: a published Variant that
+will not load on this machine is exactly the sort of thing an Operator runs a Benchmark to
+find out, and the other Variants' numbers are worth more than the traceback. A Benchmark
+that measured nothing at all is still a failure — a Benchmark of only Unmeasured Variants
+has no result to report.
+_Avoid_: failed variant, error, skipped variant, crash
+
+**Token Divergence**:
+Two [[Measured Variant]]s within one Benchmark that generated materially different amounts
+of text, and therefore did materially different amounts of work. It is a property of the
+Benchmark rather than of either Variant — it is the *comparison* it invalidates, not the
+numbers, which are each true of the Variant that produced them. A Benchmark carries its
+Token Divergence so that a reader cannot be handed the latencies without it.
+_Avoid_: warning, token mismatch, unfair comparison, drift
+
 **Benchmark**:
 The set of comparable Benchmark Runs carried out in one sitting — every model, every
 repetition — and the unit that is persisted and read back later. One Workload for the

@@ -57,7 +57,12 @@ def accept_variant(foundry: FoundryLocal, model_name: str) -> VisionModel:
 
 
 def bring_up(model: VisionModel, *, clock: Clock, out: TextIO) -> ReadyModel:
-    """Fetch the weights if they are not here, then load the model, timing the load."""
+    """Fetch the weights if they are not here, then load the model, timing the load.
+
+    Both steps report a failure as a ``VisionError``, which is what lets a caller measuring
+    several Variants treat "this one never got onto the hardware" as one outcome rather than
+    as two unrelated native faults.
+    """
     download(model, clock=clock, out=out)
     _, load = timed(clock, lambda: load_model(model))
     return ReadyModel(model=model, identity=model.identity, load=load)
@@ -131,9 +136,30 @@ def download(model: VisionModel, *, clock: Clock, out: TextIO) -> None:
         def on_progress(percent: float) -> None:
             bar.update(max(0.0, min(percent, 100.0) - bar.n))
 
-        _, seconds = timed(clock, lambda: model.download(on_progress))
+        _, seconds = timed(clock, lambda: _fetch(model, on_progress))
 
     print(f"Downloaded in {format_seconds(seconds)}\n", file=out, flush=True)
+
+
+def _fetch(model: VisionModel, on_progress: Callable[[float], None]) -> None:
+    """Fetch the weights, turning a native download failure into something to act on.
+
+    A fetch that fails is the same answer as a load that fails, arriving a moment earlier:
+    this Variant did not get onto the hardware. Reported in the same shape for that reason —
+    a Benchmark that treats the two alike is one that survives a Variant whose weights
+    cannot be fetched as readily as one whose graph will not load, and it has the same lever
+    to offer either way.
+    """
+    try:
+        model.download(on_progress)
+    except VisionError:
+        raise
+    except Exception as error:
+        raise VisionError(
+            f"{model.identity.variant} could not be downloaded — check the network, and the"
+            " disk space the Foundry Local cache has left; --variant will name a Variant"
+            f" that is already cached. Foundry Local said: {error}"
+        ) from error
 
 
 def timed[T](clock: Clock, work: Callable[[], T]) -> tuple[T, float]:

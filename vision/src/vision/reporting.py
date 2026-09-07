@@ -10,7 +10,13 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from vision.benchmark import Benchmark, MeasuredVariant, Spread
+from vision.benchmark import (
+    Benchmark,
+    MeasuredVariant,
+    Spread,
+    TokenDivergence,
+    UnmeasuredVariant,
+)
 from vision.capture import Frame
 from vision.formatting import (
     format_capture,
@@ -63,24 +69,53 @@ def render_benchmark(benchmark: Benchmark) -> str:
     widths, so that the GPU's median sits directly above the CPU's. The model load stays
     above its table rather than in it: it is paid once per Variant, so a per-run column
     would invite it to be read as one.
+
+    A Variant that never got onto the hardware gets a block too, in the turn it would have
+    taken, saying so. The divergence warning is last because it is the only thing here that
+    is about two blocks at once, and a note about a comparison has to sit below the things
+    being compared.
     """
     total = len(benchmark.variants)
     limit = benchmark.workload.max_output_tokens
     lines = _labelled(_benchmark_rows(benchmark), BENCHMARK_LABEL_WIDTH)
-    for variant, table in zip(benchmark.variants, _tables(benchmark.variants), strict=True):
-        lines += ["", *_variant_block(variant, table, total=total, limit=limit)]
+    tables = _tables(benchmark.measured)
+    for variant in benchmark.variants:
+        lines += ["", *_variant_block(variant, tables, total=total, limit=limit)]
+    if benchmark.divergence is not None:
+        lines += ["", _divergence_note(benchmark.divergence)]
     return "\n".join(lines) + "\n"
 
 
 def _variant_block(
-    variant: MeasuredVariant, table: list[str], *, total: int, limit: int
+    variant: MeasuredVariant | UnmeasuredVariant,
+    tables: dict[int, list[str]],
+    *,
+    total: int,
+    limit: int,
 ) -> list[str]:
     """One Variant: which one it was, when it was measured, and what it cost."""
+    if isinstance(variant, UnmeasuredVariant):
+        return _labelled(_unmeasured_rows(variant, total), BENCHMARK_LABEL_WIDTH)
     lines = _labelled(_variant_rows(variant, total), BENCHMARK_LABEL_WIDTH)
-    lines += ["", *table]
+    lines += ["", *tables[variant.order]]
     if variant.truncated:
         lines += ["", _truncation_note(variant, limit)]
     return lines
+
+
+def _unmeasured_rows(variant: UnmeasuredVariant, total: int) -> list[tuple[str, str]]:
+    """A Variant that produced no numbers, and the reason there are none to lay out.
+
+    It says *attempted* rather than *measured*: the turn is still worth recording, because
+    a Variant that would not load second was asked to load onto a machine that had just had
+    another model taken off it — but calling that turn a measurement would be a lie about
+    the row it labels.
+    """
+    rows = [("Model", format_model(variant.model))]
+    if total > 1:
+        rows.append(("Attempted", f"{_ordinal(variant.order)} of {total}"))
+    rows.append(("Not measured", variant.reason))
+    return rows
 
 
 def _variant_rows(variant: MeasuredVariant, total: int) -> list[tuple[str, str]]:
@@ -155,13 +190,20 @@ def _repetitions(benchmark: Benchmark) -> str:
     )
 
 
-def _tables(variants: Sequence[MeasuredVariant]) -> list[list[str]]:
-    """Every Variant's table, laid out to one set of column widths.
+def _tables(variants: Sequence[MeasuredVariant]) -> dict[int, list[str]]:
+    """Every measured Variant's table, laid out to one set of column widths, by its turn.
 
     Independently aligned tables cannot be read against each other, and reading them
     against each other is the only reason to measure two Variants in one sitting. Every
     Variant took the same number of Benchmark Runs, so they share their headers too.
+
+    Keyed by turn rather than returned in order, because the Variants that were measured
+    are not necessarily all of them: a caller walking the whole sitting has to be able to
+    ask for one Variant's table without counting past the ones that have none.
     """
+    if not variants:
+        return {}
+
     headers = _headers(variants[0])
     grids = [_cells(variant) for variant in variants]
     widths = [
@@ -169,7 +211,10 @@ def _tables(variants: Sequence[MeasuredVariant]) -> list[list[str]]:
         for column, header in enumerate(headers)
     ]
     label_width = max(len(label) for label, _ in grids[0])
-    return [_aligned(label_width, headers, widths, grid) for grid in grids]
+    return {
+        variant.order: _aligned(label_width, headers, widths, grid)
+        for variant, grid in zip(variants, grids, strict=True)
+    }
 
 
 def _headers(variant: MeasuredVariant) -> list[str]:
@@ -244,6 +289,23 @@ def _truncation_note(variant: MeasuredVariant, limit: int) -> str:
     return (
         f"({variant.truncated} of {len(variant.runs)} Benchmark Runs hit the"
         f" {limit}-token output limit, so the limit decided how much text they generated)"
+    )
+
+
+def _divergence_note(divergence: TokenDivergence) -> str:
+    """Say out loud that two Variants did different amounts of work, and what to read instead.
+
+    A table of seconds looks like a hardware comparison whether or not it is one, and this
+    is the only line in the report that can tell a reader it is not. It names both Variants
+    and both figures rather than merely warning, because the Tokens rows are already there
+    and a note that does not point at them leaves a reader hunting for what it meant.
+    """
+    return (
+        f"({divergence.most.variant} generated {format_tokens(divergence.most_tokens)} tokens"
+        f" against {divergence.fewest.variant}'s {format_tokens(divergence.fewest_tokens)}"
+        f" — {divergence.fraction:.0%} more, so these Variants did not do the same amount of"
+        " work and their latencies are not a hardware comparison; Tokens/second is the"
+        " figure that survives it)"
     )
 
 

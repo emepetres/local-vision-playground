@@ -23,7 +23,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO
 
-from vision.benchmark import REPETITIONS, measure, require_a_benchmark_run
+from vision.benchmark import REPETITIONS, Benchmark, measure, require_a_benchmark_run
 from vision.capture import (
     FRAMES_DIRECTORY,
     REFERENCE_FRAME,
@@ -141,7 +141,25 @@ def benchmark_main(
             close()
 
     print(render_benchmark(benchmark), file=out, end="")
-    return 0
+    return _benchmark_status(benchmark, err=err)
+
+
+def _benchmark_status(benchmark: Benchmark, *, err: TextIO) -> int:
+    """Zero for a Benchmark that measured something, whether or not it measured everything.
+
+    A partially successful Benchmark is a result: a Variant that will not load on this
+    machine is reported as the row it is, and reporting the whole sitting to the shell as a
+    failure would have a script throw away the numbers that did survive. Only a Benchmark in
+    which nothing at all could be measured is a failure — and the reasons are still printed,
+    because with no numbers to report they are the entire answer.
+    """
+    if benchmark.measured:
+        return 0
+    return _refuse(
+        "no Variant could be measured — every one of them is reported above with"
+        " the reason it was not",
+        err=err,
+    )
 
 
 def _observe_parser() -> argparse.ArgumentParser:
@@ -319,7 +337,17 @@ def _resolve_clock(clock: Clock | None) -> Clock:
 def _fail(error: Exception, *, debug: bool, err: TextIO) -> int:
     if debug:
         raise error
-    print(f"error: {_one_line(error)}", file=err)
+    return _refuse(_one_line(error), err=err)
+
+
+def _refuse(message: str, *, err: TextIO) -> int:
+    """Say why the command is failing, in the one shape every failure is written in.
+
+    Both callers go through here so that the ``error:`` prefix is written down once: a
+    command whose failures announce themselves two different ways is one an Operator cannot
+    grep, and the exit status belongs with the line that explains it.
+    """
+    print(f"error: {message}", file=err)
     return 1
 
 

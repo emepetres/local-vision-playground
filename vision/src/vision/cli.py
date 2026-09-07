@@ -1,8 +1,9 @@
-"""The two console entry points: ``observe`` and ``benchmark``.
+"""The three console entry points: ``observe``, ``benchmark`` and ``watch``.
 
 Each one composes capture, inference and reporting and owns nothing else. The camera,
-Foundry and the clock arrive as ports rather than being constructed here, which is what
-lets the tests drive either command end to end with fakes.
+Foundry, the clock and — for a Watch — the sleep arrive as ports rather than being
+constructed here, which is what lets the tests drive any of the three end to end with
+fakes.
 
 ``observe`` answers *what do you see?* — one Frame, one Observation, and what each stage
 cost. The latency is not one number: registering the Execution Providers is machine set-up
@@ -15,6 +16,13 @@ several times each, printed as a table apiece and then written down — a sittin
 minutes should outlive the terminal it scrolled past in. Where ``observe`` will take a Frame
 from the live camera, ``benchmark`` refuses one: a different Frame per repetition is not a
 Workload.
+
+``watch`` answers *what does it feel like?* — Observations over a held Feed at a Cadence,
+one after another, until the Operator stops it. It is a third entry point rather than a
+flag on ``observe`` because a command that sometimes returns and sometimes does not is two
+commands, and because the flags a Watch carries mean nothing for a single shot. What the
+two share is the model bring-up, not the command. Nothing a Watch produces is a Benchmark:
+every Observation runs against a different Frame, so there is nothing to compare.
 """
 
 from __future__ import annotations
@@ -22,6 +30,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TextIO
 
@@ -30,9 +39,13 @@ from vision.capture import (
     FRAMES_DIRECTORY,
     REFERENCE_FRAME,
     Camera,
+    HeldFeed,
     ImageFileCamera,
     LiveCamera,
+    MakeReader,
     OpenFeed,
+    camera_provenance,
+    drain_in_background,
     open_camera_feed,
     save_frame,
 )
@@ -47,13 +60,30 @@ from vision.inference import (
     Workload,
 )
 from vision.record import Now, Recorded, benchmarks_directory, hardware_profile, record
-from vision.reporting import render_benchmark, render_observation, render_recorded
+from vision.reporting import (
+    render_benchmark,
+    render_observation,
+    render_recorded,
+    render_watch_header,
+    render_watch_observation,
+    render_watch_summary,
+)
 from vision.startup import (
     Clock,
+    Sleep,
     accept_variant,
     bring_up,
     register_execution_providers,
     timed,
+)
+from vision.watch import (
+    CADENCE,
+    WatchedObservation,
+    WatchStart,
+    refuse_an_image_file,
+    require_a_cadence,
+    require_an_observation,
+    watch,
 )
 
 
@@ -164,6 +194,120 @@ def benchmark_main(
     if recorded is not None:
         print(render_recorded(record=recorded.json, document=recorded.markdown), file=out, end="")
     return _benchmark_status(benchmark, err=err)
+
+
+def watch_main(
+    argv: Sequence[str] | None = None,
+    *,
+    open_feed: OpenFeed | None = None,
+    make_reader: MakeReader | None = None,
+    foundry: FoundryLocal | None = None,
+    clock: Clock | None = None,
+    sleep: Sleep | None = None,
+    out: TextIO | None = None,
+    err: TextIO | None = None,
+    frames_dir: Path | None = None,
+) -> int:
+    """Run ``watch``. One Feed, one Variant, Observations at the Cadence until it is stopped.
+
+    The Feed and the model are brought up before the first Observation and taken back down
+    once the Watch is over, in that order, however it ended — an interruption included.
+
+    An interruption that arrives before the Watch has begun is a different thing: it still
+    releases the camera and unloads the model, but it ends the process rather than a Watch,
+    because there is no Watch yet to report. Everything else in the run-up ends the process
+    as it does in ``observe`` — a name that names no model, a task that is not
+    ``vision-language-chat``, a Variant that will not load. There is nothing to degrade to.
+
+    The summary is printed after the camera has been released and the model unloaded, so
+    that the last thing an Operator reads is not written while the machine is still held.
+    """
+    args = _watch_parser().parse_args(argv)
+    out, err = _streams(out, err)
+
+    if open_feed is None:
+        open_feed = open_camera_feed
+    if make_reader is None:
+        make_reader = drain_in_background
+    if frames_dir is None:
+        frames_dir = FRAMES_DIRECTORY
+
+    owned: list[Callable[[], None]] = []
+    try:
+        # Refused before Foundry Local is started: an Operator who pointed a Watch at a file
+        # should be told so immediately, not once the model is on the hardware.
+        refuse_an_image_file(args.image)
+        require_a_cadence(args.every)
+        require_an_observation(args.count)
+        foundry = _resolve_foundry(foundry, owned)
+        clock = _resolve_clock(clock)
+        sleep = _resolve_sleep(sleep)
+
+        model = accept_variant(foundry, args.model)
+        providers = register_execution_providers(foundry, clock=clock, out=out)
+
+        # An ExitStack rather than the list of closers the other commands keep, because
+        # here the order matters and it is the reverse of the order things were acquired
+        # in: the reader comes off the Feed and the camera is released, then the model is
+        # taken off the hardware, and only then is Foundry Local itself closed.
+        with ExitStack() as lifetime:
+            ready = bring_up(model, clock=clock, out=out)
+            lifetime.callback(ready.model.unload)
+            feed = lifetime.enter_context(_live_feed(args.camera, open_feed, make_reader))
+
+            start = WatchStart(
+                model=ready.identity,
+                provenance=camera_provenance(args.camera),
+                cadence=args.every,
+                providers=providers,
+                load=ready.load,
+                settling_discards=feed.settling_discards,
+            )
+            print(render_watch_header(start), file=out, end="", flush=True)
+            watched = watch(
+                start=start,
+                model=ready.model,
+                feed=feed,
+                count=args.count,
+                clock=clock,
+                sleep=sleep,
+                keep_in=frames_dir if args.keep_frames else None,
+                announce=_announcing(out),
+            )
+    except Exception as error:
+        return _fail(error, debug=args.debug, err=err)
+    finally:
+        for close in owned:
+            close()
+
+    print(render_watch_summary(watched), file=out, end="")
+    return 0
+
+
+def _announcing(out: TextIO) -> Callable[[WatchedObservation], None]:
+    """Write each Observation down as it arrives, flushed so an audience sees it arrive."""
+
+    def announce(observed: WatchedObservation) -> None:
+        print(render_watch_observation(observed), file=out, end="", flush=True)
+
+    return announce
+
+
+def _live_feed(index: int, open_feed: OpenFeed, make_reader: MakeReader) -> HeldFeed:
+    """Open and settle the Feed a Watch runs on, or say there is no camera there.
+
+    Its own message rather than ``LiveCamera``'s: that one offers ``--image`` as the way
+    out, and a Watch has no such way out — a Watch over a file is refused, so what is worth
+    saying here is which other command answers that question instead.
+    """
+    held = HeldFeed.open(index, open_feed, make_reader=make_reader)
+    if held is None:
+        raise VisionError(
+            f"there is no camera at index {index} — attach one, or select another with"
+            " --camera N; a Watch has to have a live Feed, so to look at an image file"
+            " instead run `observe --image <path>`"
+        )
+    return held
 
 
 def _record_benchmark(
@@ -290,6 +434,53 @@ def _benchmark_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _watch_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="watch",
+        description=(
+            "Keep asking the local model what it sees through the camera, at a Cadence"
+            " you choose, until you stop it."
+        ),
+    )
+    parser.add_argument(
+        "--every",
+        type=float,
+        default=CADENCE,
+        metavar="SECONDS",
+        help=(
+            "the Cadence: how often to ask for an Observation, measured on a fixed grid"
+            " from the moment the Watch starts rather than as a pause after each one"
+            f" (default: {CADENCE:g}; 0 asks for them as fast as the model allows)"
+        ),
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=None,
+        metavar="N",
+        help="end the Watch after N Observations (default: run until you interrupt it)",
+    )
+    parser.add_argument(
+        "--camera",
+        type=int,
+        default=0,
+        metavar="N",
+        help="index of the camera to open the Feed on (default: 0)",
+    )
+    # Offered only so that an Operator arriving from `observe` is told why a Watch cannot
+    # take one, rather than finding the flag missing and guessing.
+    parser.add_argument(
+        "--image",
+        type=Path,
+        default=None,
+        help="refused: a Watch observes a live Feed, and one file would never change",
+    )
+    _add_pinned_variant(parser)
+    _add_keep_frames(parser)
+    _add_debug(parser)
+    return parser
+
+
 def _add_variants(parser: argparse.ArgumentParser) -> None:
     """The Variants to measure, replacing the default pair rather than adding to it.
 
@@ -345,8 +536,8 @@ def _add_keep_frames(parser: argparse.ArgumentParser) -> None:
         help=(
             "write the observed camera Frame to disk and report the path, so that a"
             " surprising Observation can still be explained after the process is gone"
-            " (default: nothing is written; a Frame taken from --image is already on disk"
-            " and is never written out)"
+            " (default: nothing is written; a Frame that came from an image file is already"
+            " on disk and is never written out)"
         ),
     )
 
@@ -416,6 +607,15 @@ def _resolve_clock(clock: Clock | None) -> Clock:
     from time import perf_counter
 
     return perf_counter
+
+
+def _resolve_sleep(sleep: Sleep | None) -> Sleep:
+    if sleep is not None:
+        return sleep
+
+    from time import sleep as real_sleep
+
+    return real_sleep
 
 
 def _resolve_now(now: Now | None) -> Now:

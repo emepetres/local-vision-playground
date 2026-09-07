@@ -140,6 +140,22 @@ class Present:
     stale_frames: int
     """Images the Feed produced while nobody was reading, discarded to reach this one."""
 
+    def frame(self, *, provenance: str, settling_discards: int = 0) -> Frame | None:
+        """This image as a Frame at the working resolution, or nothing where there is none.
+
+        The encoding lives here rather than in whoever reads the Feed so that a single
+        capture and a Watch produce Frames the same way — two callers rescaling and
+        encoding a Feed's images their own way would be two working resolutions, and the
+        Frame is the unit of work everything downstream operates on (CONTEXT.md, "Frame").
+
+        The settling discards are the caller's to pass: they are paid once when the Feed
+        was opened, so a single capture charges them to the one Frame it takes while a
+        Watch reports them once at start-up and never again.
+        """
+        if self.image is None:
+            return None
+        return _to_frame(self.image, provenance=provenance, settling_discards=settling_discards)
+
 
 class Reader(Protocol):
     """Whatever keeps the most recent image of a Feed available for the asking.
@@ -448,18 +464,27 @@ class LiveCamera:
                 " with --camera N, or observe an image file with --image <path>"
             )
         with held:
-            present = held.present()
-            if present.image is None:
+            frame = held.present().frame(
+                provenance=camera_provenance(self._index),
+                settling_discards=held.settling_discards,
+            )
+            if frame is None:
                 raise VisionError(
                     f"camera {self._index} opened but gave no Frame — another application is"
                     " holding it; close that application, or observe an image file"
                     " with --image <path>"
                 )
-            return _to_frame(
-                present.image,
-                provenance=f"camera {self._index}",
-                settling_discards=held.settling_discards,
-            )
+            return frame
+
+
+def camera_provenance(index: int) -> str:
+    """How a Frame taken from the machine's camera at ``index`` says where it came from.
+
+    Written once because two commands read the same Feed: a Watch that named the camera
+    differently from ``observe`` would have an Operator comparing two Frames and wondering
+    whether they came from the same device.
+    """
+    return f"camera {index}"
 
 
 def open_camera_feed(index: int) -> Feed | None:

@@ -1,8 +1,10 @@
-"""How a whole report is laid out — the ``observe`` block and the ``benchmark`` table.
+"""How a whole report is laid out — the ``observe`` block, the ``benchmark`` table, and
+the append-only stream a ``watch`` writes.
 
 Rendering is kept out of the modules that measure, so that a report can be exercised
 without a model, a camera or a clock: everything here takes a finished value and returns
-text. Nothing in this module reads the clock or touches a stream.
+text. Nothing in this module reads the clock or touches a stream — a Watch, which prints
+as it goes, is handed each finished Observation and asks for its line here.
 
 A Benchmark is laid out twice: once for the terminal an Operator is watching, and once as
 the Markdown that is persisted beside the record. They are two renderings rather than two
@@ -34,9 +36,16 @@ from vision.formatting import (
     format_tokens_per_second,
 )
 from vision.inference import Observation, Workload
+from vision.watch import Watch, WatchedObservation, WatchStart
 
 OBSERVE_LABEL_WIDTH = 11
 BENCHMARK_LABEL_WIDTH = 13
+WATCH_LABEL_WIDTH = OBSERVE_LABEL_WIDTH
+"""The Watch header is laid out to the ``observe`` block's label column, deliberately.
+
+They report the same facts about the same run-up — the Variant, the Feed, the set-up and
+the load — and an Operator moving between the two commands should be reading one shape.
+"""
 
 ORDINAL_SUFFIXES = {1: "st", 2: "nd", 3: "rd"}
 """Enough of the rule for the handful of Variants one sitting compares."""
@@ -82,9 +91,100 @@ def render_observation(observation: Observation, workload: Workload, saved: Path
     lines = _labelled(_observation_rows(observation, workload.frame, saved), OBSERVE_LABEL_WIDTH)
     lines += ["", observation.text]
     if observation.truncated:
-        limit = workload.max_output_tokens
-        lines += ["", f"(truncated: the Observation hit the {limit}-token output limit)"]
+        limit = _output_limit(workload.max_output_tokens)
+        lines += ["", f"(truncated: the Observation hit {limit})"]
     return "\n".join(lines) + "\n"
+
+
+def render_watch_header(start: WatchStart) -> str:
+    """What a Watch was asked for and what it paid to begin, written once above the stream.
+
+    The settling discards are here rather than on any Observation's line: they were paid
+    once, when the Feed was opened, and they are what explains the delay before the first
+    Observation arrives. An Operator not told about them reads that wait as the model being
+    slow. They are also not Stale Frames — the same read, a different fact (CONTEXT.md,
+    "Stale Frame") — which is why nothing else in this report says "discarded" without
+    saying what was discarded and when.
+    """
+    rows = [
+        ("Model", format_model(start.model)),
+        ("Cadence", _cadence(start.cadence)),
+        ("Feed", _settled(start)),
+        ("Providers", format_seconds(start.providers)),
+        ("Load", format_seconds(start.load)),
+    ]
+    return "\n".join(_labelled(rows, WATCH_LABEL_WIDTH)) + "\n"
+
+
+def render_watch_observation(observed: WatchedObservation) -> str:
+    """One Observation of a Watch: a short line of facts, and then what the model said.
+
+    Append-only, and one block per Observation rather than a panel redrawn in place: a
+    panel loses the history an audience is following and breaks the moment the output is
+    redirected. The line leads with the Observation's turn, so that a stream an audience
+    has been watching for a minute can still be counted.
+    """
+    return f"\n#{observed.order}  {', '.join(_observation_clauses(observed))}\n{observed.text}\n"
+
+
+def render_watch_summary(watch: Watch) -> str:
+    """How many Observations a Watch produced and the inference it sustained.
+
+    The lesson the Operator leaves with, which is why it is a sentence rather than a table:
+    the rate this machine actually managed. A Watch that produced nothing has no median to
+    report, and says that rather than writing a zero that would read as an instant answer.
+    """
+    median = watch.median_inference
+    if median is None:
+        return "\nNo Observations — the Watch ended before the model produced one\n"
+    return (
+        f"\n{_counted(len(watch.observations), 'Observation')},"
+        f" median inference {format_seconds(median)}\n"
+    )
+
+
+def _observation_clauses(observed: WatchedObservation) -> list[str]:
+    """What is worth saying about one Observation beyond the text it produced.
+
+    The inference always, and then only what actually happened: an Observation that hit the
+    output limit generated exactly that limit rather than what the model had to say, and a
+    Frame that was kept is worth nothing to an Operator who is not told where it went. A
+    line that carried empty clauses for the ordinary case would be a line nobody reads.
+    """
+    clauses = [f"inference {format_seconds(observed.inference)}"]
+    if observed.truncated:
+        clauses.append(f"truncated — it hit {_output_limit(observed.max_output_tokens)}")
+    if observed.saved is not None:
+        clauses.append(f"saved {observed.saved}")
+    return clauses
+
+
+def _cadence(seconds: float) -> str:
+    """The Cadence as the request it is. Zero is a request too, and it has words of its own."""
+    if seconds <= 0:
+        return "as fast as the model allows"
+    return f"one Observation every {format_seconds(seconds)}"
+
+
+def _settled(start: WatchStart) -> str:
+    discarded = _counted(start.settling_discards, "Frame")
+    return f"{start.provenance}, {discarded} discarded while it settled"
+
+
+def _output_limit(limit: int) -> str:
+    """The output limit in the one phrase every report names it by.
+
+    Three reports name it — the ``observe`` block, a Watch's line and a Benchmark's
+    truncation note — and each of them is telling an Operator the same thing: this text
+    stopped where the limit was, not where the model had finished. Written once so that
+    reading two of them side by side is not an exercise in deciding whether they agree.
+    """
+    return f"the {limit}-token output limit"
+
+
+def _counted(count: int, noun: str) -> str:
+    """N of something, in the singular where there is one of them."""
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 def render_benchmark(benchmark: Benchmark) -> str:
@@ -368,8 +468,8 @@ def _truncation_sentence(variant: MeasuredVariant, limit: int) -> str:
     was about a different Benchmark.
     """
     return (
-        f"{variant.truncated} of {len(variant.runs)} Benchmark Runs hit the"
-        f" {limit}-token output limit, so the limit decided how much text they generated"
+        f"{variant.truncated} of {len(variant.runs)} Benchmark Runs hit"
+        f" {_output_limit(limit)}, so the limit decided how much text they generated"
     )
 
 

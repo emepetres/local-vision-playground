@@ -1,8 +1,8 @@
 """Getting a Variant onto the hardware, and timing what that costs.
 
-Everything both commands pay before the first Observation lives here: registering the
-Execution Providers, fetching the weights, loading the model. It sits apart from either
-command because the two of them measuring it differently is exactly the drift a Benchmark
+Everything a command pays before its first Observation lives here: registering the
+Execution Providers, fetching the weights, loading the model. It sits apart from every
+command because two of them measuring it differently is exactly the drift a Benchmark
 cannot survive — ``observe`` reporting a Load that ``benchmark`` computes another way
 would make the two sets of numbers incomparable while looking identical.
 
@@ -26,6 +26,16 @@ from vision.inference import FoundryLocal, ModelIdentity, VisionModel, require_v
 
 Clock = Callable[[], float]
 """Reads a monotonic number of seconds. Injected so latencies are deterministic in tests."""
+
+Sleep = Callable[[float], None]
+"""Waits for a number of seconds. Injected so a Watch can be driven without wall-clock time.
+
+A second callable beside ``Clock`` rather than the two fused into one timing protocol.
+Waiting is the one thing a Watch does that no existing port covers, and a test that really
+waited would be unusable — but ``benchmark``, ``observe`` and start-up never wait, and
+fusing the two would change what all of them are handed for a benefit none of them
+receives.
+"""
 
 
 @dataclass(frozen=True)

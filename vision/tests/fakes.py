@@ -1,4 +1,4 @@
-"""Fakes for the three ports the ``observe`` command is given.
+"""Fakes for the ports the commands are given.
 
 They encode our reading of the Foundry Local 2.x type signatures — see ADR-0004. They do
 not prove the SDK behaves this way; only running against the real model does that. What
@@ -13,7 +13,16 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from PIL import Image
 
-from vision.capture import Camera, Feed, Frame, OpenFeed
+from vision.capture import (
+    Camera,
+    Feed,
+    Frame,
+    MakeReader,
+    OnDemandReader,
+    OpenFeed,
+    Present,
+    Reader,
+)
 from vision.errors import VisionError
 from vision.inference import (
     FinishReason,
@@ -23,6 +32,7 @@ from vision.inference import (
     VisionModel,
     Workload,
 )
+from vision.startup import Sleep
 
 
 class FakeCamera:
@@ -85,6 +95,66 @@ class FakeCameras:
     def __call__(self, index: int) -> FakeFeed | None:
         self.opened.append(index)
         return self._feeds.get(index)
+
+
+class RecordingReader:
+    """A Reader that answers from the Feed only when asked, and remembers being stopped.
+
+    On demand rather than draining, because how the Feed is read and how often a Watch
+    observes are two different questions: this reader answers the second with no thread in
+    the test at all — one read, one image, no Stale Frames, which is the whole truth for a
+    Watch that is keeping its Cadence. ``stopped`` is how a test pins that the reader came
+    off the Feed before the camera was released.
+    """
+
+    def __init__(self, feed: Feed) -> None:
+        self._reader = OnDemandReader(feed)
+        self.stopped = False
+
+    def latest(self) -> Present:
+        return self._reader.latest()
+
+    def stop(self) -> None:
+        self.stopped = True
+        self._reader.stop()
+
+
+class FakeReaders:
+    """Puts a RecordingReader on whatever Feed it is handed, and keeps hold of them.
+
+    A factory rather than the reader itself, because the reader is made inside the Feed it
+    reads: a test that wants to ask whether it was stopped has to be given it from here.
+    """
+
+    def __init__(self) -> None:
+        self.readers: list[RecordingReader] = []
+
+    def __call__(self, feed: Feed) -> RecordingReader:
+        reader = RecordingReader(feed)
+        self.readers.append(reader)
+        return reader
+
+
+class FakeSleep:
+    """Records what it was asked to wait for and returns at once.
+
+    What it recorded is how a Watch's Cadence is asserted: a grid of instants asks to wait
+    for the distance to the next one, so an inference that took a second of a two-second
+    Cadence is followed by a second — a Watch pausing for a fixed Cadence after each
+    Observation would ask for two.
+
+    ``interrupts_on`` is which call raises a ``KeyboardInterrupt``, which is how Ctrl+C is
+    driven without signals and without wall-clock time.
+    """
+
+    def __init__(self, *, interrupts_on: int | None = None) -> None:
+        self.waits: list[float] = []
+        self._interrupts_on = interrupts_on
+
+    def __call__(self, seconds: float) -> None:
+        self.waits.append(seconds)
+        if self._interrupts_on is not None and len(self.waits) == self._interrupts_on:
+            raise KeyboardInterrupt
 
 
 class FakeVisionModel:
@@ -305,5 +375,8 @@ def make_frame(
 _camera: Camera = FakeCamera([])
 _feed: Feed = FakeFeed([])
 _open_feed: OpenFeed = FakeCameras({})
+_reader: Reader = RecordingReader(FakeFeed([]))
+_make_reader: MakeReader = FakeReaders()
+_sleep: Sleep = FakeSleep()
 _model: VisionModel = FakeVisionModel(make_identity(), [make_observation()])
 _foundry: FoundryLocal = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})

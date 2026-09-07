@@ -1,9 +1,9 @@
 """How a whole report is laid out — the ``observe`` block, the ``benchmark`` table, and
-the append-only stream a ``watch`` writes.
+the append-only series a ``watch`` writes.
 
 Rendering is kept out of the modules that measure, so that a report can be exercised
 without a model, a camera or a clock: everything here takes a finished value and returns
-text. Nothing in this module reads the clock or touches a stream — a Watch, which prints
+text. Nothing in this module reads the clock or prints anything — a Watch, which prints
 as it goes, is handed each finished Observation and asks for its line here.
 
 A Benchmark is laid out twice: once for the terminal an Operator is watching, and once as
@@ -36,7 +36,14 @@ from vision.formatting import (
     format_tokens_per_second,
 )
 from vision.inference import Observation, Workload
-from vision.watch import FailedInference, Watch, WatchedObservation, WatchStart
+from vision.watch import (
+    FailedInference,
+    Produced,
+    Shortfall,
+    Watch,
+    WatchedObservation,
+    WatchStart,
+)
 
 OBSERVE_LABEL_WIDTH = 11
 BENCHMARK_LABEL_WIDTH = 13
@@ -97,14 +104,14 @@ def render_observation(observation: Observation, workload: Workload, saved: Path
 
 
 def render_watch_header(start: WatchStart) -> str:
-    """What a Watch was asked for and what it paid to begin, written once above the stream.
+    """What a Watch was asked for and what it paid to begin, written once above the series.
 
-    The settling discards are here rather than on any Observation's line: they were paid
-    once, when the Feed was opened, and they are what explains the delay before the first
-    Observation arrives. An Operator not told about them reads that wait as the model being
-    slow. They are also not Stale Frames — the same read, a different fact (CONTEXT.md,
-    "Stale Frame") — which is why nothing else in this report says "discarded" without
-    saying what was discarded and when.
+    The settling wait and the Frames it discarded are here rather than on any Observation's
+    line: they were paid once, when the Feed was opened, and together they are the whole of
+    the delay before the first Observation arrives. An Operator not told about them reads
+    that wait as the model being slow. The discards are also not Stale Frames — the same
+    read, a different fact (CONTEXT.md, "Stale Frame") — which is why nothing else in this
+    report says "discarded" without saying what was discarded and when.
     """
     rows = [
         ("Model", format_model(start.model)),
@@ -116,7 +123,7 @@ def render_watch_header(start: WatchStart) -> str:
     return "\n".join(_labelled(rows, WATCH_LABEL_WIDTH)) + "\n"
 
 
-def render_watch_line(produced: WatchedObservation | FailedInference) -> str:
+def render_watch_line(produced: Produced) -> str:
     """What one Cadence of a Watch came to, whichever of the two things it came to.
 
     One entry point because both are written down in the order the Watch reached them: an
@@ -143,8 +150,8 @@ def render_watch_failure(failed: FailedInference) -> str:
     it was worst.
     """
     clauses = [f"failed — {failed.reason}"]
-    if failed.late:
-        clauses.append(_lateness(failed))
+    if failed.shortfall.late:
+        clauses.append(_lateness(failed.shortfall))
     return f"\n#{failed.order}  {', '.join(clauses)}\n"
 
 
@@ -153,7 +160,7 @@ def render_watch_observation(observed: WatchedObservation) -> str:
 
     Append-only, and one block per Observation rather than a panel redrawn in place: a
     panel loses the history an audience is following and breaks the moment the output is
-    redirected. The line leads with the Observation's turn, so that a stream an audience
+    redirected. The line leads with the Observation's turn, so that a series an audience
     has been watching for a minute can still be counted.
     """
     return f"\n#{observed.order}  {', '.join(_observation_clauses(observed))}\n{observed.text}\n"
@@ -216,14 +223,14 @@ def _observation_clauses(observed: WatchedObservation) -> list[str]:
     clauses = [f"inference {format_seconds(observed.inference)}"]
     if observed.truncated:
         clauses.append(f"truncated — it hit {_output_limit(observed.max_output_tokens)}")
-    if observed.late:
-        clauses.append(_lateness(observed))
+    if observed.shortfall.late:
+        clauses.append(_lateness(observed.shortfall))
     if observed.saved is not None:
         clauses.append(f"saved {observed.saved}")
     return clauses
 
 
-def _lateness(produced: WatchedObservation | FailedInference) -> str:
+def _lateness(shortfall: Shortfall) -> str:
     """What a Cadence that could not be reached on time cost, as two counts.
 
     Said here rather than in the summary, and only on the line it happened on: the whole
@@ -238,8 +245,8 @@ def _lateness(produced: WatchedObservation | FailedInference) -> str:
     about the model (CONTEXT.md, "Stale Frame").
     """
     return (
-        f"late — skipped {_counted(produced.skipped_cadences, 'Cadence')} and discarded"
-        f" {_counted(produced.stale_frames, 'Stale Frame')} to observe the present"
+        f"late — skipped {_counted(shortfall.skipped_cadences, 'Cadence')} and discarded"
+        f" {_counted(shortfall.stale_frames, 'Stale Frame')} to observe the present"
     )
 
 
@@ -251,8 +258,14 @@ def _cadence(seconds: float) -> str:
 
 
 def _settled(start: WatchStart) -> str:
+    """The Feed, the wait it cost to become usable, and what that wait threw away.
+
+    The seconds lead, because they are the half of it an Operator is sitting through:
+    the delay before the first Observation is this, and a header that reported only the
+    count would leave them reading that delay as the model being slow.
+    """
     discarded = _counted(start.settling_discards, "Frame")
-    return f"{start.provenance}, {discarded} discarded while it settled"
+    return f"{start.provenance}, settled in {format_seconds(start.settling)}, {discarded} discarded"
 
 
 def _output_limit(limit: int) -> str:

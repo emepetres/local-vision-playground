@@ -349,7 +349,7 @@ they are the whole answer.
 
 The same question asked of the room over and over, at a **Cadence**, for as long as the
 Operator lets it run. It is the one command that does not return on its own: unless
-`--count` is given a number of Observations to stop at, it runs until it is interrupted.
+`--count` is given a number of Cadences to stop at, it runs until it is interrupted.
 
 ```bash
 cd vision
@@ -361,7 +361,7 @@ Registering Execution Providers — the first run also downloads them
 
 Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
 Cadence    one Observation every 2.000 s
-Feed       camera 0, 5 Frames discarded while it settled
+Feed       camera 0, settled in 0.418 s, 5 Frames discarded
 Providers  4.108 s
 Load       3.184 s
 
@@ -419,7 +419,7 @@ uv run watch --variant qwen3-vl-2b-instruct-generic-cpu
 ```
 Model      qwen3-vl-2b-instruct-generic-cpu:2 (alias qwen3-vl-2b-instruct, CPU / CPUExecutionProvider)
 Cadence    one Observation every 2.000 s
-Feed       camera 0, 5 Frames discarded while it settled
+Feed       camera 0, settled in 0.402 s, 5 Frames discarded
 Providers  4.070 s
 Load       4.412 s
 
@@ -503,8 +503,10 @@ or which produced nothing at all.
 - `--every SECONDS` — the Cadence, measured on the fixed grid rather than as a pause after
   each Observation. Default `2`. `--every 0` asks for Observations as fast as the model
   allows, which cannot be late for an instant nobody named. A negative number is refused.
-- `--count N` — end the Watch after N Observations, one that failed included. Default: run
-  until it is interrupted. Anything below one is refused: it is not a Watch.
+- `--count N` — end the Watch after N Cadences, one whose inference failed included.
+  Cadences rather than Observations, and deliberately: it is what makes a Watch whose every
+  inference fails end rather than run for ever. Default: run until it is interrupted.
+  Anything below one is refused: it is not a Watch.
 - `--camera N` — index of the camera to open the Feed on. Default `0`.
 - `--variant ID` — pin the Variant, and with it the Execution Provider, exactly as for
   `observe`. Default: resolve the alias `qwen3-vl-2b-instruct` and let Foundry Local pick
@@ -562,7 +564,7 @@ mirrored here.
       the CUDA-GPU variant and the CPU variant, N times each, printed as a table and
       persisted to the repo so the numbers survive a demo that goes wrong. Each Benchmark
       Run is named against its Hardware Profile.
-- [x] **3. A continuous stream of Observations.** A Watch: Observations one after another
+- [x] **3. A continuous series of Observations.** A Watch: Observations one after another
       over a live Feed, at a requested Cadence, and a deliberate answer to what happens
       when inference is slower than the Cadence — it skips the moments it has passed,
       discards the Stale Frames and says how many of each it lost

@@ -14,7 +14,7 @@ committed, so a question would make the Watch skip a Cadence. Skipped Cadences a
 exactly one thing: *this machine could not keep up*. A count that also goes up when somebody
 types is no longer that number, and the demo would have to explain, in front of an audience,
 which of the skips were the hardware's fault. Waiting for the next Cadence costs the Operator
-up to one interval of perceived latency and costs the report nothing.
+up to one Cadence of perceived latency and costs the report nothing.
 
 A question therefore does not produce its own kind of Observation. There is no interjected
 answer sitting between two descriptions: from the next Cadence onward, every Observation the

@@ -68,6 +68,47 @@ a Cadence that is not a binary fraction accumulates (see ``_first_instant_from``
 
 
 @dataclass(frozen=True)
+class Shortfall:
+    """What reaching one Cadence cost, where the machine could not reach it on time.
+
+    The two counts are one value because they are one event: the instants were abandoned
+    and the Stale Frames were discarded by the same skip forward, they are only ever
+    reported together, and whether they are worth reporting at all is one question asked
+    of both (see ``late``). Written once so that a Cadence that produced an Observation
+    and one that failed cannot answer it differently.
+    """
+
+    skipped_cadences: int = 0
+    """Instants on the grid that had already passed when the model came free. Usually none.
+
+    A count rather than a delay, which is the whole of ADR-0006: a Watch that queued would
+    have this be an ever-growing lateness with nothing to report it as. Zero is the
+    ordinary case and says nothing — an Observation on time skipped nothing.
+    """
+
+    stale_frames: int = 0
+    """Images the Feed produced while the model was busy, discarded to reach the present.
+
+    Never the Frames discarded while the Feed settled: those are a start-up cost, paid once
+    and reported once (CONTEXT.md, "Stale Frame").
+    """
+
+    @property
+    def late(self) -> bool:
+        """Whether this Cadence was reached by skipping forward to be about the present.
+
+        Asked of the skipped Cadences alone, and it is what decides whether *either* count
+        is worth reporting. A reader draining the Feed discards images between every pair
+        of handouts, timely or not — a camera yields a good many more images than a Watch
+        asks Observations of — so a Stale Frame on its own says nothing about the machine.
+        What makes the count news is the Cadence having been missed, and that is this
+        question. Whoever writes a Cadence down asks it rather than comparing two numbers
+        to zero and inventing its own rule for what late means.
+        """
+        return self.skipped_cadences > 0
+
+
+@dataclass(frozen=True)
 class WatchedObservation:
     """One Observation a Watch produced, and what producing it cost.
 
@@ -88,20 +129,8 @@ class WatchedObservation:
     text: str
     finish_reason: FinishReason
     max_output_tokens: int
-    skipped_cadences: int = 0
-    """Instants on the grid that had already passed when the model came free. Usually none.
-
-    A count rather than a delay, which is the whole of ADR-0006: a Watch that queued would
-    have this be an ever-growing lateness with nothing to report it as. Zero is the
-    ordinary case and says nothing — an Observation on time skipped nothing.
-    """
-
-    stale_frames: int = 0
-    """Images the Feed produced while the model was busy, discarded to reach the present.
-
-    Never the Frames discarded while the Feed settled: those are a start-up cost, paid once
-    and reported once (CONTEXT.md, "Stale Frame").
-    """
+    shortfall: Shortfall = Shortfall()
+    """What reaching this Observation's Cadence cost, where it cost anything."""
 
     saved: Path | None = None
     """Where the observed Frame was kept, when the Operator asked for it to be kept."""
@@ -109,20 +138,6 @@ class WatchedObservation:
     @property
     def truncated(self) -> bool:
         return self.finish_reason is FinishReason.TRUNCATED
-
-    @property
-    def late(self) -> bool:
-        """Whether this Observation had to skip forward to be about the present.
-
-        Asked of the skipped Cadences alone, and it is what decides whether *either* count
-        is worth reporting. A reader draining the Feed discards images between every pair
-        of handouts, timely or not — a camera yields a good many more images than a Watch
-        asks Observations of — so a Stale Frame on its own says nothing about the machine.
-        What makes the count news is the Cadence having been missed, and that is this
-        question. Whoever writes an Observation down asks it rather than comparing two
-        numbers to zero and inventing its own rule for what late means.
-        """
-        return self.skipped_cadences > 0
 
 
 @dataclass(frozen=True)
@@ -147,21 +162,15 @@ class FailedInference:
 
     order: int
     error: Exception
-    skipped_cadences: int = 0
-    stale_frames: int = 0
+    shortfall: Shortfall = Shortfall()
+    """What reaching this Cadence cost, carried on the same value an Observation carries it
+    on, so that whoever writes a line down does not have one rule for the Cadences that
+    produced something and another for these."""
 
     @property
     def reason(self) -> str:
         """The one line this failure is worth, in the shape every other failure is said in."""
         return one_line(self.error)
-
-    @property
-    def late(self) -> bool:
-        """Whether this Cadence was reached by skipping forward, asked as an Observation
-        is asked it — same question, same answer, so that whoever writes a line down does
-        not have one rule for the Cadences that produced something and another for these.
-        """
-        return self.skipped_cadences > 0
 
 
 @dataclass(frozen=True)
@@ -181,6 +190,15 @@ class WatchStart:
     cadence: float
     providers: float
     load: float
+    settling: float
+    """What opening the Feed and settling it cost, in seconds.
+
+    Reported because it is the whole of the delay before the first Observation, and an
+    Operator not told about it reads that wait as the model being slow — which is the one
+    thing a Watch exists to be honest about. Kept beside the discards rather than folded
+    into them: the count says what was thrown away, and only this says how long for.
+    """
+
     settling_discards: int
     """Frames the Feed discarded to settle — a start-up cost, and never a Stale Frame."""
 
@@ -253,7 +271,16 @@ class Watch:
         return not self.observations
 
 
-Announce = Callable[["WatchedObservation | FailedInference"], None]
+Produced = WatchedObservation | FailedInference
+"""What one Cadence came to: the Observation it produced, or the inference that failed.
+
+Named once because four places speak of it — the port below, the rendering of a line, and
+the two ends of ``_observe`` — and a union respelled at each of them is a union that grows
+a fourth member in three of them.
+"""
+
+
+Announce = Callable[[Produced], None]
 """Says what one Cadence came to, as it happens rather than once the Watch is over.
 
 One port for both outcomes rather than two, because a Watch produces its Observations in
@@ -302,7 +329,7 @@ def refuse_an_image_file(image: Path | None) -> None:
     )
 
 
-def watch(
+def keep_watch(
     *,
     start: WatchStart,
     model: VisionModel,
@@ -344,7 +371,7 @@ def watch(
     observations: list[WatchedObservation] = []
     failures: list[FailedInference] = []
     began = clock()
-    instant, skipped, abandoned, cadences = 0, 0, 0, 0
+    instant, skipped, skipped_in_total, cadences = 0, 0, 0, 0
     died = False
     try:
         while count is None or cadences < count:
@@ -363,7 +390,7 @@ def watch(
                 # Counted the moment the instants are given up on, rather than once the
                 # Observation that follows them has been produced: a Watch that ended
                 # part-way through that inference still passed them.
-                abandoned += skipped
+                skipped_in_total += skipped
             cadences += 1
             present = feed.present()
             frame = present.frame(provenance=start.provenance)
@@ -376,9 +403,8 @@ def watch(
             produced = _observe(
                 model,
                 frame=frame,
-                stale_frames=present.stale_frames,
                 order=cadences,
-                skipped_cadences=skipped,
+                shortfall=Shortfall(skipped_cadences=skipped, stale_frames=present.stale_frames),
                 clock=clock,
                 keep_in=keep_in,
             )
@@ -394,7 +420,7 @@ def watch(
         observations=tuple(observations),
         failures=tuple(failures),
         feed_died=died,
-        skipped_cadences=abandoned,
+        skipped_cadences=skipped_in_total,
     )
 
 
@@ -451,12 +477,11 @@ def _observe(
     model: VisionModel,
     *,
     frame: Frame,
-    stale_frames: int,
     order: int,
-    skipped_cadences: int,
+    shortfall: Shortfall,
     clock: Clock,
     keep_in: Path | None,
-) -> WatchedObservation | FailedInference:
+) -> Produced:
     """Ask the model about one Frame, once, and come back with whichever way it went.
 
     Every fault is caught, not a chosen few: what breaks an inference on a local runtime is
@@ -487,16 +512,13 @@ def _observe(
         workload = Workload(prompt=PROMPT, frame=frame)
         raw, inference = timed(clock, lambda: model.observe(workload))
     except Exception as error:
-        return FailedInference(
-            order=order, error=error, skipped_cadences=skipped_cadences, stale_frames=stale_frames
-        )
+        return FailedInference(order=order, error=error, shortfall=shortfall)
     return WatchedObservation(
         order=order,
         inference=inference,
         text=raw.text,
         finish_reason=raw.finish_reason,
         max_output_tokens=workload.max_output_tokens,
-        skipped_cadences=skipped_cadences,
-        stale_frames=stale_frames,
+        shortfall=shortfall,
         saved=saved,
     )

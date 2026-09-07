@@ -310,6 +310,26 @@ def require_a_variant(variants: Sequence[str]) -> None:
         )
 
 
+def refuse_a_live_camera(camera: int | None) -> None:
+    """A Feed is not a Workload's Frame source, and saying so is better than dropping it.
+
+    Every Benchmark Run has to see the same bytes (CONTEXT.md, "Workload"), and a Feed
+    gives a different Frame each time — so the numbers would look like a hardware result
+    while comparing different work.
+
+    It lives here, beside the invariants above and mirroring ``watch.refuse_an_image_file``,
+    because which sources a Benchmark can be taken over is a fact about a Benchmark rather
+    than about the flag that carried one. The command asks before it starts Foundry Local.
+    """
+    if camera is None:
+        return
+    raise VisionError(
+        f"camera {camera} cannot be a Benchmark's Frame source — every Benchmark Run"
+        " has to see the same bytes, and a Feed gives a different Frame each time; measure"
+        " the reference Frame by leaving --camera off, or pass --image <path>"
+    )
+
+
 def measure(
     *,
     foundry: FoundryLocal,

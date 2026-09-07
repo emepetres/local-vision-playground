@@ -28,6 +28,13 @@ handed is no longer now*. The same read, a different fact — which is why a [[W
 them apart.
 _Avoid_: dropped frame, skipped frame, backlog, buffered frame
 
+**Present**:
+What a reader of a held [[Feed]] hands over when it is asked for an image: the one the
+camera produced most recently, together with the count of [[Stale Frame]]s it discarded to
+reach it. The two are one thing because neither is worth having alone — an image with no
+count might be the past, and a count with no image is arithmetic about nothing.
+_Avoid_: latest, current frame, newest image, live frame
+
 ### Understanding
 
 **Observation**:
@@ -75,6 +82,15 @@ the moments it has already passed and observes the present. Cadence is therefore
 number that makes a machine's shortfall countable — what it costs to be too slow is a
 count of skipped Cadences, not a growing delay.
 _Avoid_: interval, rate, fps, frequency, period
+
+**Shortfall**:
+What reaching one [[Cadence]] cost a machine that could not reach it on time: the Cadences
+abandoned on the way and the [[Stale Frame]]s discarded to observe the present. One thing
+rather than two numbers, because one skip forward incurred both. A Shortfall belongs to the
+moment it happened and is reported there, on the [[Observation]] it was paid for — averaging
+it over a [[Watch]] would take away the half an [[Operator]] can act on. A Cadence reached on
+time has no Shortfall, and says nothing about either count.
+_Avoid_: lag, delay, drift, overrun, backlog
 
 ### Runtime
 

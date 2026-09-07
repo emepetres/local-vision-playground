@@ -34,7 +34,13 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import TextIO
 
-from vision.benchmark import REPETITIONS, Benchmark, measure, require_a_benchmark_run
+from vision.benchmark import (
+    REPETITIONS,
+    Benchmark,
+    measure,
+    refuse_a_live_camera,
+    require_a_benchmark_run,
+)
 from vision.capture import (
     FRAMES_DIRECTORY,
     REFERENCE_FRAME,
@@ -78,14 +84,14 @@ from vision.startup import (
 )
 from vision.watch import (
     CADENCE,
-    FailedInference,
+    Announce,
+    Produced,
     Watch,
-    WatchedObservation,
     WatchStart,
+    keep_watch,
     refuse_an_image_file,
     require_a_cadence,
     require_an_observation,
-    watch,
 )
 
 
@@ -155,7 +161,7 @@ def benchmark_main(
 
     owned: list[Callable[[], None]] = []
     try:
-        _refuse_a_live_camera(args)
+        refuse_a_live_camera(args.camera)
         require_a_benchmark_run(args.repetitions)
         if camera is None:
             camera = _benchmark_source(args.image)
@@ -216,10 +222,15 @@ def watch_main(
     once the Watch is over, in that order, however it ended — an interruption included.
 
     An interruption that arrives before the Watch has begun is a different thing: it still
-    releases the camera and unloads the model, but it ends the process rather than a Watch,
-    because there is no Watch yet to report. Everything else in the run-up ends the process
-    as it does in ``observe`` — a name that names no model, a task that is not
-    ``vision-language-chat``, a Variant that will not load. There is nothing to degrade to.
+    releases the camera and unloads the model, but there is no Watch yet to report, so it
+    is said as its own line and exits non-zero — the ordinary answer for a Watch that
+    produced no Observation. One that arrives during the take-down of a Watch that ran is
+    not that: the Observations were produced, so it is reported as the Watch it was.
+    Neither is ever a traceback: an Operator who pressed Ctrl+C in front of an audience
+    knows what happened, and there is nothing ``--debug`` could add.
+    Everything else in the run-up ends the process as it does in ``observe`` — a name that
+    names no model, a task that is not ``vision-language-chat``, a Variant that will not
+    load. There is nothing to degrade to.
 
     The summary is printed after the camera has been released and the model unloaded, so
     that the last thing an Operator reads is not written while the machine is still held.
@@ -237,6 +248,7 @@ def watch_main(
         frames_dir = FRAMES_DIRECTORY
 
     owned: list[Callable[[], None]] = []
+    watched: Watch | None = None
     try:
         # Refused before Foundry Local is started: an Operator who pointed a Watch at a file
         # should be told so immediately, not once the model is on the hardware.
@@ -260,7 +272,11 @@ def watch_main(
         with ExitStack() as lifetime:
             ready = bring_up(model, clock=clock, out=out)
             lifetime.callback(ready.model.unload)
-            feed = lifetime.enter_context(_live_feed(args.camera, open_feed, make_reader))
+            # Timed here rather than inside the held Feed, because what an Operator waits
+            # through is opening the camera *and* settling it, and only this side of the
+            # port knows the clock the rest of the run-up was timed with.
+            opened, settling = timed(clock, lambda: _live_feed(args.camera, open_feed, make_reader))
+            feed = lifetime.enter_context(opened)
 
             start = WatchStart(
                 model=ready.identity,
@@ -268,10 +284,11 @@ def watch_main(
                 cadence=args.every,
                 providers=providers,
                 load=ready.load,
+                settling=settling,
                 settling_discards=feed.settling_discards,
             )
             print(render_watch_header(start), file=out, end="", flush=True)
-            watched = watch(
+            watched = keep_watch(
                 start=start,
                 model=ready.model,
                 feed=feed,
@@ -281,11 +298,25 @@ def watch_main(
                 keep_in=frames_dir if args.keep_frames else None,
                 announce=_announcing(out),
             )
+    except KeyboardInterrupt:
+        # Caught rather than raised, and then asked which interruption it was: the Watch
+        # itself already treats Ctrl+C as its ordinary ending, so one arriving here came
+        # either from the run-up or from the take-down of a Watch that had finished. The
+        # second is not that Watch failing — it produced what it produced, and the summary
+        # is still owed — so it falls through to it below.
+        pass
     except Exception as error:
         return _fail(error, debug=args.debug, err=err)
     finally:
         for close in owned:
             close()
+
+    if watched is None:
+        # No traceback and no --debug offer: an Operator who pressed Ctrl+C knows what
+        # happened, and a stack ending a demo is exactly what --debug exists to keep off
+        # the screen. Non-zero because no Observation was produced, which is the one
+        # question the exit status of a Watch answers.
+        return _refuse("the Watch was stopped before it produced an Observation", err=err)
 
     print(render_watch_summary(watched), file=out, end="")
     return _watch_status(watched, provenance=provenance, err=err)
@@ -332,10 +363,10 @@ def _feed_died(provenance: str) -> str:
     )
 
 
-def _announcing(out: TextIO) -> Callable[[WatchedObservation | FailedInference], None]:
+def _announcing(out: TextIO) -> Announce:
     """Write each Cadence down as it arrives, flushed so an audience sees it arrive."""
 
-    def announce(produced: WatchedObservation | FailedInference) -> None:
+    def announce(produced: Produced) -> None:
         print(render_watch_line(produced), file=out, end="", flush=True)
 
     return announce
@@ -417,13 +448,7 @@ def _observe_parser() -> argparse.ArgumentParser:
         type=Path,
         help="take the Frame from this image file instead of from a camera",
     )
-    source.add_argument(
-        "--camera",
-        type=int,
-        default=0,
-        metavar="N",
-        help="index of the camera to open the Feed on (default: 0)",
-    )
+    _add_camera(source)
     _add_pinned_variant(parser)
     _add_keep_frames(parser)
     _add_debug(parser)
@@ -447,8 +472,7 @@ def _benchmark_parser() -> argparse.ArgumentParser:
             f" ({REFERENCE_FRAME.name}, kept in the repository)"
         ),
     )
-    # Offered only so that an Operator arriving from `observe` is told why it cannot be
-    # used, rather than finding the flag missing and guessing.
+    # Offered only to be refused; see ``refuse_a_live_camera`` for what it is told.
     source.add_argument(
         "--camera",
         type=int,
@@ -507,19 +531,12 @@ def _watch_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="N",
         help=(
-            "end the Watch after N Observations, one that failed included"
+            "end the Watch after N Cadences, one whose inference failed included"
             " (default: run until you interrupt it)"
         ),
     )
-    parser.add_argument(
-        "--camera",
-        type=int,
-        default=0,
-        metavar="N",
-        help="index of the camera to open the Feed on (default: 0)",
-    )
-    # Offered only so that an Operator arriving from `observe` is told why a Watch cannot
-    # take one, rather than finding the flag missing and guessing.
+    _add_camera(parser)
+    # Offered only to be refused; see ``refuse_an_image_file`` for what it is told.
     parser.add_argument(
         "--image",
         type=Path,
@@ -553,6 +570,26 @@ def _add_variants(parser: argparse.ArgumentParser) -> None:
             " id, which pins the version too (qwen3-vl-2b-instruct-generic-cpu:2)."
             f" Default: {', '.join(DEFAULT_VARIANTS)}"
         ),
+    )
+
+
+def _add_camera(container: argparse._ActionsContainer) -> None:
+    """The camera index a Feed is opened on, for the two commands that open one.
+
+    Takes the container rather than the parser because ``observe`` declares it inside a
+    mutually exclusive group — a Frame comes from a camera or from a file, never both —
+    while a Watch has nothing to be exclusive with: it refuses ``--image`` outright.
+
+    ``benchmark`` declares its own ``--camera`` instead of using this. It is a different
+    flag that happens to share a name: offered with no default so that passing it can be
+    told apart from not passing it, and answered by a refusal rather than by a Feed.
+    """
+    container.add_argument(
+        "--camera",
+        type=int,
+        default=0,
+        metavar="N",
+        help="index of the camera to open the Feed on (default: 0)",
     )
 
 
@@ -598,22 +635,6 @@ def _add_debug(parser: argparse.ArgumentParser) -> None:
         "--debug",
         action="store_true",
         help="re-raise failures with their full traceback",
-    )
-
-
-def _refuse_a_live_camera(args: argparse.Namespace) -> None:
-    """A Feed is not a Workload's Frame source, and saying so is better than dropping it.
-
-    Every Benchmark Run has to see the same bytes (CONTEXT.md, "Workload"), and a Feed
-    gives a different Frame each time — so the numbers would look like a hardware result
-    while comparing different work.
-    """
-    if args.camera is None:
-        return
-    raise VisionError(
-        f"camera {args.camera} cannot be a Benchmark's Frame source — every Benchmark Run"
-        " has to see the same bytes, and a Feed gives a different Frame each time; measure"
-        " the reference Frame by leaving --camera off, or pass --image <path>"
     )
 
 
@@ -687,7 +708,7 @@ def _resolve_now(now: Now | None) -> Now:
 def _fail(error: Exception, *, debug: bool, err: TextIO) -> int:
     if debug:
         raise error
-    return _refuse(_one_line(error), err=err)
+    return _refuse(_fatal_line(error), err=err)
 
 
 def _refuse(message: str, *, err: TextIO) -> int:
@@ -749,8 +770,8 @@ def _observe(
     return workload, observation, saved
 
 
-def _one_line(error: Exception) -> str:
-    """The failure as its line, with the way to get the rest of it where there is more.
+def _fatal_line(error: Exception) -> str:
+    """The failure as the line a command ends on, with the way to get the rest of it.
 
     Only for a failure that is ending the process: ``--debug`` re-raises what was about to
     be printed here, and a Watch that carried on past a failed Observation has nothing left

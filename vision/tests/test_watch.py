@@ -40,6 +40,9 @@ SETUP_READINGS = (0.0, 0.5)
 LOAD_READINGS = (10.0, 11.25)
 """Loading the model: 1.250 s."""
 
+SETTLE_READINGS = (20.0, 20.3)
+"""Opening the Feed and settling it: 0.300 s, the wait before the first Observation."""
+
 T0 = 100.0
 """The instant the Watch starts, and so the instant its first Observation is due."""
 
@@ -49,12 +52,13 @@ INFERENCE = 1.0
 CADENCE = 2.0
 """The default Cadence, written down here so a test can assert the wait it implies."""
 
+SETTLED = f"Feed       camera 0, settled in 0.300 s, {SETTLING_FRAMES} Frames discarded\n"
+"""The header's Feed line: what the Feed cost to be usable, and what that threw away."""
+
 HEADER = (
     "Model      qwen3-vl-2b-instruct-cuda-gpu:2"
     " (alias qwen3-vl-2b-instruct, GPU / NvTensorRtRtxExecutionProvider)\n"
-    "Cadence    one Observation every 2.000 s\n"
-    "Feed       camera 0, 5 Frames discarded while it settled\n"
-    "Providers  0.500 s\n"
+    "Cadence    one Observation every 2.000 s\n" + SETTLED + "Providers  0.500 s\n"
     "Load       1.250 s\n"
 )
 
@@ -71,7 +75,7 @@ def readings(
     taken to work out how long is left until its instant — none for the first, which is due
     at once — and the two the inference is timed with.
     """
-    values = [*SETUP_READINGS, *LOAD_READINGS, T0]
+    values = [*SETUP_READINGS, *LOAD_READINGS, *SETTLE_READINGS, T0]
     for order in range(observations):
         due = T0 + order * cadence
         if order:
@@ -99,9 +103,20 @@ class Run:
     err: str
     cameras: FakeCameras
     readers: FakeReaders | HandTurnedReaders
-    feed: FakeFeed
+    feeds: dict[int, FakeFeed]
     model: FakeVisionModel
     sleep: FakeSleep
+
+    @property
+    def feed(self) -> FakeFeed:
+        """The one Feed this run was given, which is the one the Watch opened.
+
+        Unpacked rather than indexed, so that a test asking about "the Feed" of a run
+        given several — or given none, which is how the missing camera is expressed —
+        fails here saying so instead of quietly answering about the first.
+        """
+        (only,) = self.feeds.values()
+        return only
 
 
 def run(
@@ -123,10 +138,8 @@ def run(
     most of this suite asks. The tests about a Watch that fell behind ask the other one,
     and hand in ``readers`` — a reader that really drains, with the test turning its loop.
     """
-    feed = watching_feed(observations)
-    feeds = feeds if feeds is not None else {0: feed}
-    if feeds:
-        feed = next(iter(feeds.values()))
+    if feeds is None:
+        feeds = {0: watching_feed(observations)}
     model = (
         model
         if model is not None
@@ -147,7 +160,7 @@ def run(
         err=err,
         frames_dir=frames_dir,
     )
-    return Run(code, out.getvalue(), err.getvalue(), cameras, readers, feed, model, sleep)
+    return Run(code, out.getvalue(), err.getvalue(), cameras, readers, feeds, model, sleep)
 
 
 def observation_block(order: int, text: str, extra: str = "") -> str:
@@ -185,6 +198,7 @@ def test_holds_the_grid_when_one_inference_takes_longer_than_another() -> None:
         (
             *SETUP_READINGS,
             *LOAD_READINGS,
+            *SETTLE_READINGS,
             T0,
             T0,
             T0 + 1.5,  # the first Observation took 1.500 s of the Cadence
@@ -287,6 +301,7 @@ def overrun_clock() -> FakeClock:
         (
             *SETUP_READINGS,
             *LOAD_READINGS,
+            *SETTLE_READINGS,
             T0,
             T0,
             T0 + OVERRUN,
@@ -347,7 +362,7 @@ def test_reports_the_stale_frames_apart_from_the_settling_discards() -> None:
     result = overrun(["--count", "3"])
 
     header, *blocks = result.out.split("\n\n")
-    assert f"Feed       camera 0, {SETTLING_FRAMES} Frames discarded while it settled\n" in header
+    assert SETTLED in header
     assert "settled" not in "\n\n".join(blocks)
     assert "Stale Frames" not in header
 
@@ -428,6 +443,7 @@ def test_an_instant_arrived_at_exactly_is_not_reported_as_one_more_skipped() -> 
             (
                 *SETUP_READINGS,
                 *LOAD_READINGS,
+                *SETTLE_READINGS,
                 T0,
                 T0,
                 T0 + fine * 2,  # the first Observation overran onto the second instant
@@ -476,7 +492,7 @@ def test_reports_the_settling_discards_at_start_up_and_on_no_observation() -> No
     result = run(["--count", "3"])
 
     header, *blocks = result.out.split("\n\n")
-    assert f"Feed       camera 0, {SETTLING_FRAMES} Frames discarded while it settled\n" in header
+    assert SETTLED in header
     assert "discarded" not in "\n\n".join(blocks)
 
 
@@ -548,6 +564,57 @@ def test_an_interruption_during_an_inference_ends_the_watch_just_as_cleanly() ->
     assert result.feed.closed
     assert result.readers.readers[0].stopped
     assert model.unloads == 1
+
+
+class InterruptedTeardownModel(FakeVisionModel):
+    """A model the Operator interrupts a second time, as the Watch is being taken down."""
+
+    def unload(self) -> None:
+        super().unload()
+        raise KeyboardInterrupt
+
+
+def test_an_interruption_during_the_take_down_still_reports_the_watch_that_ran() -> None:
+    """A Ctrl+C that lands on the way out is not the Watch failing.
+
+    The Observations were produced and the summary is what an Operator was promised for
+    them, so a second interruption arriving while the camera is being released and the
+    model taken off the hardware must not turn a Watch that ran into one that never did.
+    """
+    model = InterruptedTeardownModel(
+        make_identity(), [make_observation(text) for text in TEXTS[:2]]
+    )
+    result = run(["--count", "2"], model=model, observations=2)
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + observation_block(2, TEXTS[1])
+        + "\n2 Observations, median inference 1.000 s\n"
+    )
+    assert result.feed.closed
+    assert model.unloads == 1
+
+
+class NeverLoadsModel(FakeVisionModel):
+    """A model the Operator interrupts while it is still going onto the hardware."""
+
+    def load(self) -> None:
+        raise KeyboardInterrupt
+
+
+def test_an_interruption_before_the_watch_began_is_said_as_its_own_line() -> None:
+    """There is no Watch to report yet, so it is the one ending that has nothing to print."""
+    model = NeverLoadsModel(make_identity(), [])
+    result = run(["--count", "3"], model=model)
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.err == "error: the Watch was stopped before it produced an Observation\n"
+    assert model.unloads == 0
+    assert result.cameras.opened == []
 
 
 def test_sends_every_observation_on_its_own_frame_with_the_one_fixed_prompt() -> None:
@@ -797,7 +864,7 @@ def failing_readings(*failed: int, cadence: float = CADENCE) -> FakeClock:
     would end it, so a Cadence that failed costs one reading where one that produced an
     Observation costs two.
     """
-    values = [*SETUP_READINGS, *LOAD_READINGS, T0]
+    values = [*SETUP_READINGS, *LOAD_READINGS, *SETTLE_READINGS, T0]
     finished = T0
     for order, broke in enumerate(failed):
         if order:
@@ -871,6 +938,7 @@ def test_a_cadence_reached_late_says_what_it_lost_even_when_the_inference_then_f
             (
                 *SETUP_READINGS,
                 *LOAD_READINGS,
+                *SETTLE_READINGS,
                 T0,
                 T0,
                 T0 + OVERRUN,

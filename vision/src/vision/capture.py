@@ -309,9 +309,9 @@ class DrainingReader:
     def latest(self) -> Present:
         """The most recent image, waiting if the Feed has not produced one yet.
 
-        Waiting is right rather than reporting nothing: an image is coming within a Frame
-        interval, and "no image" is reserved for a Feed that has actually stopped giving
-        them — which is what a caller turns into a failure. A stopped reader is that too,
+        Waiting is right rather than reporting nothing: the camera produces its next image
+        in milliseconds, and "no image" is reserved for a Feed that has actually stopped
+        giving them — which is what a caller turns into a failure. A stopped reader is that too,
         so that asking a closed HeldFeed for the present is answered rather than waited on.
         """
         with self._arrived:

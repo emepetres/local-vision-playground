@@ -20,16 +20,32 @@ from vision.capture import Frame
 from vision.errors import VisionError
 
 if TYPE_CHECKING:
-    from foundry_local_sdk import ChatSession, IModel, Item, Response, Runtime
+    from foundry_local_sdk import ChatSession, IModel, Item, Response
 
 PROMPT = "Describe what you see in this image in two or three sentences."
 """The fixed workload's prompt. The length bound lives here; the token limit is a net."""
 
+# The generation limits a Workload takes when a caller does not say otherwise. They are
+# defaults on the Workload rather than constants read inside the model, so that the caller
+# measuring one Workload against another can see — and record — what it ran under (ADR-0005).
 MAX_OUTPUT_TOKENS = 128
 TEMPERATURE = 0.0
 
 DEFAULT_ALIAS = "qwen3-vl-2b-instruct"
 """Resolved when no variant is pinned, so Foundry Local picks the hardware."""
+
+DEFAULT_VARIANTS = (f"{DEFAULT_ALIAS}-cuda-gpu", f"{DEFAULT_ALIAS}-generic-cpu")
+"""The two Variants a Benchmark measures when the Operator names none: CUDA-GPU and CPU.
+
+That pair is the Execution Provider axis this project can actually demonstrate (see
+docs/stack.md, Constraint 3) — and it is the comparison the demo exists to make.
+
+These are Variant *names*, carrying no version suffix, and the version is whatever the
+catalogue offers on the day. Writing `-cuda-gpu:2` here instead would break the command
+the morning the catalogue publishes `:3`, and would quietly measure a build nobody chose.
+The exact Variant id that was resolved is reported, so the Benchmark still says which
+build produced its numbers.
+"""
 
 VISION_TASK = "vision-language-chat"
 """Match on the task, never on the alias prefix: qwen3.5-2b-text is a text-only sibling."""
@@ -47,12 +63,44 @@ class FinishReason(StrEnum):
 
 @dataclass(frozen=True)
 class ModelIdentity:
-    """Which model actually answered, and what it was built for."""
+    """Which model actually answered, and what it was built for.
+
+    The Execution Provider and the device type are kept apart rather than as the one
+    string they are printed as. They are two facts — *CUDA* is not *GPU* — and a persisted
+    Benchmark has to carry each of them on its own, so that a later reader can group by
+    Execution Provider without parsing a slash out of a display string.
+    """
 
     alias: str
     variant: str
     task: str | None
-    runtime: str | None
+    execution_provider: str | None
+    device_type: str | None
+
+    @property
+    def runtime(self) -> str | None:
+        """The pair as one phrase, which is how a report names what a Variant ran on."""
+        if self.execution_provider is None:
+            return None
+        if self.device_type is None:
+            return self.execution_provider
+        return f"{self.device_type} / {self.execution_provider}"
+
+
+@dataclass(frozen=True)
+class Workload:
+    """Everything that has to be identical for two Benchmark Runs to be comparable.
+
+    The prompt, the exact Frame — its bytes, not merely its resolution — and the limits
+    the model generates under. The limits live here rather than inside the Foundry Local
+    implementation so that the caller who measures a Workload is the caller who fixed it
+    (ADR-0005).
+    """
+
+    prompt: str
+    frame: Frame
+    max_output_tokens: int = MAX_OUTPUT_TOKENS
+    temperature: float = TEMPERATURE
 
 
 @dataclass(frozen=True)
@@ -60,10 +108,13 @@ class RawObservation:
     """What the model reports about a Frame, already copied out of the native response.
 
     An Observation without the provenance and the timings the command wraps around it.
+    ``completion_tokens`` is what the model generated, which is what makes two latencies
+    comparable: a Variant that generated twice as much text is not twice as slow.
     """
 
     text: str
     finish_reason: FinishReason
+    completion_tokens: int
 
 
 @dataclass(frozen=True)
@@ -118,7 +169,24 @@ class VisionModel(Protocol):
         """Bring the model up on whichever Execution Provider it resolves to."""
         ...
 
-    def observe(self, frame: Frame, prompt: str) -> RawObservation: ...
+    def observe(self, workload: Workload) -> RawObservation:
+        """Answer this Workload, and answer it from its own Frame alone.
+
+        Every Observation is independent of the last. That is what an Observation is —
+        what the model reports about *a* Frame — and it is also what makes N Benchmark
+        Runs of one Workload N executions of the same work rather than a conversation
+        that grows by one image and one answer each time.
+        """
+        ...
+
+    def unload(self) -> None:
+        """Take the model back off the hardware, so the next one can have it.
+
+        Measuring two Variants in one process is the reason this is on the port: two
+        loaded models compete for the same device, and a Benchmark that leaves the first
+        one resident is measuring the second one under conditions it cannot report.
+        """
+        ...
 
 
 class FoundryLocal(Protocol):
@@ -196,15 +264,54 @@ class InProcessFoundryLocal:
             )
 
     def resolve(self, name: str) -> FoundryLocalModel:
+        """Resolve an alias, an exact variant id, or a variant name with no version.
+
+        The third is what lets a Variant be named in source without a version suffix
+        being written there with it: `qwen3-vl-2b-instruct-cuda-gpu` is answered with
+        whatever version the catalogue offers today. It is tried last, so an Operator who
+        pinned `…-cuda-gpu:2` gets that build and not the newest one.
+        """
         catalog = self._manager.catalog
         model = catalog.get_model(name) or catalog.get_model_variant(name)
         if model is None:
+            model = self._latest_named(name)
+        if model is None:
             raise VisionError(
-                f"Foundry Local has no model called {name!r} — an alias has no version"
-                " but a variant id does (qwen3-vl-2b-instruct-generic-cpu:2);"
+                f"Foundry Local has no model called {name!r} — that is an alias"
+                " (qwen3-vl-2b-instruct), a variant name (qwen3-vl-2b-instruct-generic-cpu)"
+                " or a variant id, which carries a version (qwen3-vl-2b-instruct-generic-cpu:2);"
                 " run `foundry model list` to see what this machine is offered"
             )
         return FoundryLocalModel(model)
+
+    def _latest_named(self, variant_name: str) -> IModel | None:
+        """The newest catalogue version of the Variant with this name, if there is one.
+
+        Every alias is asked for its variants rather than the name being taken apart: a
+        variant name looks like its alias with a hardware suffix, but nothing guarantees
+        that, and a Variant resolved by pattern-matching a string is not resolved through
+        the catalogue at all.
+
+        ``list_models`` is used rather than the two calls that look purpose-built for this,
+        because on 2.0.1 neither answers **[verified 2026-09-06]**. `get_model_versions`,
+        the documented "every version for an alias", returned `[]` for
+        `qwen3-vl-2b-instruct-cuda-gpu` and only the CPU Variant for the bare alias, on a
+        machine where `get_model_variant("…-cuda-gpu:2")` resolves that exact build.
+        `get_latest_version` needs an `IModel` to start from, which is the thing being
+        looked for. `list_models` is the one call that reports every Variant of every alias
+        — asking an alias directly answers with the single Variant Foundry Local would pick
+        for it. What the catalogue lists varies with which region serves it, so this is a
+        best effort against a moving target, not a guarantee.
+        """
+        versions = [
+            variant
+            for model in self._manager.catalog.list_models()
+            for variant in model.variants
+            if variant.info.name == variant_name
+        ]
+        if not versions:
+            return None
+        return max(versions, key=lambda variant: _version_key(variant.info.version))
 
     def close(self) -> None:
         self._manager.close()
@@ -220,11 +327,13 @@ class FoundryLocalModel:
     @property
     def identity(self) -> ModelIdentity:
         info = self._model.info
+        runtime = info.runtime
         return ModelIdentity(
             alias=self._model.alias,
             variant=self._model.id,
             task=info.task,
-            runtime=_runtime(info.runtime),
+            execution_provider=runtime.execution_provider if runtime is not None else None,
+            device_type=runtime.device_type if runtime is not None else None,
         )
 
     @property
@@ -240,7 +349,22 @@ class FoundryLocalModel:
         self._model.load()
         self._session = ChatSession(self._model)
 
-    def observe(self, frame: Frame, prompt: str) -> RawObservation:
+    def unload(self) -> None:
+        """Release the session, then take the model off the hardware.
+
+        In that order, and deterministically: the session holds a native handle onto the
+        loaded model, and unloading underneath a live session leaves that handle pointing
+        at a model that is no longer there. ``Session`` exposes its release as ``__exit__``
+        rather than as a ``close``, and dropping the reference alone would leave the
+        release to whenever the last one goes — a traceback frame is enough to delay it
+        past the unload.
+        """
+        session, self._session = self._session, None
+        if session is not None:
+            session.__exit__()
+        self._model.unload()
+
+    def observe(self, workload: Workload) -> RawObservation:
         from foundry_local_sdk import (
             ImageItem,
             MessageItem,
@@ -253,20 +377,63 @@ class FoundryLocalModel:
         if self._session is None:
             raise VisionError(f"{self._model.id} was asked for an Observation before it was loaded")
 
+        # A ChatSession is a conversation, not a stateless endpoint: it accumulates turns,
+        # and the SDK offers `turn_count`/`undo_turns` precisely because it does. Left
+        # alone, the second Observation would carry the first Frame and the first answer
+        # as context — the prompt would grow with every call, and N Benchmark Runs of one
+        # Workload would silently become N different, ever-larger Workloads. Forgetting
+        # the turns before the request rather than after also drops whatever a call that
+        # failed part-way left behind. The session is kept open rather than rebuilt so
+        # that only the inference itself falls inside the measured time.
+        _forget_previous_turns(self._session)
+
+        frame = workload.frame
         # parts stays referenced for the whole call: the MessageItem borrows their native
         # pointers without owning them, and releasing one would dangle the message.
-        parts = [TextItem(prompt), ImageItem(frame.codec, frame.data)]
+        parts = [TextItem(workload.prompt), ImageItem(frame.codec, frame.data)]
         message = MessageItem.user(parts)
         options = RequestOptions(
-            search=SearchOptions(temperature=TEMPERATURE, max_output_tokens=MAX_OUTPUT_TOKENS)
+            search=SearchOptions(
+                temperature=workload.temperature,
+                max_output_tokens=workload.max_output_tokens,
+            )
         )
 
         with Request().add_item(message).set_options(options) as request:
             with self._session.process_request(request) as response:
                 text = "".join(_text_of(item) for item in response)
                 finish_reason = _finish_reason(response)
+                # Read inside the response's scope, like the text: nothing native escapes.
+                completion_tokens = response.get_usage().completion_tokens
 
-        return RawObservation(text=text.strip(), finish_reason=finish_reason)
+        return RawObservation(
+            text=text.strip(),
+            finish_reason=finish_reason,
+            completion_tokens=completion_tokens,
+        )
+
+
+def _version_key(version: object) -> tuple[int, int, str]:
+    """Order catalogue versions numerically, so that ``10`` beats ``9``.
+
+    The version is the ``:N`` suffix of a Variant id, and the SDK ships as a native
+    extension with no stubs to say whether it hands that over as a number or as the string
+    it was parsed from **[unverified]**. Under the string reading a plain comparison picks
+    version 9 over version 10 the day the catalogue reaches double digits, which is a
+    silently older build rather than a failure. Numeric first, with anything unparseable
+    sorted below and broken by its own text, so the answer is the same either way.
+    """
+    try:
+        return (1, int(str(version)), "")
+    except ValueError:
+        return (0, 0, str(version))
+
+
+def _forget_previous_turns(session: ChatSession) -> None:
+    """Take the session back to an empty conversation, so the next Frame stands alone."""
+    turns = session.turn_count
+    if turns:
+        session.undo_turns(turns)
 
 
 def _text_of(item: Item) -> str:
@@ -290,11 +457,3 @@ def _finish_reason(response: Response) -> FinishReason:
             return FinishReason.TRUNCATED
         case _:
             return FinishReason.OTHER
-
-
-def _runtime(runtime: Runtime | None) -> str | None:
-    if runtime is None:
-        return None
-    if runtime.device_type is None:
-        return runtime.execution_provider
-    return f"{runtime.device_type} / {runtime.execution_provider}"

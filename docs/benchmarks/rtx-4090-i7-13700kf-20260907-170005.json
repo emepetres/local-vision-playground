@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-09-07T17:00:05.246181+02:00",
+  "hardware_profile": "RTX 4090 + i7-13700KF",
+  "workload": {
+    "prompt": "Describe what you see in this image in two or three sentences.",
+    "max_output_tokens": 128,
+    "temperature": 0.0,
+    "frame": {
+      "sha256": "2e8dbaf486957506796f282282a0577a4093495edb837df7fb991dfca70af54f",
+      "bytes": 43881,
+      "width": 640,
+      "height": 360,
+      "codec": "jpeg",
+      "provenance": "D:\\dev\\local-vision-playground\\docs\\fixtures\\reference-frame.jpg"
+    }
+  },
+  "repetitions": 5,
+  "provider_registration": 4.674598900019191,
+  "variants": [
+    {
+      "order": 1,
+      "id": "qwen3-vl-2b-instruct-cuda-gpu:2",
+      "alias": "qwen3-vl-2b-instruct",
+      "execution_provider": "CUDAExecutionProvider",
+      "device_type": "GPU",
+      "loaded": true,
+      "reason": null,
+      "load": 2.818440500064753,
+      "runs": [
+        {
+          "inference": 1.7593145999126136,
+          "completion_tokens": 96,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 1.309335199999623,
+          "completion_tokens": 96,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 1.4065444000298157,
+          "completion_tokens": 96,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 1.316171000013128,
+          "completion_tokens": 96,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 1.3317863999400288,
+          "completion_tokens": 96,
+          "finish_reason": "complete"
+        }
+      ],
+      "observation": "This is a view of a home office or study area. A tall, light-colored wooden bookshelf is filled with books and various decorative items, including a small model of a robot and a few framed photos. In the foreground, a modern ergonomic office chair with a blue mesh back is partially visible. To the right, a white door is slightly ajar, leading into a hallway. On the wall above the bookshelf, a large, dark galaxy painting hangs on the wall."
+    },
+    {
+      "order": 2,
+      "id": "qwen3-vl-2b-instruct-generic-cpu:2",
+      "alias": "qwen3-vl-2b-instruct",
+      "execution_provider": "CPUExecutionProvider",
+      "device_type": "CPU",
+      "loaded": true,
+      "reason": null,
+      "load": 4.032604499952868,
+      "runs": [
+        {
+          "inference": 4.807578700012527,
+          "completion_tokens": 104,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 4.799466999946162,
+          "completion_tokens": 104,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 4.75634830002673,
+          "completion_tokens": 104,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 4.754094700096175,
+          "completion_tokens": 104,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 4.822473900043406,
+          "completion_tokens": 104,
+          "finish_reason": "complete"
+        }
+      ],
+      "observation": "This is a dimly lit room with a tall wooden bookshelf filled with books and various items on the left side. In the center, there is a blue and gray ergonomic office chair with a metal frame. On the right, a white door is slightly ajar, leading to another room. On the wall above the door, a painting of a galaxy hangs on the wall. The room has a few other items, including a small plant in a pot on the bookshelf and a few books on the lower shelves."
+    }
+  ],
+  "token_divergence": null
+}

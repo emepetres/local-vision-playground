@@ -1,14 +1,20 @@
-"""The ``observe`` command: one Observation, on demand.
+"""The two console entry points: ``observe`` and ``benchmark``.
 
-It composes capture and inference and owns nothing else. The camera, Foundry and the clock
-arrive as ports rather than being constructed here, which is the injection point the
-benchmarking feature will need — and what lets the tests drive the whole command with
-fakes.
+Each one composes capture, inference and reporting and owns nothing else. The camera,
+Foundry and the clock arrive as ports rather than being constructed here, which is what
+lets the tests drive either command end to end with fakes.
 
-The latency is not one number. Registering the Execution Providers is machine setup rather
-than part of any Observation; loading the model, preparing the Frame and running inference
-are three further costs of wildly different magnitude, and only the last is the latency of
-the Observation. Nothing is warmed up: the first run is the honest run.
+``observe`` answers *what do you see?* — one Frame, one Observation, and what each stage
+cost. The latency is not one number: registering the Execution Providers is machine set-up
+rather than part of any Observation; loading the model, preparing the Frame and running
+inference are three further costs of wildly different magnitude, and only the last is the
+latency of the Observation. Nothing is warmed up: the first run is the honest run.
+
+``benchmark`` answers *what does it cost?* — the same Workload against several Variants,
+several times each, printed as a table apiece and then written down — a sitting that took
+minutes should outlive the terminal it scrolled past in. Where ``observe`` will take a Frame
+from the live camera, ``benchmark`` refuses one: a different Frame per repetition is not a
+Workload.
 """
 
 from __future__ import annotations
@@ -19,13 +25,11 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO
 
-from tqdm import tqdm
-
+from vision.benchmark import REPETITIONS, Benchmark, measure, require_a_benchmark_run
 from vision.capture import (
     FRAMES_DIRECTORY,
-    WORKING_RESOLUTION,
+    REFERENCE_FRAME,
     Camera,
-    Frame,
     ImageFileCamera,
     LiveCamera,
     OpenFeed,
@@ -35,20 +39,22 @@ from vision.capture import (
 from vision.errors import VisionError
 from vision.inference import (
     DEFAULT_ALIAS,
-    MAX_OUTPUT_TOKENS,
+    DEFAULT_VARIANTS,
     PROMPT,
     FoundryLocal,
-    ModelIdentity,
     Observation,
     Timings,
-    VisionModel,
-    require_vision_task,
+    Workload,
 )
-
-Clock = Callable[[], float]
-"""Reads a monotonic number of seconds. Injected so latencies are deterministic in tests."""
-
-LABEL_WIDTH = 11
+from vision.record import Now, Recorded, benchmarks_directory, hardware_profile, record
+from vision.reporting import render_benchmark, render_observation, render_recorded
+from vision.startup import (
+    Clock,
+    accept_variant,
+    bring_up,
+    register_execution_providers,
+    timed,
+)
 
 
 def main(
@@ -62,10 +68,9 @@ def main(
     err: TextIO | None = None,
     frames_dir: Path | None = None,
 ) -> int:
-    """Run the command. Every port defaults to the real thing when it is not injected."""
-    args = _parser().parse_args(argv)
-    out = out if out is not None else sys.stdout
-    err = err if err is not None else sys.stderr
+    """Run ``observe``. Every port defaults to the real thing when it is not injected."""
+    args = _observe_parser().parse_args(argv)
+    out, err = _streams(out, err)
 
     if open_feed is None:
         open_feed = open_camera_feed
@@ -77,15 +82,10 @@ def main(
         default_camera, keep_in = _source(args, open_feed, frames_dir)
         if camera is None:
             camera = default_camera
-        if foundry is None:
-            foundry, close = _foundry()
-            owned.append(close)
-        if clock is None:
-            from time import perf_counter
+        foundry = _resolve_foundry(foundry, owned)
+        clock = _resolve_clock(clock)
 
-            clock = perf_counter
-
-        frame, observation, saved = _observe(
+        workload, observation, saved = _observe(
             camera=camera,
             foundry=foundry,
             clock=clock,
@@ -94,19 +94,127 @@ def main(
             keep_in=keep_in,
         )
     except Exception as error:
-        if args.debug:
-            raise
-        print(f"error: {_one_line(error)}", file=err)
-        return 1
+        return _fail(error, debug=args.debug, err=err)
     finally:
         for close in owned:
             close()
 
-    _render(observation, frame, saved, out=out)
+    print(render_observation(observation, workload, saved), file=out, end="")
     return 0
 
 
-def _parser() -> argparse.ArgumentParser:
+def benchmark_main(
+    argv: Sequence[str] | None = None,
+    *,
+    camera: Camera | None = None,
+    foundry: FoundryLocal | None = None,
+    clock: Clock | None = None,
+    now: Now | None = None,
+    out: TextIO | None = None,
+    err: TextIO | None = None,
+    benchmarks_dir: Path | None = None,
+) -> int:
+    """Run ``benchmark``. Several Variants, N Benchmark Runs each over one Workload."""
+    args = _benchmark_parser().parse_args(argv)
+    out, err = _streams(out, err)
+    variants = args.variants if args.variants else DEFAULT_VARIANTS
+    if benchmarks_dir is None:
+        benchmarks_dir = benchmarks_directory()
+
+    owned: list[Callable[[], None]] = []
+    try:
+        _refuse_a_live_camera(args)
+        require_a_benchmark_run(args.repetitions)
+        if camera is None:
+            camera = _benchmark_source(args.image)
+        foundry = _resolve_foundry(foundry, owned)
+        clock = _resolve_clock(clock)
+
+        # Read once, and reuse these exact bytes: re-reading the file per repetition would
+        # re-encode it, and a Workload is the Frame's bytes rather than its resolution.
+        workload = Workload(prompt=PROMPT, frame=camera.capture())
+        benchmark = measure(
+            foundry=foundry,
+            clock=clock,
+            variants=variants,
+            workload=workload,
+            repetitions=args.repetitions,
+            out=out,
+        )
+    except Exception as error:
+        return _fail(error, debug=args.debug, err=err)
+    finally:
+        for close in owned:
+            close()
+
+    # Printed before the Benchmark is written down, and deliberately: a directory that
+    # cannot be written to should cost an Operator a file, never the minutes of numbers
+    # already in hand.
+    print(render_benchmark(benchmark), file=out, end="")
+    try:
+        recorded = _record_benchmark(
+            benchmark,
+            declared=args.hardware,
+            now=_resolve_now(now),
+            directory=benchmarks_dir,
+        )
+    except Exception as error:
+        return _fail(error, debug=args.debug, err=err)
+
+    if recorded is not None:
+        print(render_recorded(record=recorded.json, document=recorded.markdown), file=out, end="")
+    return _benchmark_status(benchmark, err=err)
+
+
+def _record_benchmark(
+    benchmark: Benchmark,
+    *,
+    declared: str | None,
+    now: Now,
+    directory: Path,
+) -> Recorded | None:
+    """Write the Benchmark down, unless there was no Benchmark to write down.
+
+    A sitting in which every Variant failed to load is reported in full on screen — with
+    nothing measured, the reasons are the whole answer — but a Benchmark of only Unmeasured
+    Variants has nothing to report (CONTEXT.md, "Benchmark"), and keeping it would put a
+    file with no numbers in it beside the ones an Operator compares machines with.
+    """
+    if not benchmark.measured:
+        return None
+    try:
+        return record(
+            benchmark,
+            profile=hardware_profile(declared),
+            at=now(),
+            directory=directory,
+        )
+    except OSError as error:
+        raise VisionError(
+            f"the Benchmark was measured but could not be written to {directory} —"
+            f" its numbers are in the report above, and nothing else was lost. {error}"
+        ) from error
+
+
+def _benchmark_status(benchmark: Benchmark, *, err: TextIO) -> int:
+    """Zero for a Benchmark that measured something, whether or not it measured everything.
+
+    A partially successful Benchmark is a result: a Variant that will not load on this
+    machine is reported as the row it is, and reporting the whole sitting to the shell as a
+    failure would have a script throw away the numbers that did survive. Only a Benchmark in
+    which nothing at all could be measured is a failure — and the reasons are still printed,
+    because with no numbers to report they are the entire answer.
+    """
+    if benchmark.measured:
+        return 0
+    return _refuse(
+        "no Variant could be measured — every one of them is reported above with"
+        " the reason it was not",
+        err=err,
+    )
+
+
+def _observe_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="observe",
         description="Take one Frame, ask the local model what it sees, print the Observation.",
@@ -124,23 +232,201 @@ def _parser() -> argparse.ArgumentParser:
         metavar="N",
         help="index of the camera to open the Feed on (default: 0)",
     )
+    _add_pinned_variant(parser)
+    _add_debug(parser)
+    return parser
+
+
+def _benchmark_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="benchmark",
+        description=(
+            "Run the same Workload against several Variants, several times each,"
+            " and print what each one cost."
+        ),
+    )
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
+        "--image",
+        type=Path,
+        help=(
+            "measure this image file instead of the reference Frame"
+            f" ({REFERENCE_FRAME.name}, kept in the repository)"
+        ),
+    )
+    # Offered only so that an Operator arriving from `observe` is told why it cannot be
+    # used, rather than finding the flag missing and guessing.
+    source.add_argument(
+        "--camera",
+        type=int,
+        default=None,
+        metavar="N",
+        help="refused: a Feed gives a different Frame each repetition, which is not a Workload",
+    )
+    parser.add_argument(
+        "--repetitions",
+        type=int,
+        default=REPETITIONS,
+        metavar="N",
+        help=(
+            "how many Benchmark Runs to take against each Variant"
+            f" (default: {REPETITIONS}; the first is reported apart from the rest)"
+        ),
+    )
+    parser.add_argument(
+        "--hardware",
+        metavar="TEXT",
+        default=None,
+        help=(
+            "describe the machine these numbers were taken on, in words"
+            ' ("RTX 4090 + i7-13700KF") — it names the persisted record and is what a'
+            " reader six months from now has to go on. Default: what the standard library"
+            " reports about this machine, which tells two machines apart and no more"
+        ),
+    )
+    _add_variants(parser)
+    _add_debug(parser)
+    return parser
+
+
+def _add_variants(parser: argparse.ArgumentParser) -> None:
+    """The Variants to measure, replacing the default pair rather than adding to it.
+
+    Repeatable, and repeating it is the whole point: naming two Variants of two different
+    aliases compares two model sizes on fixed hardware, and naming an NPU one compares an
+    Execution Provider this catalogue does not offer yet — neither needing a change here.
+    Replacing rather than extending is what makes that possible: a flag that only added to
+    the default pair could never measure anything without the CUDA-GPU Variant in it.
+    """
+    parser.add_argument(
+        "--variant",
+        metavar="ID",
+        dest="variants",
+        action="append",
+        help=(
+            "measure this Variant instead of the default pair, and repeat the flag to"
+            " measure several — an alias (qwen3-vl-2b-instruct), a variant name, whose"
+            " version the catalogue picks (qwen3-vl-2b-instruct-generic-cpu), or a variant"
+            " id, which pins the version too (qwen3-vl-2b-instruct-generic-cpu:2)."
+            f" Default: {', '.join(DEFAULT_VARIANTS)}"
+        ),
+    )
+
+
+def _add_pinned_variant(parser: argparse.ArgumentParser) -> None:
+    """The single Variant ``observe`` runs against. ``benchmark`` takes a list instead."""
     parser.add_argument(
         "--variant",
         metavar="ID",
         dest="model",
         default=DEFAULT_ALIAS,
         help=(
-            "pin this exact model variant, version suffix included, and with it the"
-            " Execution Provider the work runs on (default: resolve the alias"
-            f" {DEFAULT_ALIAS}, letting Foundry Local pick the hardware)"
+            "pin the model variant, and with it the Execution Provider the work runs on"
+            " — a variant name, whose version the catalogue picks"
+            " (qwen3-vl-2b-instruct-generic-cpu), or a variant id, which pins the version"
+            f" too (…-generic-cpu:2). Default: resolve the alias {DEFAULT_ALIAS},"
+            " letting Foundry Local pick the hardware"
         ),
     )
+
+
+def _add_debug(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--debug",
         action="store_true",
         help="re-raise failures with their full traceback",
     )
-    return parser
+
+
+def _refuse_a_live_camera(args: argparse.Namespace) -> None:
+    """A Feed is not a Workload's Frame source, and saying so is better than dropping it.
+
+    Every Benchmark Run has to see the same bytes (CONTEXT.md, "Workload"), and a Feed
+    gives a different Frame each time — so the numbers would look like a hardware result
+    while comparing different work.
+    """
+    if args.camera is None:
+        return
+    raise VisionError(
+        f"camera {args.camera} cannot be a Benchmark's Frame source — every Benchmark Run"
+        " has to see the same bytes, and a Feed gives a different Frame each time; measure"
+        " the reference Frame by leaving --camera off, or pass --image <path>"
+    )
+
+
+def _benchmark_source(image: Path | None) -> Camera:
+    """The image file named, or the reference Frame — which is only in a source checkout.
+
+    Falling through to "there is no image at <path>" would point an Operator at a flag
+    they never passed, so the reference Frame's own absence gets its own message.
+    """
+    if image is not None:
+        return ImageFileCamera(image)
+    if not REFERENCE_FRAME.exists():
+        raise VisionError(
+            f"the reference Frame is not at {REFERENCE_FRAME} — it is kept in the"
+            " repository and found relative to the installed package, so it is only there"
+            " when the project is installed from a source checkout (which is what"
+            " `uv run` gives you); pass --image <path> to measure a Frame of your own"
+        )
+    return ImageFileCamera(REFERENCE_FRAME)
+
+
+def _streams(out: TextIO | None, err: TextIO | None) -> tuple[TextIO, TextIO]:
+    return (out if out is not None else sys.stdout, err if err is not None else sys.stderr)
+
+
+def _resolve_foundry(foundry: FoundryLocal | None, owned: list[Callable[[], None]]) -> FoundryLocal:
+    """The real Foundry Local when none was injected, with its close registered."""
+    if foundry is not None:
+        return foundry
+
+    from vision.inference import InProcessFoundryLocal
+
+    real = InProcessFoundryLocal()
+    owned.append(real.close)
+    return real
+
+
+def _resolve_clock(clock: Clock | None) -> Clock:
+    if clock is not None:
+        return clock
+
+    from time import perf_counter
+
+    return perf_counter
+
+
+def _resolve_now(now: Now | None) -> Now:
+    """The wall clock, which is a different port from the one the latencies are taken with.
+
+    ``perf_counter`` is monotonic and says nothing about what day it is; a record names the
+    instant it was taken at, and it is a local instant carrying its offset — an Operator
+    recognises the afternoon they ran it, and a reader elsewhere can still place it.
+    """
+    if now is not None:
+        return now
+
+    from datetime import datetime
+
+    return lambda: datetime.now().astimezone()
+
+
+def _fail(error: Exception, *, debug: bool, err: TextIO) -> int:
+    if debug:
+        raise error
+    return _refuse(_one_line(error), err=err)
+
+
+def _refuse(message: str, *, err: TextIO) -> int:
+    """Say why the command is failing, in the one shape every failure is written in.
+
+    Both callers go through here so that the ``error:`` prefix is written down once: a
+    command whose failures announce themselves two different ways is one an Operator cannot
+    grep, and the exit status belongs with the line that explains it.
+    """
+    print(f"error: {message}", file=err)
+    return 1
 
 
 def _source(
@@ -157,13 +443,6 @@ def _source(
     return LiveCamera(args.camera, open_feed), frames_dir
 
 
-def _foundry() -> tuple[FoundryLocal, Callable[[], None]]:
-    from vision.inference import InProcessFoundryLocal
-
-    foundry = InProcessFoundryLocal()
-    return foundry, foundry.close
-
-
 def _observe(
     *,
     camera: Camera,
@@ -172,175 +451,29 @@ def _observe(
     model_name: str,
     out: TextIO,
     keep_in: Path | None,
-) -> tuple[Frame, Observation, Path | None]:
-    # Refusing a model that cannot see a Frame comes first, ahead of every download this
-    # command can start — the Execution Providers are fetched on a first run too, and
-    # waiting for those in order to be told the model was never a vision-language model
-    # is the same failure the refusal exists to prevent.
-    model = foundry.resolve(model_name)
-    identity = model.identity
-    require_vision_task(identity)
+) -> tuple[Workload, Observation, Path | None]:
+    # Accepted before the Execution Providers are registered, and so before anything at
+    # all is downloaded: a first run fetches the providers too, and waiting for those to
+    # be told the model was never a vision-language model is the failure the refusal
+    # exists to prevent.
+    model = accept_variant(foundry, model_name)
+    providers = register_execution_providers(foundry, clock=clock, out=out)
+    ready = bring_up(model, clock=clock, out=out)
 
-    providers = _register_execution_providers(foundry, clock=clock, out=out)
-    _download(model, clock=clock, out=out)
-
-    _, load = _timed(clock, lambda: _load(model))
-    frame, capture = _timed(clock, camera.capture)
+    frame, capture = timed(clock, camera.capture)
     # Kept before inference runs: a Frame worth explaining is worth keeping even when the
     # Observation that would have prompted the question never arrives.
     saved = save_frame(frame, keep_in) if keep_in is not None else None
-    raw, inference = _timed(clock, lambda: model.observe(frame, PROMPT))
+    workload = Workload(prompt=PROMPT, frame=frame)
+    raw, inference = timed(clock, lambda: ready.model.observe(workload))
 
     observation = Observation(
         text=raw.text,
-        model=identity,
+        model=ready.identity,
         finish_reason=raw.finish_reason,
-        timings=Timings(providers=providers, load=load, capture=capture, inference=inference),
+        timings=Timings(providers=providers, load=ready.load, capture=capture, inference=inference),
     )
-    return frame, observation, saved
-
-
-def _register_execution_providers(
-    foundry: FoundryLocal,
-    *,
-    clock: Clock,
-    out: TextIO,
-) -> float:
-    """Register the Execution Providers, timing and announcing what the port reports.
-
-    Timed apart from the three latencies because it is not one of them: it is paid once
-    per process, before a model is loaded. Why it is not optional is on the port.
-    """
-    announced = False
-
-    def announce(line: str) -> None:
-        nonlocal announced
-        announced = True
-        print(line, file=out, flush=True)
-
-    _, seconds = _timed(clock, lambda: foundry.register_execution_providers(announce))
-    if announced:
-        print(file=out)
-    return seconds
-
-
-def _load(model: VisionModel) -> None:
-    """Load the model, turning a native load failure into something to act on.
-
-    A variant that will not load is not a rare accident: Foundry Local picks the hardware
-    when the model is named by alias, and it can pick a variant this machine cannot run —
-    including one whose ONNX graph is invalid as published. The only lever an Operator has
-    is to name a different variant (see docs/stack.md, Constraint 3), so the message says
-    that rather than leaving them with a native stack.
-    """
-    try:
-        model.load()
-    except VisionError:
-        raise
-    except Exception as error:
-        identity = model.identity
-        on = f" on {identity.runtime}" if identity.runtime is not None else ""
-        raise VisionError(
-            f"{identity.variant} would not load{on} — pin a different variant with"
-            " --variant (run `foundry model list`; a -generic-cpu variant is the safe one)."
-            f" Foundry Local said: {error}"
-        ) from error
-
-
-def _download(model: VisionModel, *, clock: Clock, out: TextIO) -> None:
-    """Fetch the weights on first run. Its cost is reported outside the three latencies."""
-    if model.is_cached:
-        return
-
-    # Foundry Local reports progress as a percentage, and calls back far more often than
-    # a screen can usefully be redrawn; tqdm does the rate limiting, and takes itself off
-    # when nothing is watching (`disable=None` means "disable when this is not a TTY"),
-    # which is what keeps the rendered output assertable in the tests.
-    with tqdm(
-        total=100,
-        desc=f"Downloading {model.identity.variant}",
-        unit="%",
-        bar_format="{desc} |{bar}| {n:.0f}% [{elapsed}<{remaining}]",
-        file=out,
-        disable=None,
-    ) as bar:
-
-        def on_progress(percent: float) -> None:
-            bar.update(max(0.0, min(percent, 100.0) - bar.n))
-
-        _, seconds = _timed(clock, lambda: model.download(on_progress))
-
-    print(f"Downloaded in {_format_seconds(seconds)}\n", file=out, flush=True)
-
-
-def _timed[T](clock: Clock, work: Callable[[], T]) -> tuple[T, float]:
-    start = clock()
-    result = work()
-    return result, clock() - start
-
-
-def _render(observation: Observation, frame: Frame, saved: Path | None, *, out: TextIO) -> None:
-    for label, value in _report(observation, frame, saved):
-        print(f"{label:<{LABEL_WIDTH}}{value}", file=out)
-    print(file=out)
-    print(observation.text, file=out)
-    if observation.truncated:
-        print(file=out)
-        print(
-            f"(truncated: the Observation hit the {MAX_OUTPUT_TOKENS}-token output limit)", file=out
-        )
-
-
-def _report(observation: Observation, frame: Frame, saved: Path | None) -> list[tuple[str, str]]:
-    timings = observation.timings
-    rows = [
-        ("Model", _format_model(observation.model)),
-        ("Frame", _format_frame(frame)),
-    ]
-    if saved is not None:
-        rows.append(("Saved", str(saved)))
-    rows += [
-        ("Providers", _format_seconds(timings.providers)),
-        ("Load", _format_seconds(timings.load)),
-        ("Capture", _format_capture(timings.capture, frame)),
-        ("Inference", _format_seconds(timings.inference)),
-    ]
-    return rows
-
-
-def _format_capture(seconds: float, frame: Frame) -> str:
-    """Name the settling discards where their cost is, rather than beside it.
-
-    They are not overhead around the capture: they are the capture, and the number the
-    Operator is shown is the wait they actually sat through.
-    """
-    if frame.settling_discards == 0:
-        return _format_seconds(seconds)
-    return (
-        f"{_format_seconds(seconds)} (including {frame.settling_discards} Frames discarded"
-        " while the Feed settled)"
-    )
-
-
-def _format_model(identity: ModelIdentity) -> str:
-    detail = f"alias {identity.alias}"
-    if identity.runtime is not None:
-        detail = f"{detail}, {identity.runtime}"
-    return f"{identity.variant} ({detail})"
-
-
-def _format_frame(frame: Frame) -> str:
-    """Name the working resolution as well as this Frame's own.
-
-    They only coincide for a 4:3 Frame — a 16:9 one fits the same box at 640x360 — and it
-    is the working resolution that fixes the workload.
-    """
-    working = "x".join(str(edge) for edge in WORKING_RESOLUTION)
-    return f"{frame.width}x{frame.height} {frame.codec}, fit to {working}, from {frame.provenance}"
-
-
-def _format_seconds(seconds: float) -> str:
-    return f"{seconds:.3f} s"
+    return workload, observation, saved
 
 
 def _one_line(error: Exception) -> str:

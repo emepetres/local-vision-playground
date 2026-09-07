@@ -79,10 +79,15 @@ def run(
     camera: FakeCamera | None = None,
     readings: tuple[float, ...] = CACHED_READINGS,
     setup_lines: tuple[str, ...] = (),
+    foundry: FakeFoundry | None = None,
 ) -> Run:
-    model = model if model is not None else FakeVisionModel(make_identity(), make_observation())
+    """One invocation. The Foundry resolves the one model under every name unless a test
+    hands one over that answers to particular names.
+    """
+    model = model if model is not None else FakeVisionModel(make_identity(), [make_observation()])
     camera = camera if camera is not None else FakeCamera([make_frame()])
-    foundry = FakeFoundry(model, setup_lines=setup_lines)
+    if foundry is None:
+        foundry = FakeFoundry.resolving_everything_to(model, setup_lines=setup_lines)
     out, err = io.StringIO(), io.StringIO()
     code = main(argv, camera=camera, foundry=foundry, clock=FakeClock(readings), out=out, err=err)
     return Run(code, out.getvalue(), err.getvalue(), foundry, model)
@@ -99,8 +104,8 @@ def run_on_file(path: Path) -> Run:
     Rescaling and encoding are the two things the spec asks be exercised for real rather
     than faked, and this is the seam that does it without reaching past the command.
     """
-    model = FakeVisionModel(make_identity(), make_observation())
-    foundry = FakeFoundry(model)
+    model = FakeVisionModel(make_identity(), [make_observation()])
+    foundry = FakeFoundry.resolving_everything_to(model)
     out, err = io.StringIO(), io.StringIO()
     code = main(
         ["--image", str(path)],
@@ -159,7 +164,7 @@ def test_encodes_as_jpeg_whatever_went_in(tmp_path: Path) -> None:
 
     result = run_on_file(source)
 
-    (observed, _) = result.model.observed[0]
+    observed = result.model.observed[0].frame
     with Image.open(io.BytesIO(observed.data)) as decoded:
         assert decoded.format == "JPEG"
         assert decoded.size == (640, 480)
@@ -182,7 +187,7 @@ def test_says_what_to_do_when_the_file_is_not_an_image(tmp_path: Path) -> None:
 def test_reports_the_download_outside_the_three_latencies() -> None:
     model = FakeVisionModel(
         make_identity(),
-        make_observation(),
+        [make_observation()],
         is_cached=False,
         # Foundry Local calls back far more often than a screen can be redrawn, and its
         # last reading is not guaranteed to be exactly 100.
@@ -202,8 +207,12 @@ def test_reports_the_download_outside_the_three_latencies() -> None:
 
 def test_says_what_to_do_when_a_variant_will_not_load() -> None:
     model = FakeVisionModel(
-        make_identity(variant="qwen3.5-0.8b-cuda-gpu:3", runtime="GPU / CUDAExecutionProvider"),
-        make_observation(),
+        make_identity(
+            variant="qwen3.5-0.8b-cuda-gpu:3",
+            execution_provider="CUDAExecutionProvider",
+            device_type="GPU",
+        ),
+        [make_observation()],
         load_error=RuntimeError("This is an invalid model. Error: Duplicate definition of name"),
     )
     result = run(["--image", "a.jpg"], model=model)
@@ -222,9 +231,11 @@ def test_says_what_to_do_when_a_variant_will_not_load() -> None:
 def test_labels_an_observation_cut_short_by_the_output_limit_as_truncated() -> None:
     model = FakeVisionModel(
         make_identity(),
-        make_observation(
-            "A wooden desk with a laptop, a coffee mug and an", FinishReason.TRUNCATED
-        ),
+        [
+            make_observation(
+                "A wooden desk with a laptop, a coffee mug and an", FinishReason.TRUNCATED
+            )
+        ],
     )
     result = run(["--image", "docs/fixtures/reference-frame.jpg"], model=model)
 
@@ -238,15 +249,24 @@ def test_labels_an_observation_cut_short_by_the_output_limit_as_truncated() -> N
     )
 
 
-def test_sends_the_fixed_prompt_and_the_captured_frame_to_the_model() -> None:
+def test_sends_one_workload_carrying_the_fixed_prompt_and_the_captured_frame() -> None:
     camera = FakeCamera([make_frame(provenance="a.jpg")])
     result = run(["--image", "a.jpg"], camera=camera)
 
     assert camera.captures == 1
     assert result.model.loaded
-    (observed_frame, prompt) = result.model.observed[0]
-    assert observed_frame.provenance == "a.jpg"
-    assert prompt == "Describe what you see in this image in two or three sentences."
+    (workload,) = result.model.observed
+    assert workload.frame.provenance == "a.jpg"
+    assert workload.prompt == "Describe what you see in this image in two or three sentences."
+
+
+def test_fixes_the_generation_limits_on_the_workload_it_sends() -> None:
+    """The limits an Observation was generated under travel with it, for the Benchmark."""
+    result = run(["--image", "a.jpg"])
+
+    (workload,) = result.model.observed
+    assert workload.max_output_tokens == 128
+    assert workload.temperature == 0.0
 
 
 def test_resolves_the_model_by_alias_by_default() -> None:
@@ -256,15 +276,27 @@ def test_resolves_the_model_by_alias_by_default() -> None:
 
 
 def test_pins_a_variant_and_reports_the_one_that_answered() -> None:
-    model = FakeVisionModel(
+    """Driven through a Foundry that has both Variants on it, as a Benchmark's will be:
+    pinning one has to reach the one that was pinned and not the other.
+    """
+    cpu = FakeVisionModel(
         make_identity(
-            variant="qwen3-vl-2b-instruct-generic-cpu:2", runtime="CPU / CPUExecutionProvider"
+            variant="qwen3-vl-2b-instruct-generic-cpu:2",
+            execution_provider="CPUExecutionProvider",
+            device_type="CPU",
         ),
-        make_observation(),
+        [make_observation()],
     )
+    gpu = FakeVisionModel(make_identity(), [make_observation()])
     result = run(
-        ["--image", "a.jpg", "--variant", "qwen3-vl-2b-instruct-generic-cpu:2"], model=model
+        ["--image", "a.jpg", "--variant", "qwen3-vl-2b-instruct-generic-cpu:2"],
+        model=cpu,
+        foundry=FakeFoundry(
+            {"qwen3-vl-2b-instruct-generic-cpu:2": cpu, "qwen3-vl-2b-instruct": gpu}
+        ),
     )
+
+    assert gpu.observed == []
 
     assert result.foundry.resolved == ["qwen3-vl-2b-instruct-generic-cpu:2"]
     assert (
@@ -297,7 +329,7 @@ def test_refuses_a_model_that_cannot_see_a_frame_before_anything_is_downloaded()
     # a first run fetches those too — so the refusal has to land ahead of both.
     model = FakeVisionModel(
         make_identity(task="chat", variant="qwen3.5-2b-text-generic-cpu:2"),
-        make_observation(),
+        [make_observation()],
         is_cached=False,
     )
     result = run(["--image", "a.jpg"], model=model)
@@ -319,7 +351,7 @@ def test_says_a_model_declaring_no_task_is_the_catalogues_gap_not_the_commands()
     # Operator from reading the refusal as a fault of this command.
     model = FakeVisionModel(
         make_identity(task=None, variant="gemma-4-e2b-it-generic-cpu:1"),
-        make_observation(),
+        [make_observation()],
         is_cached=False,
     )
     result = run(["--image", "a.jpg"], model=model)
@@ -340,7 +372,9 @@ def test_reports_a_missing_image_in_one_line_and_exits_non_zero(tmp_path: Path) 
     out, err = io.StringIO(), io.StringIO()
     code = main(
         ["--image", str(missing)],
-        foundry=FakeFoundry(FakeVisionModel(make_identity(), make_observation())),
+        foundry=FakeFoundry.resolving_everything_to(
+            FakeVisionModel(make_identity(), [make_observation()])
+        ),
         clock=FakeClock(CACHED_READINGS),
         out=out,
         err=err,
@@ -354,7 +388,7 @@ def test_reports_a_missing_image_in_one_line_and_exits_non_zero(tmp_path: Path) 
 
 
 def test_debug_restores_the_traceback() -> None:
-    model = FakeVisionModel(make_identity(task="chat"), make_observation())
+    model = FakeVisionModel(make_identity(task="chat"), [make_observation()])
     with pytest.raises(Exception, match="cannot see a Frame"):
         run(["--image", "a.jpg", "--debug"], model=model)
 
@@ -378,12 +412,12 @@ def run_live(
 ) -> LiveRun:
     feeds = feeds if feeds is not None else {0: settling_feed()}
     cameras = FakeCameras(feeds)
-    model = FakeVisionModel(make_identity(), make_observation())
+    model = FakeVisionModel(make_identity(), [make_observation()])
     out, err = io.StringIO(), io.StringIO()
     code = main(
         argv,
         open_feed=cameras,
-        foundry=FakeFoundry(model),
+        foundry=FakeFoundry.resolving_everything_to(model),
         clock=FakeClock(CACHED_READINGS),
         out=out,
         err=err,
@@ -415,7 +449,7 @@ def test_discards_the_settling_frames_and_observes_the_next_one(tmp_path: Path) 
     result = run_live([], tmp_path, feeds={0: feed})
 
     assert feed.reads == SETTLING_FRAMES + 1
-    (observed, _) = result.model.observed[0]
+    observed = result.model.observed[0].frame
     assert colour_of(observed.data) == SETTLED_COLOUR
 
 
@@ -433,7 +467,7 @@ def test_keeps_the_camera_frame_and_says_where(tmp_path: Path) -> None:
 
     (saved,) = sorted(tmp_path.glob("*.jpg"))
     assert f"Saved      {saved}\n" in result.out
-    (observed, _) = result.model.observed[0]
+    observed = result.model.observed[0].frame
     assert saved.read_bytes() == observed.data
 
 
@@ -442,7 +476,9 @@ def test_does_not_keep_a_frame_that_came_from_an_image_file(tmp_path: Path) -> N
     main(
         ["--image", "a.jpg"],
         camera=FakeCamera([make_frame()]),
-        foundry=FakeFoundry(FakeVisionModel(make_identity(), make_observation())),
+        foundry=FakeFoundry.resolving_everything_to(
+            FakeVisionModel(make_identity(), [make_observation()])
+        ),
         clock=FakeClock(CACHED_READINGS),
         out=out,
         err=err,

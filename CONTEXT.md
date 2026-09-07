@@ -9,7 +9,9 @@ A demo and teaching playground for multimodal vision running entirely on the ope
 **Feed**:
 The continuous stream of images coming from a camera attached to the local machine. A Feed
 does not yield usable Frames the instant it opens — the camera needs a moment to settle
-before what it reports is what is actually in front of it.
+before what it reports is what is actually in front of it. Nor does it wait: it goes on
+producing images while nothing is reading it, so a reader that comes back after a pause is
+handed the past until it has discarded the [[Stale Frame]]s standing between it and now.
 _Avoid_: stream, video, source, input
 
 **Frame**:
@@ -17,6 +19,14 @@ A single still image the rest of the system reasons over — normally taken from
 one point in time, though an image file on disk is a Frame too. The Feed is the canonical
 source of Frames, not the only one. The unit of work everything downstream operates on.
 _Avoid_: snapshot, capture, still, photo
+
+**Stale Frame**:
+An image the Feed produced while nobody was reading it, discarded unobserved so that the
+Frame observed is the present. Not the same thing as the Frames a Feed discards while it
+settles: those say *the camera is not ready yet*, a Stale Frame says *what you are being
+handed is no longer now*. The same read, a different fact — which is why a [[Watch]] counts
+them apart.
+_Avoid_: dropped frame, skipped frame, backlog, buffered frame
 
 ### Understanding
 
@@ -39,6 +49,24 @@ _Avoid_: object detection, bounding boxes, labels, classification
 A natural-language question an Operator asks about a Frame, answered from that Frame alone.
 _Avoid_: prompt, query, ask
 
+### Watching
+
+**Watch**:
+A continuous run of Observations over a live [[Feed]], produced at a requested [[Cadence]]
+for as long as the Operator lets it run. A Watch produces Observations in series; it does
+not relate them to one another. Noticing that something changed between two of them is a
+[[Trigger]], not a Watch — every Observation a Watch produces stands on its own Frame, as
+any Observation does.
+_Avoid_: loop, monitor, stream, session, live mode
+
+**Cadence**:
+How often a Watch is asked to produce an Observation. A request, never a guarantee: when
+inference takes longer than the Cadence a Watch does not fall behind by queuing, it skips
+the moments it has already passed and observes the present. Cadence is therefore the one
+number that makes a machine's shortfall countable — what it costs to be too slow is a
+count of skipped Cadences, not a growing delay.
+_Avoid_: interval, rate, fps, frequency, period
+
 ### Runtime
 
 **Foundry Local**:
@@ -60,6 +88,13 @@ One build of a model for one Execution Provider, version suffix included —
 `qwen3-vl-2b-instruct-generic-cpu:2`. Naming a Variant instead of an Alias is the only
 lever there is over which hardware the work runs on; nothing selects an Execution
 Provider directly.
+
+A Variant is *identified* by its **Variant id**, which carries the version, and *named* by
+its **Variant name**, which does not — `qwen3-vl-2b-instruct-generic-cpu`. The name is the
+Variant across every version of it, so naming one leaves the version to the catalogue,
+exactly as an Alias leaves the Execution Provider to Foundry Local. That is what lets a
+Variant be named in source without a version being written there with it — and it is why
+the id that was actually resolved is always reported.
 _Avoid_: build, flavour, SKU, model version
 
 **Local-First**:
@@ -79,10 +114,35 @@ _Avoid_: task, job, prompt, request
 One measured execution of one Workload against one model on one Execution Provider.
 _Avoid_: test, trial, profile, benchmark
 
+**Measured Variant**:
+Every Benchmark Run taken against one [[Variant]] within one Benchmark, what loading it
+cost, and which turn it took. The turn is part of it, not bookkeeping around it: a Variant
+measured second was measured on a machine that had just had another model taken off it,
+and reversing the order is the only way to check whether that mattered.
+_Avoid_: result, entry, row, per-variant benchmark
+
+**Unmeasured Variant**:
+A [[Variant]] that never got onto the hardware within a Benchmark, and the reason it did
+not. It is part of the Benchmark, not an error that ended one: a published Variant that
+will not load on this machine is exactly the sort of thing an Operator runs a Benchmark to
+find out, and the other Variants' numbers are worth more than the traceback. A Benchmark
+that measured nothing at all is still a failure — a Benchmark of only Unmeasured Variants
+has no result to report.
+_Avoid_: failed variant, error, skipped variant, crash
+
+**Token Divergence**:
+Two [[Measured Variant]]s within one Benchmark that generated materially different amounts
+of text, and therefore did materially different amounts of work. It is a property of the
+Benchmark rather than of either Variant — it is the *comparison* it invalidates, not the
+numbers, which are each true of the Variant that produced them. A Benchmark carries its
+Token Divergence so that a reader cannot be handed the latencies without it.
+_Avoid_: warning, token mismatch, unfair comparison, drift
+
 **Benchmark**:
 The set of comparable Benchmark Runs carried out in one sitting — every model, every
-repetition — and the unit that is persisted and read back later. A Benchmark Run is one
-number; a Benchmark is what is worth keeping.
+repetition — and the unit that is persisted and read back later. One Workload for the
+whole sitting is what makes its Measured Variants comparable at all. A Benchmark Run is
+one number; a Benchmark is what is worth keeping.
 _Avoid_: run, suite, comparison, benchmark run
 
 **Hardware Profile**:

@@ -16,6 +16,7 @@ dependencies = [
 [project.scripts]
 observe = "vision.cli:main"
 benchmark = "vision.cli:benchmark_main"
+watch = "vision.cli:watch_main"
 
 [build-system]
 requires = ["uv_build>=0.9.24,<0.10.0"]

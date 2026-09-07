@@ -1,8 +1,10 @@
-"""How a whole report is laid out — the ``observe`` block and the ``benchmark`` table.
+"""How a whole report is laid out — the ``observe`` block, the ``benchmark`` table, and
+the append-only series a ``watch`` writes.
 
 Rendering is kept out of the modules that measure, so that a report can be exercised
 without a model, a camera or a clock: everything here takes a finished value and returns
-text. Nothing in this module reads the clock or touches a stream.
+text. Nothing in this module reads the clock or prints anything — a Watch, which prints
+as it goes, is handed each finished Observation and asks for its line here.
 
 A Benchmark is laid out twice: once for the terminal an Operator is watching, and once as
 the Markdown that is persisted beside the record. They are two renderings rather than two
@@ -34,9 +36,23 @@ from vision.formatting import (
     format_tokens_per_second,
 )
 from vision.inference import Observation, Workload
+from vision.watch import (
+    FailedInference,
+    Produced,
+    Shortfall,
+    Watch,
+    WatchedObservation,
+    WatchStart,
+)
 
 OBSERVE_LABEL_WIDTH = 11
 BENCHMARK_LABEL_WIDTH = 13
+WATCH_LABEL_WIDTH = OBSERVE_LABEL_WIDTH
+"""The Watch header is laid out to the ``observe`` block's label column, deliberately.
+
+They report the same facts about the same run-up — the Variant, the Feed, the set-up and
+the load — and an Operator moving between the two commands should be reading one shape.
+"""
 
 ORDINAL_SUFFIXES = {1: "st", 2: "nd", 3: "rd"}
 """Enough of the rule for the handful of Variants one sitting compares."""
@@ -82,9 +98,190 @@ def render_observation(observation: Observation, workload: Workload, saved: Path
     lines = _labelled(_observation_rows(observation, workload.frame, saved), OBSERVE_LABEL_WIDTH)
     lines += ["", observation.text]
     if observation.truncated:
-        limit = workload.max_output_tokens
-        lines += ["", f"(truncated: the Observation hit the {limit}-token output limit)"]
+        limit = _output_limit(workload.max_output_tokens)
+        lines += ["", f"(truncated: the Observation hit {limit})"]
     return "\n".join(lines) + "\n"
+
+
+def render_watch_header(start: WatchStart) -> str:
+    """What a Watch was asked for and what it paid to begin, written once above the series.
+
+    The settling wait and the Frames it discarded are here rather than on any Observation's
+    line: they were paid once, when the Feed was opened, and together they are the whole of
+    the delay before the first Observation arrives. An Operator not told about them reads
+    that wait as the model being slow. The discards are also not Stale Frames — the same
+    read, a different fact (CONTEXT.md, "Stale Frame") — which is why nothing else in this
+    report says "discarded" without saying what was discarded and when.
+    """
+    rows = [
+        ("Model", format_model(start.model)),
+        ("Cadence", _cadence(start.cadence)),
+        ("Feed", _settled(start)),
+        ("Providers", format_seconds(start.providers)),
+        ("Load", format_seconds(start.load)),
+    ]
+    return "\n".join(_labelled(rows, WATCH_LABEL_WIDTH)) + "\n"
+
+
+def render_watch_line(produced: Produced) -> str:
+    """What one Cadence of a Watch came to, whichever of the two things it came to.
+
+    One entry point because both are written down in the order the Watch reached them: an
+    Operator following a column of Observations reads the turn numbers, and a failure
+    reported anywhere else would leave a gap in them with nothing to explain it.
+    """
+    if isinstance(produced, FailedInference):
+        return render_watch_failure(produced)
+    return render_watch_observation(produced)
+
+
+def render_watch_failure(failed: FailedInference) -> str:
+    """A Cadence the model did not answer at: its turn, and the reason, and no more.
+
+    One line rather than a block, because there is no Observation under it — and no advice
+    about what to do, because there is nothing to do: the Watch has already gone on to the
+    next Cadence by the time this is read, and a line telling an Operator so on every
+    failure would be furniture.
+
+    What it cost to reach this Cadence is said here on the terms it is said on an
+    Observation's line: the instants were passed and the Stale Frames were discarded before
+    the model was asked, so they are as true of a Cadence that failed as of one that did
+    not, and leaving them out would have a Watch under-report the shortfall precisely where
+    it was worst.
+    """
+    clauses = [f"failed — {failed.reason}"]
+    if failed.shortfall.late:
+        clauses.append(_lateness(failed.shortfall))
+    return f"\n#{failed.order}  {', '.join(clauses)}\n"
+
+
+def render_watch_observation(observed: WatchedObservation) -> str:
+    """One Observation of a Watch: a short line of facts, and then what the model said.
+
+    Append-only, and one block per Observation rather than a panel redrawn in place: a
+    panel loses the history an audience is following and breaks the moment the output is
+    redirected. The line leads with the Observation's turn, so that a series an audience
+    has been watching for a minute can still be counted.
+    """
+    return f"\n#{observed.order}  {', '.join(_observation_clauses(observed))}\n{observed.text}\n"
+
+
+def render_watch_summary(watch: Watch) -> str:
+    """How many Observations a Watch produced and the inference it sustained.
+
+    The lesson the Operator leaves with, which is why it is a sentence rather than a table:
+    the rate this machine actually managed. A Watch that produced nothing has no median to
+    report, and says that rather than writing a zero that would read as an instant answer.
+
+    The skipped Cadences are the other half of that rate, and they are here in total
+    because a total is the one thing the per-Observation lines cannot be read as: a Watch
+    left running through a demo has scrolled by the time it ends. A Watch that kept its
+    Cadence says nothing about them — a "0 Cadences skipped" on every timely run would
+    make the number furniture rather than news. The failed Observations are here on the
+    same terms, and for the further reason that they are what the median is *not* over:
+    a Watch that reported six Observations having attempted ten would be overstating the
+    rate it sustained.
+
+    Printed whatever ended the Watch, a Feed that died included: the Observations that were
+    produced are not lost with the failure, and why the Watch ended is said beside this
+    rather than in place of it.
+    """
+    median = watch.median_inference
+    if median is None:
+        return f"\n{_nothing_produced(watch)}\n"
+    sentence = (
+        f"{_counted(len(watch.observations), 'Observation')},"
+        f" median inference {format_seconds(median)}"
+    )
+    if watch.skipped_cadences:
+        sentence += f", {_counted(watch.skipped_cadences, 'Cadence')} skipped"
+    if watch.failures:
+        sentence += f", {len(watch.failures)} failed"
+    return f"\n{sentence}\n"
+
+
+def _nothing_produced(watch: Watch) -> str:
+    """A Watch with no median to report, saying which of the two nothings it is.
+
+    A zero would read as an instant answer, and "the Watch ended before the model produced
+    one" would be true of a Watch whose every inference failed while saying nothing about
+    the reasons standing above it.
+    """
+    if watch.failures:
+        return f"No Observations — {len(watch.failures)} failed"
+    return "No Observations — the Watch ended before the model produced one"
+
+
+def _observation_clauses(observed: WatchedObservation) -> list[str]:
+    """What is worth saying about one Observation beyond the text it produced.
+
+    The inference always, and then only what actually happened: an Observation that hit the
+    output limit generated exactly that limit rather than what the model had to say, and a
+    Frame that was kept is worth nothing to an Operator who is not told where it went. A
+    line that carried empty clauses for the ordinary case would be a line nobody reads.
+    """
+    clauses = [f"inference {format_seconds(observed.inference)}"]
+    if observed.truncated:
+        clauses.append(f"truncated — it hit {_output_limit(observed.max_output_tokens)}")
+    if observed.shortfall.late:
+        clauses.append(_lateness(observed.shortfall))
+    if observed.saved is not None:
+        clauses.append(f"saved {observed.saved}")
+    return clauses
+
+
+def _lateness(shortfall: Shortfall) -> str:
+    """What a Cadence that could not be reached on time cost, as two counts.
+
+    Said here rather than in the summary, and only on the line it happened on: the whole
+    point of counting a shortfall instead of averaging it is that an Operator can see
+    *when* the machine fell behind (ADR-0006). Both numbers are named because they are
+    different losses — the skipped Cadences are Observations that will never exist, the
+    Stale Frames are images nobody looked at — and a line reporting one of them would
+    leave the other looking like the same fact under another name.
+
+    "Stale Frames" rather than "discarded Frames", because the Feed also discarded Frames
+    while it settled and that is reported once, at the top, about the camera rather than
+    about the model (CONTEXT.md, "Stale Frame").
+    """
+    return (
+        f"late — skipped {_counted(shortfall.skipped_cadences, 'Cadence')} and discarded"
+        f" {_counted(shortfall.stale_frames, 'Stale Frame')} to observe the present"
+    )
+
+
+def _cadence(seconds: float) -> str:
+    """The Cadence as the request it is. Zero is a request too, and it has words of its own."""
+    if seconds <= 0:
+        return "as fast as the model allows"
+    return f"one Observation every {format_seconds(seconds)}"
+
+
+def _settled(start: WatchStart) -> str:
+    """The Feed, the wait it cost to become usable, and what that wait threw away.
+
+    The seconds lead, because they are the half of it an Operator is sitting through:
+    the delay before the first Observation is this, and a header that reported only the
+    count would leave them reading that delay as the model being slow.
+    """
+    discarded = _counted(start.settling_discards, "Frame")
+    return f"{start.provenance}, settled in {format_seconds(start.settling)}, {discarded} discarded"
+
+
+def _output_limit(limit: int) -> str:
+    """The output limit in the one phrase every report names it by.
+
+    Three reports name it — the ``observe`` block, a Watch's line and a Benchmark's
+    truncation note — and each of them is telling an Operator the same thing: this text
+    stopped where the limit was, not where the model had finished. Written once so that
+    reading two of them side by side is not an exercise in deciding whether they agree.
+    """
+    return f"the {limit}-token output limit"
+
+
+def _counted(count: int, noun: str) -> str:
+    """N of something, in the singular where there is one of them."""
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 def render_benchmark(benchmark: Benchmark) -> str:
@@ -368,8 +565,8 @@ def _truncation_sentence(variant: MeasuredVariant, limit: int) -> str:
     was about a different Benchmark.
     """
     return (
-        f"{variant.truncated} of {len(variant.runs)} Benchmark Runs hit the"
-        f" {limit}-token output limit, so the limit decided how much text they generated"
+        f"{variant.truncated} of {len(variant.runs)} Benchmark Runs hit"
+        f" {_output_limit(limit)}, so the limit decided how much text they generated"
     )
 
 

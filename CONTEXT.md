@@ -28,6 +28,13 @@ handed is no longer now*. The same read, a different fact — which is why a [[W
 them apart.
 _Avoid_: dropped frame, skipped frame, backlog, buffered frame
 
+**Present**:
+What a reader of a held [[Feed]] hands over when it is asked for an image: the one the
+camera produced most recently, together with the count of [[Stale Frame]]s it discarded to
+reach it. The two are one thing because neither is worth having alone — an image with no
+count might be the past, and a count with no image is arithmetic about nothing.
+_Avoid_: latest, current frame, newest image, live frame
+
 ### Understanding
 
 **Observation**:
@@ -46,7 +53,14 @@ for differently. Whether an object being present *matters* is a [[Trigger]], not
 _Avoid_: object detection, bounding boxes, labels, classification
 
 **Scene Question**:
-A natural-language question an Operator asks about a Frame, answered from that Frame alone.
+A natural-language question an Operator asks about a Frame, answered from that Frame alone —
+from no earlier Frame and no earlier answer. There is no follow-up: *and what colour is it?*
+is not a question this project can answer, because nothing the model was told a moment ago is
+still there to be referred back to.
+
+A Scene Question outlives the Observation that answers it. Asked of a [[Watch]], it is what
+that Watch asks from its next [[Cadence]] onward, until the Operator replaces it — so asking
+one is not an interruption but a change of what the Watch is for.
 _Avoid_: prompt, query, ask
 
 ### Watching
@@ -56,7 +70,9 @@ A continuous run of Observations over a live [[Feed]], produced at a requested [
 for as long as the Operator lets it run. A Watch produces Observations in series; it does
 not relate them to one another. Noticing that something changed between two of them is a
 [[Trigger]], not a Watch — every Observation a Watch produces stands on its own Frame, as
-any Observation does.
+any Observation does. Every Observation a Watch produces answers the [[Scene Question]]
+standing when its Frame was taken — the plain description, until an Operator asks for
+something else.
 _Avoid_: loop, monitor, stream, session, live mode
 
 **Cadence**:
@@ -66,6 +82,15 @@ the moments it has already passed and observes the present. Cadence is therefore
 number that makes a machine's shortfall countable — what it costs to be too slow is a
 count of skipped Cadences, not a growing delay.
 _Avoid_: interval, rate, fps, frequency, period
+
+**Shortfall**:
+What reaching one [[Cadence]] cost a machine that could not reach it on time: the Cadences
+abandoned on the way and the [[Stale Frame]]s discarded to observe the present. One thing
+rather than two numbers, because one skip forward incurred both. A Shortfall belongs to the
+moment it happened and is reported there, on the [[Observation]] it was paid for — averaging
+it over a [[Watch]] would take away the half an [[Operator]] can act on. A Cadence reached on
+time has no Shortfall, and says nothing about either count.
+_Avoid_: lag, delay, drift, overrun, backlog
 
 ### Runtime
 

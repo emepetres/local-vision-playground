@@ -60,8 +60,11 @@ playground demonstrates. See [ADR-0003](./docs/adr/0003-the-agent-consumes-obser
   `foundry model list` — you are looking for a `vision-language-chat` task. The project
   builds on `qwen3-vl-2b-instruct` ([ADR-0001](./docs/adr/0001-qwen3-vl-as-the-local-vision-model.md)).
 - **Python** for `vision/`, managed with [uv](https://docs.astral.sh/uv/); **.NET** for `agent/`.
-- A camera. Not strictly required: every stage accepts an image file instead of a live
-  Frame, so the playground can be developed and demonstrated without one.
+- A camera — for `watch` only. A Watch observes a live Feed and refuses an image file, so
+  it is the one command that cannot be run without one. `observe` takes a Frame from a file
+  with `--image <path>`, and `benchmark` measures the reference Frame in the repository by
+  default and refuses a camera outright, so everything except the Watch can be developed
+  and demonstrated with no camera attached.
 
 ## Running
 
@@ -77,7 +80,6 @@ Registering Execution Providers — the first run also downloads them
 
 Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
 Frame      640x480 jpeg, fit to 640x480, from camera 0
-Saved      D:\dev\local-vision-playground\vision\frames\frame-20260906-110354-829440.jpg
 Providers  4.138 s
 Load       3.251 s
 Capture    5.125 s (including 5 Frames discarded while the Feed settled)
@@ -88,7 +90,7 @@ and model rockets. A white door is open behind him, and a blue mesh chair is beh
 ```
 
 `--camera N` picks between cameras where the machine has more than one; `--image <path>`
-takes the Frame from a file instead, and is the way to run the whole playground with no
+takes the Frame from a file instead, and is the way to run everything but a Watch with no
 camera at all.
 
 A Feed does not yield a usable Frame the instant it opens — the camera exposes and
@@ -98,13 +100,25 @@ happens inside the capture and is counted in the Capture number, which is why th
 is the wait the Operator actually sat through, and why it dwarfs the same number for an
 image file.
 
-Every Frame the camera takes is written to `vision/frames/` (git-ignored) and its path
-printed. A surprising Observation can then be explained afterwards, instead of vanishing
-with the process.
+`--keep-frames` writes the observed camera Frame to `vision/frames/` (git-ignored) and
+prints its path, so that a surprising Observation can be explained afterwards instead of
+vanishing with the process:
+
+```
+Saved      D:\dev\local-vision-playground\vision\frames\frame-20260906-110354-829440.jpg
+```
+
+Without it nothing is written — a demo run should not leave hundreds of images of the
+room behind. It is a separate choice from `--debug`: neither flag implies the other,
+because wanting the evidence should not also mean accepting a stack trace in front of an
+audience. A Frame taken from `--image` is already on disk and is never written out, with
+or without the flag. `watch` takes the same flag on the same terms, and keeps the Frame of
+every Cadence it reached.
 
 The two failures a live demo actually hits each get one line and a non-zero exit: no
 camera at that index — which points at `--image` — and a camera another application is
-holding, which opens and then yields nothing.
+holding, which opens and then yields nothing. A Watch has no `--image` to point at, so
+it words the first of those for itself and meets the second further on — see below.
 
 The first run downloads the model, and reports that time separately — it is not one of
 the latencies. Nothing is warmed up afterwards either: the first Observation is the
@@ -331,6 +345,190 @@ only Unmeasured Variants has nothing to report, and a file with no numbers in it
 beside the ones you compare machines with. Its reasons are printed to the terminal, where
 they are the whole answer.
 
+### What it feels like
+
+The same question asked of the room over and over, at a **Cadence**, for as long as the
+Operator lets it run. It is the one command that does not return on its own: unless
+`--count` is given a number of Cadences to stop at, it runs until it is interrupted.
+
+```bash
+cd vision
+uv run watch
+```
+
+```
+Registering Execution Providers — the first run also downloads them
+
+Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
+Cadence    one Observation every 2.000 s
+Feed       camera 0, settled in 0.418 s, 5 Frames discarded
+Providers  4.108 s
+Load       3.184 s
+
+#1  inference 1.284 s
+A man with a beard is sitting at a desk in front of a wooden bookshelf.
+
+#2  inference 1.196 s
+The same man, now holding a white coffee mug in his right hand.
+
+#3  inference 1.312 s
+The desk is empty; the blue mesh chair in front of the bookshelf is unoccupied.
+^C
+
+3 Observations, median inference 1.284 s
+```
+
+A Watch needs a **live Feed**: `--image` is refused, and the refusal names the commands
+that do take a file. It is a third command rather than a flag on `observe` because a
+command that sometimes returns and sometimes does not is two commands.
+
+The **header** is everything paid or decided once, written above the Observations so
+that the line which changes is the only one repeated. **Model** is the Variant that actually
+answered and what it was built for, as `observe` reports it. **Cadence** is what was asked
+for, in words rather than as a number, because it is a request and not a guarantee.
+**Feed** is where the Frames come from and how many the camera discarded while it exposed
+and white-balanced — that is the wait before `#1` arrives, and an Operator not told about
+it reads that wait as the model being slow. **Providers** and **Load** are the same two
+set-up costs `observe` reports, and for the same reason: neither is the latency of any
+Observation.
+
+Each **Observation** is then a short line of facts with the text under it, appended rather
+than redrawn in place — a panel loses the history an audience is following, and breaks the
+moment the output is redirected. The number leads the line so that a column of
+Observations an audience has been following for a minute can still be counted, and it
+counts every Cadence the Watch
+reached: a `#4` after a `#2` says something happened at `#3`. Only the **inference** is
+timed, because taking the present off a held Feed is not a cost worth a column. An
+Observation that hit the output limit says so as a further clause on that same line —
+`observe`, with one Observation and room under it, gets a note of its own instead.
+
+The **summary** is a sentence rather than a table, and it is the lesson the Operator leaves
+with: how many Observations this machine produced, and the median inference it sustained.
+It is printed however the Watch ended — after the camera has been released and the model
+unloaded, so that the last thing read is not written while the machine is still held.
+
+#### When the machine cannot keep the Cadence
+
+Pin the CPU Variant and the same Watch stops keeping its Cadence, in front of the audience
+and without a table:
+
+```bash
+uv run watch --variant qwen3-vl-2b-instruct-generic-cpu
+```
+
+```
+Model      qwen3-vl-2b-instruct-generic-cpu:2 (alias qwen3-vl-2b-instruct, CPU / CPUExecutionProvider)
+Cadence    one Observation every 2.000 s
+Feed       camera 0, settled in 0.402 s, 5 Frames discarded
+Providers  4.070 s
+Load       4.412 s
+
+#1  inference 5.037 s
+A man with a beard is sitting at a desk in front of a wooden bookshelf.
+
+#2  inference 5.104 s, late — skipped 2 Cadences and discarded 149 Stale Frames to observe the present
+The same man, now holding a white coffee mug in his right hand.
+
+#3  inference 4.970 s, late — skipped 2 Cadences and discarded 147 Stale Frames to observe the present
+The desk is empty; the blue mesh chair in front of the bookshelf is unoccupied.
+^C
+
+3 Observations, median inference 5.037 s, 4 Cadences skipped
+```
+
+The Cadence is a **fixed grid** — `t0`, `t0 + N`, `t0 + 2N` — and not a pause after each
+Observation, so an inference that overran it leaves instants behind it that have already
+gone. A Watch does not queue them. It **skips the moments it has passed, discards the
+Stale Frames the Feed buffered meanwhile, and observes the present**, and it says how
+many of each it lost on the line where it lost them. The two counts are two different
+losses:
+
+- **skipped 2 Cadences** — two Observations that will never exist. This machine was asked
+  for one every two seconds and could answer once every five.
+- **discarded 147 Stale Frames** — images the camera produced while the model was busy,
+  read and thrown away to reach the present. A **Stale Frame** is not one of the Frames
+  discarded while the Feed settled: the same read, a different fact. The settling ones are
+  a start-up cost, reported once in the header; these are the price of being late, and
+  their number follows how fast the camera produces Frames rather than the size of the
+  shortfall.
+
+An Observation that kept its Cadence says nothing about either — a `skipped 0` on every
+timely line would be furniture. The summary carries the **total** of the skipped Cadences,
+because a total is the one thing the per-Observation lines cannot be read as once a Watch
+left running through a demo has scrolled past.
+
+Why a Watch discards rather than queues — and why the shortfall is reported as two
+counts rather than as a delay — is
+[ADR-0006](./docs/adr/0006-a-watch-discards-it-never-queues.md).
+
+#### A Watch is not a measurement
+
+**Nothing a Watch produces is a Benchmark, and it never becomes one.** Every Observation
+runs against a different Frame, so there is nothing to compare: the median inference in the
+summary describes what this machine sustained on whatever happened to be in front of the
+camera, not what a Variant costs. A Watch is the *feel* of the shortfall; `benchmark` is
+the question of what it costs, over a Workload held fixed and written down — that is the
+number to cite, and the two are the same fact seen from either side.
+
+#### When an inference fails, and when the Feed goes away
+
+A single inference that fails is **one line and then the next Cadence**: the Watch has
+already moved on by the time it is read, so there is no advice under it. What that Cadence
+cost to reach is said on the same terms as on an Observation's line, because the instants
+were passed and the Stale Frames discarded before the model was asked:
+
+```
+#3  failed — RuntimeError: the model returned no text, late — skipped 1 Cadence and discarded 32 Stale Frames to observe the present
+```
+
+Failed Cadences are counted in the summary too (`, 1 failed`), and are deliberately *not*
+in the median: a Watch reporting six Observations having attempted ten would be
+overstating what this machine sustained.
+
+A Feed that never opens ends the process rather than a Watch, as it does for `observe` —
+but in its own words, because there is no `--image` here to fall back on: it names
+`observe --image <path>` as the way to look at a file instead. A camera another
+application is holding arrives differently. It opens, so the Watch begins; what it never
+does is hand over a Frame, which is the ending the next paragraph is about.
+
+A **Feed that dies** is the other thing entirely — the camera was unplugged, or another
+application took it — and it ends the Watch, because a Watch cannot go on without a Feed.
+The Observations already produced are still printed and summarised; the failure does not
+get to take them away. The exit status follows that split: zero for a Watch that produced
+at least one Observation over a Feed that survived it, non-zero for a Watch whose Feed died
+or which produced nothing at all.
+
+#### The flags
+
+- `--every SECONDS` — the Cadence, measured on the fixed grid rather than as a pause after
+  each Observation. Default `2`. `--every 0` asks for Observations as fast as the model
+  allows, which cannot be late for an instant nobody named. A negative number is refused.
+- `--count N` — end the Watch after N Cadences, one whose inference failed included.
+  Cadences rather than Observations, and deliberately: it is what makes a Watch whose every
+  inference fails end rather than run for ever. Default: run until it is interrupted.
+  Anything below one is refused: it is not a Watch.
+- `--camera N` — index of the camera to open the Feed on. Default `0`.
+- `--variant ID` — pin the Variant, and with it the Execution Provider, exactly as for
+  `observe`. Default: resolve the alias `qwen3-vl-2b-instruct` and let Foundry Local pick
+  the hardware. This is the lever the demo above turns.
+- `--keep-frames` — write the Frame of every Cadence to `vision/frames/` (git-ignored) and
+  report its path on the Observation's line, so that a surprising Observation stays
+  explainable after the process is gone. Default: nothing is written, here as in `observe`
+  — a Watch left running through a demo would otherwise leave hundreds of images of the
+  room behind. It is written before the model is asked, so a Cadence whose inference
+  failed leaves its Frame behind too; that line has no path on it, because there is no
+  Observation to hang one from. A **Stale Frame** is never written: nobody observed it, so
+  it explains nothing.
+
+  ```
+  #1  inference 1.284 s, saved D:\dev\local-vision-playground\vision\frames\frame-20260907-181204-114887.jpg
+  An empty desk.
+  ```
+
+- `--image PATH` — refused, and offered only so that an Operator arriving from `observe` is
+  told why rather than finding the flag missing and guessing.
+- `--debug` — re-raise failures with their full traceback, as everywhere else.
+
 ### Development
 
 ```bash
@@ -340,12 +538,16 @@ uv run mypy
 uv run ruff check .
 ```
 
-The tests drive both commands end to end through a fake camera, a fake Foundry
-and a fake clock. A fourth fake stands in for the Feed itself: it is what lets a test
-assert that the settling Frames really are discarded, and that the Frame observed is the
-one after them rather than the first one. They do **not** prove the Foundry Local SDK
-behaves as we believe — the fakes encode our reading of the 2.x type signatures. Running
-the command against the real model is the only thing that validates that.
+The tests drive all three commands end to end through fakes: a camera, Foundry and a
+clock, and then the Feed itself — which is what lets a test assert that the settling
+Frames really are discarded, and that the Frame observed is the one after them rather
+than the first one. A Watch needs two more. The reader that drains a held Feed is faked,
+so a test can hand an Observation the Stale Frames it had to discard to reach the
+present; and so is the sleep between one Cadence and the next, so that the grid and the
+Cadences skipped off it are asserted in full without a suite that waits in real seconds.
+They do **not** prove the Foundry Local SDK behaves as we believe — the fakes encode our
+reading of the 2.x type signatures. Running the command against the real model is the only
+thing that validates that.
 
 ## Backlog
 
@@ -362,11 +564,21 @@ mirrored here.
       the CUDA-GPU variant and the CPU variant, N times each, printed as a table and
       persisted to the repo so the numbers survive a demo that goes wrong. Each Benchmark
       Run is named against its Hardware Profile.
-- [ ] **3. A continuous Feed.** Observations in a loop over the live camera, and a
-      deliberate answer to what happens when inference is slower than the capture
-      interval.
+- [x] **3. A continuous series of Observations.** A Watch: Observations one after another
+      over a live Feed, at a requested Cadence, and a deliberate answer to what happens
+      when inference is slower than the Cadence — it skips the moments it has passed,
+      discards the Stale Frames and says how many of each it lost
+      ([ADR-0006](./docs/adr/0006-a-watch-discards-it-never-queues.md)).
 - [ ] **4. Scene Questions.** Ask a natural-language question about the current Frame and
-      get an answer from that Frame alone.
+      get an answer from that Frame alone — no follow-ups, because nothing the model was
+      told a moment ago is still there. Three surfaces: `observe --ask` replaces the fixed
+      prompt for one Frame; `benchmark --ask` makes the question a Workload, so that a
+      short answer and a description are measured as the different amounts of work they
+      are; and a Watch accepts a question typed while it runs, without stopping. In a Watch
+      the question is not an interruption — it takes effect at the next Cadence and stays
+      in effect until it is replaced, so that a skipped Cadence goes on meaning *this
+      machine could not keep up* and nothing else
+      ([ADR-0009](./docs/adr/0009-a-scene-question-changes-what-a-watch-asks.md)).
 - [ ] **5. Structured Observations.** Ask the model for a fixed shape — the list of
       objects present in a Frame — instead of prose.
 - [ ] **6. Triggers.** Fire when a condition over Observations holds: an object appears,

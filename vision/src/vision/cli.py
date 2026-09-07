@@ -1,8 +1,9 @@
-"""The two console entry points: ``observe`` and ``benchmark``.
+"""The three console entry points: ``observe``, ``benchmark`` and ``watch``.
 
 Each one composes capture, inference and reporting and owns nothing else. The camera,
-Foundry and the clock arrive as ports rather than being constructed here, which is what
-lets the tests drive either command end to end with fakes.
+Foundry, the clock and — for a Watch — the sleep arrive as ports rather than being
+constructed here, which is what lets the tests drive any of the three end to end with
+fakes.
 
 ``observe`` answers *what do you see?* — one Frame, one Observation, and what each stage
 cost. The latency is not one number: registering the Execution Providers is machine set-up
@@ -15,6 +16,13 @@ several times each, printed as a table apiece and then written down — a sittin
 minutes should outlive the terminal it scrolled past in. Where ``observe`` will take a Frame
 from the live camera, ``benchmark`` refuses one: a different Frame per repetition is not a
 Workload.
+
+``watch`` answers *what does it feel like?* — Observations over a held Feed at a Cadence,
+one after another, until the Operator stops it. It is a third entry point rather than a
+flag on ``observe`` because a command that sometimes returns and sometimes does not is two
+commands, and because the flags a Watch carries mean nothing for a single shot. What the
+two share is the model bring-up, not the command. Nothing a Watch produces is a Benchmark:
+every Observation runs against a different Frame, so there is nothing to compare.
 """
 
 from __future__ import annotations
@@ -22,21 +30,32 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TextIO
 
-from vision.benchmark import REPETITIONS, Benchmark, measure, require_a_benchmark_run
+from vision.benchmark import (
+    REPETITIONS,
+    Benchmark,
+    measure,
+    refuse_a_live_camera,
+    require_a_benchmark_run,
+)
 from vision.capture import (
     FRAMES_DIRECTORY,
     REFERENCE_FRAME,
     Camera,
+    HeldFeed,
     ImageFileCamera,
     LiveCamera,
+    MakeReader,
     OpenFeed,
+    camera_provenance,
+    drain_in_background,
     open_camera_feed,
     save_frame,
 )
-from vision.errors import VisionError
+from vision.errors import VisionError, one_line
 from vision.inference import (
     DEFAULT_ALIAS,
     DEFAULT_VARIANTS,
@@ -47,13 +66,32 @@ from vision.inference import (
     Workload,
 )
 from vision.record import Now, Recorded, benchmarks_directory, hardware_profile, record
-from vision.reporting import render_benchmark, render_observation, render_recorded
+from vision.reporting import (
+    render_benchmark,
+    render_observation,
+    render_recorded,
+    render_watch_header,
+    render_watch_line,
+    render_watch_summary,
+)
 from vision.startup import (
     Clock,
+    Sleep,
     accept_variant,
     bring_up,
     register_execution_providers,
     timed,
+)
+from vision.watch import (
+    CADENCE,
+    Announce,
+    Produced,
+    Watch,
+    WatchStart,
+    keep_watch,
+    refuse_an_image_file,
+    require_a_cadence,
+    require_an_observation,
 )
 
 
@@ -123,7 +161,7 @@ def benchmark_main(
 
     owned: list[Callable[[], None]] = []
     try:
-        _refuse_a_live_camera(args)
+        refuse_a_live_camera(args.camera)
         require_a_benchmark_run(args.repetitions)
         if camera is None:
             camera = _benchmark_source(args.image)
@@ -164,6 +202,191 @@ def benchmark_main(
     if recorded is not None:
         print(render_recorded(record=recorded.json, document=recorded.markdown), file=out, end="")
     return _benchmark_status(benchmark, err=err)
+
+
+def watch_main(
+    argv: Sequence[str] | None = None,
+    *,
+    open_feed: OpenFeed | None = None,
+    make_reader: MakeReader | None = None,
+    foundry: FoundryLocal | None = None,
+    clock: Clock | None = None,
+    sleep: Sleep | None = None,
+    out: TextIO | None = None,
+    err: TextIO | None = None,
+    frames_dir: Path | None = None,
+) -> int:
+    """Run ``watch``. One Feed, one Variant, Observations at the Cadence until it is stopped.
+
+    The Feed and the model are brought up before the first Observation and taken back down
+    once the Watch is over, in that order, however it ended — an interruption included.
+
+    An interruption that arrives before the Watch has begun is a different thing: it still
+    releases the camera and unloads the model, but there is no Watch yet to report, so it
+    is said as its own line and exits non-zero — the ordinary answer for a Watch that
+    produced no Observation. One that arrives during the take-down of a Watch that ran is
+    not that: the Observations were produced, so it is reported as the Watch it was.
+    Neither is ever a traceback: an Operator who pressed Ctrl+C in front of an audience
+    knows what happened, and there is nothing ``--debug`` could add.
+    Everything else in the run-up ends the process as it does in ``observe`` — a name that
+    names no model, a task that is not ``vision-language-chat``, a Variant that will not
+    load. There is nothing to degrade to.
+
+    The summary is printed after the camera has been released and the model unloaded, so
+    that the last thing an Operator reads is not written while the machine is still held.
+    It is printed however the Watch ended, a Feed that died included: what the run produced
+    is not the failure's to take away.
+    """
+    args = _watch_parser().parse_args(argv)
+    out, err = _streams(out, err)
+
+    if open_feed is None:
+        open_feed = open_camera_feed
+    if make_reader is None:
+        make_reader = drain_in_background
+    if frames_dir is None:
+        frames_dir = FRAMES_DIRECTORY
+
+    owned: list[Callable[[], None]] = []
+    watched: Watch | None = None
+    try:
+        # Refused before Foundry Local is started: an Operator who pointed a Watch at a file
+        # should be told so immediately, not once the model is on the hardware.
+        refuse_an_image_file(args.image)
+        require_a_cadence(args.every)
+        require_an_observation(args.count)
+        foundry = _resolve_foundry(foundry, owned)
+        clock = _resolve_clock(clock)
+        sleep = _resolve_sleep(sleep)
+
+        model = accept_variant(foundry, args.model)
+        providers = register_execution_providers(foundry, clock=clock, out=out)
+        # Named before the Feed is opened because both endings are about it: the camera
+        # that was never there, and the one that stopped answering half way through.
+        provenance = camera_provenance(args.camera)
+
+        # An ExitStack rather than the list of closers the other commands keep, because
+        # here the order matters and it is the reverse of the order things were acquired
+        # in: the reader comes off the Feed and the camera is released, then the model is
+        # taken off the hardware, and only then is Foundry Local itself closed.
+        with ExitStack() as lifetime:
+            ready = bring_up(model, clock=clock, out=out)
+            lifetime.callback(ready.model.unload)
+            # Timed here rather than inside the held Feed, because what an Operator waits
+            # through is opening the camera *and* settling it, and only this side of the
+            # port knows the clock the rest of the run-up was timed with.
+            opened, settling = timed(clock, lambda: _live_feed(args.camera, open_feed, make_reader))
+            feed = lifetime.enter_context(opened)
+
+            start = WatchStart(
+                model=ready.identity,
+                provenance=provenance,
+                cadence=args.every,
+                providers=providers,
+                load=ready.load,
+                settling=settling,
+                settling_discards=feed.settling_discards,
+            )
+            print(render_watch_header(start), file=out, end="", flush=True)
+            watched = keep_watch(
+                start=start,
+                model=ready.model,
+                feed=feed,
+                count=args.count,
+                clock=clock,
+                sleep=sleep,
+                keep_in=frames_dir if args.keep_frames else None,
+                announce=_announcing(out),
+            )
+    except KeyboardInterrupt:
+        # Caught rather than raised, and then asked which interruption it was: the Watch
+        # itself already treats Ctrl+C as its ordinary ending, so one arriving here came
+        # either from the run-up or from the take-down of a Watch that had finished. The
+        # second is not that Watch failing — it produced what it produced, and the summary
+        # is still owed — so it falls through to it below.
+        pass
+    except Exception as error:
+        return _fail(error, debug=args.debug, err=err)
+    finally:
+        for close in owned:
+            close()
+
+    if watched is None:
+        # No traceback and no --debug offer: an Operator who pressed Ctrl+C knows what
+        # happened, and a stack ending a demo is exactly what --debug exists to keep off
+        # the screen. Non-zero because no Observation was produced, which is the one
+        # question the exit status of a Watch answers.
+        return _refuse("the Watch was stopped before it produced an Observation", err=err)
+
+    print(render_watch_summary(watched), file=out, end="")
+    return _watch_status(watched, provenance=provenance, err=err)
+
+
+def _watch_status(watched: Watch, *, provenance: str, err: TextIO) -> int:
+    """Zero for a Watch that produced something over a Feed that survived it.
+
+    A demo and a failure have to be tellable apart by a script, and the line between them
+    is not how many things went wrong: a Watch that failed an inference and then went on
+    to describe the room did what it was run for. What it is not is a Watch that produced
+    no Observation at all — there is nothing to have watched — or one whose Feed was taken
+    away, which produced whatever it produced and then stopped being able to.
+
+    The dead Feed is reported ahead of the empty Watch where both are true, because it is
+    the reason there was nothing: two lines would have an Operator looking for two faults.
+    """
+    if watched.feed_died:
+        return _refuse(_feed_died(provenance), err=err)
+    if watched.produced_nothing:
+        # Two ways to have produced nothing, and an Operator handed the wrong one goes
+        # looking for the wrong thing: the reasons are above, or there were never any.
+        why = (
+            "no Observation succeeded — each one is reported above with the reason it failed"
+            if watched.failures
+            else "the Watch ended before it produced an Observation"
+        )
+        return _refuse(why, err=err)
+    return 0
+
+
+def _feed_died(provenance: str) -> str:
+    """A Feed that was open and stopped, which is neither of the ways one fails to open.
+
+    The other two are about *opening* a Feed — there is no camera at that index, or there
+    is one and another application is holding it — and neither fits a camera that was
+    producing Frames a moment ago. An Operator handed one of those would go looking for a
+    problem that was not there at start-up, so this says what actually happened and offers
+    no flag: there is nothing to pass that would have kept the camera plugged in.
+    """
+    return (
+        f"{provenance} stopped giving Frames — it was unplugged, or another application"
+        " took it; a Watch cannot go on without a Feed"
+    )
+
+
+def _announcing(out: TextIO) -> Announce:
+    """Write each Cadence down as it arrives, flushed so an audience sees it arrive."""
+
+    def announce(produced: Produced) -> None:
+        print(render_watch_line(produced), file=out, end="", flush=True)
+
+    return announce
+
+
+def _live_feed(index: int, open_feed: OpenFeed, make_reader: MakeReader) -> HeldFeed:
+    """Open and settle the Feed a Watch runs on, or say there is no camera there.
+
+    Its own message rather than ``LiveCamera``'s: that one offers ``--image`` as the way
+    out, and a Watch has no such way out — a Watch over a file is refused, so what is worth
+    saying here is which other command answers that question instead.
+    """
+    held = HeldFeed.open(index, open_feed, make_reader=make_reader)
+    if held is None:
+        raise VisionError(
+            f"there is no camera at index {index} — attach one, or select another with"
+            " --camera N; a Watch has to have a live Feed, so to look at an image file"
+            " instead run `observe --image <path>`"
+        )
+    return held
 
 
 def _record_benchmark(
@@ -225,14 +448,9 @@ def _observe_parser() -> argparse.ArgumentParser:
         type=Path,
         help="take the Frame from this image file instead of from a camera",
     )
-    source.add_argument(
-        "--camera",
-        type=int,
-        default=0,
-        metavar="N",
-        help="index of the camera to open the Feed on (default: 0)",
-    )
+    _add_camera(source)
     _add_pinned_variant(parser)
+    _add_keep_frames(parser)
     _add_debug(parser)
     return parser
 
@@ -254,8 +472,7 @@ def _benchmark_parser() -> argparse.ArgumentParser:
             f" ({REFERENCE_FRAME.name}, kept in the repository)"
         ),
     )
-    # Offered only so that an Operator arriving from `observe` is told why it cannot be
-    # used, rather than finding the flag missing and guessing.
+    # Offered only to be refused; see ``refuse_a_live_camera`` for what it is told.
     source.add_argument(
         "--camera",
         type=int,
@@ -289,6 +506,49 @@ def _benchmark_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _watch_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="watch",
+        description=(
+            "Keep asking the local model what it sees through the camera, at a Cadence"
+            " you choose, until you stop it."
+        ),
+    )
+    parser.add_argument(
+        "--every",
+        type=float,
+        default=CADENCE,
+        metavar="SECONDS",
+        help=(
+            "the Cadence: how often to ask for an Observation, measured on a fixed grid"
+            " from the moment the Watch starts rather than as a pause after each one"
+            f" (default: {CADENCE:g}; 0 asks for them as fast as the model allows)"
+        ),
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "end the Watch after N Cadences, one whose inference failed included"
+            " (default: run until you interrupt it)"
+        ),
+    )
+    _add_camera(parser)
+    # Offered only to be refused; see ``refuse_an_image_file`` for what it is told.
+    parser.add_argument(
+        "--image",
+        type=Path,
+        default=None,
+        help="refused: a Watch observes a live Feed, and one file would never change",
+    )
+    _add_pinned_variant(parser)
+    _add_keep_frames(parser)
+    _add_debug(parser)
+    return parser
+
+
 def _add_variants(parser: argparse.ArgumentParser) -> None:
     """The Variants to measure, replacing the default pair rather than adding to it.
 
@@ -313,6 +573,26 @@ def _add_variants(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_camera(container: argparse._ActionsContainer) -> None:
+    """The camera index a Feed is opened on, for the two commands that open one.
+
+    Takes the container rather than the parser because ``observe`` declares it inside a
+    mutually exclusive group — a Frame comes from a camera or from a file, never both —
+    while a Watch has nothing to be exclusive with: it refuses ``--image`` outright.
+
+    ``benchmark`` declares its own ``--camera`` instead of using this. It is a different
+    flag that happens to share a name: offered with no default so that passing it can be
+    told apart from not passing it, and answered by a refusal rather than by a Feed.
+    """
+    container.add_argument(
+        "--camera",
+        type=int,
+        default=0,
+        metavar="N",
+        help="index of the camera to open the Feed on (default: 0)",
+    )
+
+
 def _add_pinned_variant(parser: argparse.ArgumentParser) -> None:
     """The single Variant ``observe`` runs against. ``benchmark`` takes a list instead."""
     parser.add_argument(
@@ -330,27 +610,31 @@ def _add_pinned_variant(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_keep_frames(parser: argparse.ArgumentParser) -> None:
+    """Opting in to keeping the Frame, which is not the same choice as --debug.
+
+    Kept apart deliberately: an Operator who wants a surprising Observation to stay
+    explainable afterwards should not have to accept a stack trace in front of an
+    audience to get it — and the Observation worth explaining is precisely the one that
+    did not raise.
+    """
+    parser.add_argument(
+        "--keep-frames",
+        action="store_true",
+        help=(
+            "write the observed camera Frame to disk and report the path, so that a"
+            " surprising Observation can still be explained after the process is gone"
+            " (default: nothing is written; a Frame that came from an image file is already"
+            " on disk and is never written out)"
+        ),
+    )
+
+
 def _add_debug(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--debug",
         action="store_true",
         help="re-raise failures with their full traceback",
-    )
-
-
-def _refuse_a_live_camera(args: argparse.Namespace) -> None:
-    """A Feed is not a Workload's Frame source, and saying so is better than dropping it.
-
-    Every Benchmark Run has to see the same bytes (CONTEXT.md, "Workload"), and a Feed
-    gives a different Frame each time — so the numbers would look like a hardware result
-    while comparing different work.
-    """
-    if args.camera is None:
-        return
-    raise VisionError(
-        f"camera {args.camera} cannot be a Benchmark's Frame source — every Benchmark Run"
-        " has to see the same bytes, and a Feed gives a different Frame each time; measure"
-        " the reference Frame by leaving --camera off, or pass --image <path>"
     )
 
 
@@ -397,6 +681,15 @@ def _resolve_clock(clock: Clock | None) -> Clock:
     return perf_counter
 
 
+def _resolve_sleep(sleep: Sleep | None) -> Sleep:
+    if sleep is not None:
+        return sleep
+
+    from time import sleep as real_sleep
+
+    return real_sleep
+
+
 def _resolve_now(now: Now | None) -> Now:
     """The wall clock, which is a different port from the one the latencies are taken with.
 
@@ -415,7 +708,7 @@ def _resolve_now(now: Now | None) -> Now:
 def _fail(error: Exception, *, debug: bool, err: TextIO) -> int:
     if debug:
         raise error
-    return _refuse(_one_line(error), err=err)
+    return _refuse(_fatal_line(error), err=err)
 
 
 def _refuse(message: str, *, err: TextIO) -> int:
@@ -435,12 +728,13 @@ def _source(
     """Where the Frame comes from, and where — if anywhere — it has to be kept.
 
     One decision rather than two: a Frame from an image file is already on disk, so it is
-    the same fact that says which Camera to build and that only the camera's Frame needs
-    writing out.
+    the same fact that says which Camera to build and that only the camera's Frame could
+    need writing out. Whether it is then kept is the Operator's own choice, made with
+    ``--keep-frames`` and defaulting to keeping nothing.
     """
     if args.image is not None:
         return ImageFileCamera(args.image), None
-    return LiveCamera(args.camera, open_feed), frames_dir
+    return LiveCamera(args.camera, open_feed), (frames_dir if args.keep_frames else None)
 
 
 def _observe(
@@ -476,7 +770,14 @@ def _observe(
     return workload, observation, saved
 
 
-def _one_line(error: Exception) -> str:
+def _fatal_line(error: Exception) -> str:
+    """The failure as the line a command ends on, with the way to get the rest of it.
+
+    Only for a failure that is ending the process: ``--debug`` re-raises what was about to
+    be printed here, and a Watch that carried on past a failed Observation has nothing left
+    to re-raise — so it says the same line without the offer.
+    """
+    line = one_line(error)
     if isinstance(error, VisionError):
-        return str(error)
-    return f"{type(error).__name__}: {error} — rerun with --debug for the full traceback"
+        return line
+    return f"{line} — rerun with --debug for the full traceback"

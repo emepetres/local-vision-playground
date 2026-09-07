@@ -1,4 +1,4 @@
-"""Fakes for the three ports the ``observe`` command is given.
+"""Fakes for the ports the commands are given.
 
 They encode our reading of the Foundry Local 2.x type signatures — see ADR-0004. They do
 not prove the SDK behaves this way; only running against the real model does that. What
@@ -13,7 +13,17 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from PIL import Image
 
-from vision.capture import Camera, Feed, Frame, OpenFeed
+from vision.capture import (
+    Camera,
+    DrainingReader,
+    Feed,
+    Frame,
+    MakeReader,
+    OnDemandReader,
+    OpenFeed,
+    Present,
+    Reader,
+)
 from vision.errors import VisionError
 from vision.inference import (
     FinishReason,
@@ -23,6 +33,7 @@ from vision.inference import (
     VisionModel,
     Workload,
 )
+from vision.startup import Sleep
 
 
 class FakeCamera:
@@ -43,19 +54,31 @@ class FakeCamera:
 class FakeFeed:
     """A Feed that hands out prepared images, one per read, and counts every read.
 
-    ``gives_nothing`` is the camera that opens but never yields — what a camera held by
-    another application looks like from here.
+    Several images are several images already waiting, which is what a reader coming back
+    after a pause is handed (CONTEXT.md, "Stale Frame"). ``gives_nothing`` is the camera
+    that opens but never yields — what a camera held by another application looks like —
+    and ``stops_after`` is the Feed that yields for a while and then dies, which ends a
+    Watch rather than one Observation. The first is the second with nothing to yield at
+    all, so they are one mechanism under two names worth telling apart.
     """
 
-    def __init__(self, images: Iterable[Image.Image], *, gives_nothing: bool = False) -> None:
+    def __init__(
+        self,
+        images: Iterable[Image.Image],
+        *,
+        gives_nothing: bool = False,
+        stops_after: int | None = None,
+    ) -> None:
         self._images = list(images)
-        self._gives_nothing = gives_nothing
+        self._stops_after = 0 if gives_nothing else stops_after
         self.reads = 0
         self.closed = False
 
     def read(self) -> Image.Image | None:
         self.reads += 1
-        if self._gives_nothing or self.reads > len(self._images):
+        if self._stops_after is not None and self.reads > self._stops_after:
+            return None
+        if self.reads > len(self._images):
             return None
         return self._images[self.reads - 1]
 
@@ -75,12 +98,124 @@ class FakeCameras:
         return self._feeds.get(index)
 
 
+class RecordingReader:
+    """A Reader that answers from the Feed only when asked, and remembers being stopped.
+
+    On demand rather than draining, because how the Feed is read and how often a Watch
+    observes are two different questions: this reader answers the second with no thread in
+    the test at all — one read, one image, no Stale Frames, which is the whole truth for a
+    Watch that is keeping its Cadence. ``stopped`` is how a test pins that the reader came
+    off the Feed before the camera was released.
+    """
+
+    def __init__(self, feed: Feed) -> None:
+        self._reader = OnDemandReader(feed)
+        self.stopped = False
+
+    def latest(self) -> Present:
+        return self._reader.latest()
+
+    def stop(self) -> None:
+        self.stopped = True
+        self._reader.stop()
+
+
+class FakeReaders:
+    """Puts a RecordingReader on whatever Feed it is handed, and keeps hold of them.
+
+    A factory rather than the reader itself, because the reader is made inside the Feed it
+    reads: a test that wants to ask whether it was stopped has to be given it from here.
+    """
+
+    def __init__(self) -> None:
+        self.readers: list[RecordingReader] = []
+
+    def __call__(self, feed: Feed) -> RecordingReader:
+        reader = RecordingReader(feed)
+        self.readers.append(reader)
+        return reader
+
+
+class HandTurnedReader:
+    """A Reader that really drains the Feed, with the test turning the loop instead of a thread.
+
+    The reader a Watch runs on in production discards Stale Frames continuously (ADR-0006),
+    and how many it discarded is the count the report rests on — so a test about that count
+    has to be driven through the real counting rule rather than a fake of it. ``drain_once``
+    is where that rule lives and it is one call, so turning it by hand is the whole loop:
+    ``reads`` says how many images the Feed produced before each handout, and every one
+    beyond the first is a Stale Frame the real reader really discarded.
+    """
+
+    def __init__(self, feed: Feed, reads: Sequence[int]) -> None:
+        self._reader = DrainingReader(feed)
+        self._reads = tuple(reads)
+        self._handouts = 0
+        self.stopped = False
+
+    def latest(self) -> Present:
+        arrived = self._reads[self._handouts] if self._handouts < len(self._reads) else 1
+        self._handouts += 1
+        for _ in range(arrived):
+            if not self._reader.drain_once():
+                break
+        return self._reader.latest()
+
+    def stop(self) -> None:
+        self.stopped = True
+        self._reader.stop()
+
+
+class HandTurnedReaders:
+    """Puts a HandTurnedReader on the Feed, told in advance what arrived between handouts.
+
+    Several images between two handouts is what a machine short of its Cadence produces:
+    the Feed goes on yielding while the model is busy, so the reader has Stale Frames to
+    discard on the way to the present. Said as a schedule rather than as a rate so that no
+    test has to wait for one.
+    """
+
+    def __init__(self, reads: Sequence[int] = ()) -> None:
+        self._reads = tuple(reads)
+        self.readers: list[HandTurnedReader] = []
+
+    def __call__(self, feed: Feed) -> HandTurnedReader:
+        reader = HandTurnedReader(feed, self._reads)
+        self.readers.append(reader)
+        return reader
+
+
+class FakeSleep:
+    """Records what it was asked to wait for and returns at once.
+
+    What it recorded is how a Watch's Cadence is asserted: a grid of instants asks to wait
+    for the distance to the next one, so an inference that took a second of a two-second
+    Cadence is followed by a second — a Watch pausing for a fixed Cadence after each
+    Observation would ask for two.
+
+    ``interrupts_on`` is which call raises a ``KeyboardInterrupt``, which is how Ctrl+C is
+    driven without signals and without wall-clock time.
+    """
+
+    def __init__(self, *, interrupts_on: int | None = None) -> None:
+        self.waits: list[float] = []
+        self._interrupts_on = interrupts_on
+
+    def __call__(self, seconds: float) -> None:
+        self.waits.append(seconds)
+        if self._interrupts_on is not None and len(self.waits) == self._interrupts_on:
+            raise KeyboardInterrupt
+
+
 class FakeVisionModel:
     """A model whose task, runtime and Observations are all declared up front.
 
     The Observations are a sequence, one per call, so a test that asks for several can
     have them differ — in text, in finish reason or in completion tokens — which is what
-    a repeated measurement needs. ``downloads`` counts the downloads that were started,
+    a repeated measurement needs. An entry that is an ``Exception`` is an inference that
+    failed rather than an Observation: the Workload is recorded as asked for and the
+    exception is raised, which is the one way a Watch's failed Observation can be driven
+    without a model that really breaks. ``downloads`` counts the downloads that were started,
     which is what lets a test pin a refusal ahead of one rather than merely ahead of the
     Observation. ``load_error`` is the Variant that will not load on this machine, and
     ``download_error`` the one whose weights never arrive — the two ways a Variant fails to
@@ -95,7 +230,7 @@ class FakeVisionModel:
     def __init__(
         self,
         identity: ModelIdentity,
-        observations: Sequence[RawObservation],
+        observations: Sequence[RawObservation | Exception],
         *,
         is_cached: bool = True,
         download_progress: Sequence[float] = (),
@@ -144,7 +279,10 @@ class FakeVisionModel:
             )
         self.events.append("observe")
         self.observed.append(workload)
-        return self._observations[index]
+        answer = self._observations[index]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
 
 class FakeFoundry:
@@ -293,5 +431,10 @@ def make_frame(
 _camera: Camera = FakeCamera([])
 _feed: Feed = FakeFeed([])
 _open_feed: OpenFeed = FakeCameras({})
+_reader: Reader = RecordingReader(FakeFeed([]))
+_hand_turned: Reader = HandTurnedReader(FakeFeed([]), ())
+_make_reader: MakeReader = FakeReaders()
+_make_hand_turned: MakeReader = HandTurnedReaders()
+_sleep: Sleep = FakeSleep()
 _model: VisionModel = FakeVisionModel(make_identity(), [make_observation()])
 _foundry: FoundryLocal = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})

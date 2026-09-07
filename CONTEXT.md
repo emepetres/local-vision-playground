@@ -9,7 +9,9 @@ A demo and teaching playground for multimodal vision running entirely on the ope
 **Feed**:
 The continuous stream of images coming from a camera attached to the local machine. A Feed
 does not yield usable Frames the instant it opens — the camera needs a moment to settle
-before what it reports is what is actually in front of it.
+before what it reports is what is actually in front of it. Nor does it wait: it goes on
+producing images while nothing is reading it, so a reader that comes back after a pause is
+handed the past until it has discarded the [[Stale Frame]]s standing between it and now.
 _Avoid_: stream, video, source, input
 
 **Frame**:
@@ -17,6 +19,14 @@ A single still image the rest of the system reasons over — normally taken from
 one point in time, though an image file on disk is a Frame too. The Feed is the canonical
 source of Frames, not the only one. The unit of work everything downstream operates on.
 _Avoid_: snapshot, capture, still, photo
+
+**Stale Frame**:
+An image the Feed produced while nobody was reading it, discarded unobserved so that the
+Frame observed is the present. Not the same thing as the Frames a Feed discards while it
+settles: those say *the camera is not ready yet*, a Stale Frame says *what you are being
+handed is no longer now*. The same read, a different fact — which is why a [[Watch]] counts
+them apart.
+_Avoid_: dropped frame, skipped frame, backlog, buffered frame
 
 ### Understanding
 
@@ -38,6 +48,24 @@ _Avoid_: object detection, bounding boxes, labels, classification
 **Scene Question**:
 A natural-language question an Operator asks about a Frame, answered from that Frame alone.
 _Avoid_: prompt, query, ask
+
+### Watching
+
+**Watch**:
+A continuous run of Observations over a live [[Feed]], produced at a requested [[Cadence]]
+for as long as the Operator lets it run. A Watch produces Observations in series; it does
+not relate them to one another. Noticing that something changed between two of them is a
+[[Trigger]], not a Watch — every Observation a Watch produces stands on its own Frame, as
+any Observation does.
+_Avoid_: loop, monitor, stream, session, live mode
+
+**Cadence**:
+How often a Watch is asked to produce an Observation. A request, never a guarantee: when
+inference takes longer than the Cadence a Watch does not fall behind by queuing, it skips
+the moments it has already passed and observes the present. Cadence is therefore the one
+number that makes a machine's shortfall countable — what it costs to be too slow is a
+count of skipped Cadences, not a growing delay.
+_Avoid_: interval, rate, fps, frequency, period
 
 ### Runtime
 

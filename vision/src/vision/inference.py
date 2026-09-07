@@ -20,7 +20,7 @@ from vision.capture import Frame
 from vision.errors import VisionError
 
 if TYPE_CHECKING:
-    from foundry_local_sdk import ChatSession, IModel, Item, Response, Runtime
+    from foundry_local_sdk import ChatSession, IModel, Item, Response
 
 PROMPT = "Describe what you see in this image in two or three sentences."
 """The fixed workload's prompt. The length bound lives here; the token limit is a net."""
@@ -63,12 +63,28 @@ class FinishReason(StrEnum):
 
 @dataclass(frozen=True)
 class ModelIdentity:
-    """Which model actually answered, and what it was built for."""
+    """Which model actually answered, and what it was built for.
+
+    The Execution Provider and the device type are kept apart rather than as the one
+    string they are printed as. They are two facts — *CUDA* is not *GPU* — and a persisted
+    Benchmark has to carry each of them on its own, so that a later reader can group by
+    Execution Provider without parsing a slash out of a display string.
+    """
 
     alias: str
     variant: str
     task: str | None
-    runtime: str | None
+    execution_provider: str | None
+    device_type: str | None
+
+    @property
+    def runtime(self) -> str | None:
+        """The pair as one phrase, which is how a report names what a Variant ran on."""
+        if self.execution_provider is None:
+            return None
+        if self.device_type is None:
+            return self.execution_provider
+        return f"{self.device_type} / {self.execution_provider}"
 
 
 @dataclass(frozen=True)
@@ -311,11 +327,13 @@ class FoundryLocalModel:
     @property
     def identity(self) -> ModelIdentity:
         info = self._model.info
+        runtime = info.runtime
         return ModelIdentity(
             alias=self._model.alias,
             variant=self._model.id,
             task=info.task,
-            runtime=_runtime(info.runtime),
+            execution_provider=runtime.execution_provider if runtime is not None else None,
+            device_type=runtime.device_type if runtime is not None else None,
         )
 
     @property
@@ -423,11 +441,3 @@ def _finish_reason(response: Response) -> FinishReason:
             return FinishReason.TRUNCATED
         case _:
             return FinishReason.OTHER
-
-
-def _runtime(runtime: Runtime | None) -> str | None:
-    if runtime is None:
-        return None
-    if runtime.device_type is None:
-        return runtime.execution_provider
-    return f"{runtime.device_type} / {runtime.execution_provider}"

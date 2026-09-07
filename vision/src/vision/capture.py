@@ -7,6 +7,7 @@ something else (see CONTEXT.md, "Benchmark Run").
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 from collections.abc import Callable
@@ -74,6 +75,20 @@ class Frame:
     height: int
     settling_discards: int = 0
     """Frames the Feed discarded to settle before this one. Zero when there was no Feed."""
+
+    @property
+    def digest(self) -> str:
+        """The SHA-256 of these exact bytes — what identifies this Frame to a later reader.
+
+        A Workload is the Frame's bytes rather than its resolution (CONTEXT.md), so "the
+        same Workload" is only a claim a reader can check if the bytes are named. A path
+        and a resolution are not: two machines can hold different images under the same
+        name, and the same camera at the same resolution gives different bytes every time.
+
+        Computed rather than stored so that it cannot drift from the bytes it is about,
+        and because it is read once per persisted Benchmark rather than per Benchmark Run.
+        """
+        return hashlib.sha256(self.data).hexdigest()
 
 
 class Camera(Protocol):

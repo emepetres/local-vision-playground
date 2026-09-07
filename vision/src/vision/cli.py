@@ -11,8 +11,10 @@ inference are three further costs of wildly different magnitude, and only the la
 latency of the Observation. Nothing is warmed up: the first run is the honest run.
 
 ``benchmark`` answers *what does it cost?* — the same Workload against several Variants,
-several times each, printed as a table apiece. Where ``observe`` will take a Frame from the
-live camera, ``benchmark`` refuses one: a different Frame per repetition is not a Workload.
+several times each, printed as a table apiece and then written down — a sitting that took
+minutes should outlive the terminal it scrolled past in. Where ``observe`` will take a Frame
+from the live camera, ``benchmark`` refuses one: a different Frame per repetition is not a
+Workload.
 """
 
 from __future__ import annotations
@@ -44,7 +46,8 @@ from vision.inference import (
     Timings,
     Workload,
 )
-from vision.reporting import render_benchmark, render_observation
+from vision.record import Now, Recorded, benchmarks_directory, hardware_profile, record
+from vision.reporting import render_benchmark, render_observation, render_recorded
 from vision.startup import (
     Clock,
     accept_variant,
@@ -106,13 +109,17 @@ def benchmark_main(
     camera: Camera | None = None,
     foundry: FoundryLocal | None = None,
     clock: Clock | None = None,
+    now: Now | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
+    benchmarks_dir: Path | None = None,
 ) -> int:
     """Run ``benchmark``. Several Variants, N Benchmark Runs each over one Workload."""
     args = _benchmark_parser().parse_args(argv)
     out, err = _streams(out, err)
     variants = args.variants if args.variants else DEFAULT_VARIANTS
+    if benchmarks_dir is None:
+        benchmarks_dir = benchmarks_directory()
 
     owned: list[Callable[[], None]] = []
     try:
@@ -140,8 +147,53 @@ def benchmark_main(
         for close in owned:
             close()
 
+    # Printed before the Benchmark is written down, and deliberately: a directory that
+    # cannot be written to should cost an Operator a file, never the minutes of numbers
+    # already in hand.
     print(render_benchmark(benchmark), file=out, end="")
+    try:
+        recorded = _record_benchmark(
+            benchmark,
+            declared=args.hardware,
+            now=_resolve_now(now),
+            directory=benchmarks_dir,
+        )
+    except Exception as error:
+        return _fail(error, debug=args.debug, err=err)
+
+    if recorded is not None:
+        print(render_recorded(record=recorded.json, document=recorded.markdown), file=out, end="")
     return _benchmark_status(benchmark, err=err)
+
+
+def _record_benchmark(
+    benchmark: Benchmark,
+    *,
+    declared: str | None,
+    now: Now,
+    directory: Path,
+) -> Recorded | None:
+    """Write the Benchmark down, unless there was no Benchmark to write down.
+
+    A sitting in which every Variant failed to load is reported in full on screen — with
+    nothing measured, the reasons are the whole answer — but a Benchmark of only Unmeasured
+    Variants has nothing to report (CONTEXT.md, "Benchmark"), and keeping it would put a
+    file with no numbers in it beside the ones an Operator compares machines with.
+    """
+    if not benchmark.measured:
+        return None
+    try:
+        return record(
+            benchmark,
+            profile=hardware_profile(declared),
+            at=now(),
+            directory=directory,
+        )
+    except OSError as error:
+        raise VisionError(
+            f"the Benchmark was measured but could not be written to {directory} —"
+            f" its numbers are in the report above, and nothing else was lost. {error}"
+        ) from error
 
 
 def _benchmark_status(benchmark: Benchmark, *, err: TextIO) -> int:
@@ -219,6 +271,17 @@ def _benchmark_parser() -> argparse.ArgumentParser:
         help=(
             "how many Benchmark Runs to take against each Variant"
             f" (default: {REPETITIONS}; the first is reported apart from the rest)"
+        ),
+    )
+    parser.add_argument(
+        "--hardware",
+        metavar="TEXT",
+        default=None,
+        help=(
+            "describe the machine these numbers were taken on, in words"
+            ' ("RTX 4090 + i7-13700KF") — it names the persisted record and is what a'
+            " reader six months from now has to go on. Default: what the standard library"
+            " reports about this machine, which tells two machines apart and no more"
         ),
     )
     _add_variants(parser)
@@ -332,6 +395,21 @@ def _resolve_clock(clock: Clock | None) -> Clock:
     from time import perf_counter
 
     return perf_counter
+
+
+def _resolve_now(now: Now | None) -> Now:
+    """The wall clock, which is a different port from the one the latencies are taken with.
+
+    ``perf_counter`` is monotonic and says nothing about what day it is; a record names the
+    instant it was taken at, and it is a local instant carrying its offset — an Operator
+    recognises the afternoon they ran it, and a reader elsewhere can still place it.
+    """
+    if now is not None:
+        return now
+
+    from datetime import datetime
+
+    return lambda: datetime.now().astimezone()
 
 
 def _fail(error: Exception, *, debug: bool, err: TextIO) -> int:

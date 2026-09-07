@@ -207,7 +207,11 @@ def test_reports_the_download_outside_the_three_latencies() -> None:
 
 def test_says_what_to_do_when_a_variant_will_not_load() -> None:
     model = FakeVisionModel(
-        make_identity(variant="qwen3.5-0.8b-cuda-gpu:3", runtime="GPU / CUDAExecutionProvider"),
+        make_identity(
+            variant="qwen3.5-0.8b-cuda-gpu:3",
+            execution_provider="CUDAExecutionProvider",
+            device_type="GPU",
+        ),
         [make_observation()],
         load_error=RuntimeError("This is an invalid model. Error: Duplicate definition of name"),
     )
@@ -277,7 +281,9 @@ def test_pins_a_variant_and_reports_the_one_that_answered() -> None:
     """
     cpu = FakeVisionModel(
         make_identity(
-            variant="qwen3-vl-2b-instruct-generic-cpu:2", runtime="CPU / CPUExecutionProvider"
+            variant="qwen3-vl-2b-instruct-generic-cpu:2",
+            execution_provider="CPUExecutionProvider",
+            device_type="CPU",
         ),
         [make_observation()],
     )

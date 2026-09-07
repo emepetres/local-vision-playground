@@ -67,11 +67,19 @@ warning raised on every Benchmark is a warning nobody reads.
 
 @dataclass(frozen=True)
 class BenchmarkRun:
-    """One measured execution of one Workload, and what the model generated under it."""
+    """One measured execution of one Workload, and what the model generated under it.
+
+    The Observation is kept as well as its size. A Benchmark is a comparison, and the
+    question a comparison of Execution Providers eventually runs into is not how far apart
+    the latencies were but whether the CPU said the same thing as the GPU — which nothing
+    but the text can answer. Counting its tokens and throwing it away would leave that
+    question unanswerable the moment the process exits.
+    """
 
     inference: float
     completion_tokens: int
     finish_reason: FinishReason
+    text: str
 
     @property
     def truncated(self) -> bool:
@@ -130,6 +138,17 @@ class MeasuredVariant:
     def first(self) -> BenchmarkRun:
         """The cold repetition, kept rather than dropped — it is the honest number."""
         return self.runs[0]
+
+    @property
+    def observation(self) -> str:
+        """What this Variant said about the Frame, taken from the cold Benchmark Run.
+
+        One rather than all of them: the repetitions answer the same Workload, so what is
+        worth keeping is what *this Variant* said, and the first is the one the report
+        already singles out. Where the repetitions disagree, the Tokens spread is what
+        says so.
+        """
+        return self.first.text
 
     @property
     def steady(self) -> tuple[BenchmarkRun, ...]:
@@ -436,4 +455,5 @@ def _run(model: VisionModel, workload: Workload, clock: Clock) -> BenchmarkRun:
         inference=inference,
         completion_tokens=raw.completion_tokens,
         finish_reason=raw.finish_reason,
+        text=raw.text,
     )

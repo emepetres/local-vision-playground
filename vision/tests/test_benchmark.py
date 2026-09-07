@@ -16,6 +16,7 @@ import pytest
 
 import vision.cli
 from tests.fakes import (
+    OBSERVED,
     FakeCamera,
     FakeClock,
     FakeFoundry,
@@ -29,6 +30,7 @@ from vision.capture import REFERENCE_FRAME
 from vision.cli import benchmark_main
 from vision.errors import VisionError
 from vision.inference import DEFAULT_VARIANTS, PROMPT, FinishReason, ModelIdentity, Workload
+from vision.record import benchmarks_directory
 
 GPU_VARIANT, CPU_VARIANT = DEFAULT_VARIANTS
 """The two Variants a Benchmark measures when the Operator names none."""
@@ -115,6 +117,13 @@ class Run:
     cpu: FakeVisionModel
     camera: FakeCamera
     events: list[str]
+    recorded: str
+    """The lines naming the files the Benchmark was written down into, or none.
+
+    The paths are a temporary directory's, so a test that asserts the whole of stdout has
+    to be told them rather than spelling them out — and being told them is also how it
+    pins that the command said where the record went.
+    """
 
 
 def make_gpu(
@@ -128,7 +137,9 @@ def make_gpu(
 
 
 CPU_IDENTITY = make_identity(
-    variant="qwen3-vl-2b-instruct-generic-cpu:2", runtime="CPU / CPUExecutionProvider"
+    variant="qwen3-vl-2b-instruct-generic-cpu:2",
+    execution_provider="CPUExecutionProvider",
+    device_type="CPU",
 )
 """The other half of the default pair — the same alias built for the CPU."""
 
@@ -175,7 +186,30 @@ def run(
         out=out,
         err=err,
     )
-    return Run(code, out.getvalue(), err.getvalue(), foundry, gpu, cpu, camera, events)
+    return Run(
+        code,
+        out.getvalue(),
+        err.getvalue(),
+        foundry,
+        gpu,
+        cpu,
+        camera,
+        events,
+        _recorded(benchmarks_directory()),
+    )
+
+
+def _recorded(directory: Path) -> str:
+    """The two lines the command prints under the table, read off the files themselves.
+
+    Read back rather than predicted: a test that built the expected name out of the same
+    slug and stamp the command uses would agree with it however wrong both were.
+    """
+    records = sorted(directory.glob("*.json")) if directory.exists() else []
+    if not records:
+        return ""
+    written = records[-1]
+    return f"\nRecorded     {written}\n             {written.with_suffix('.md')}\n"
 
 
 def test_measures_both_default_variants_and_prints_a_block_for_each() -> None:
@@ -183,7 +217,7 @@ def test_measures_both_default_variants_and_prints_a_block_for_each() -> None:
 
     assert result.code == 0
     assert result.err == ""
-    assert result.out == REPORT
+    assert result.out == REPORT + result.recorded
 
 
 def test_measures_the_cuda_gpu_and_cpu_variants_of_the_default_alias_by_default() -> None:
@@ -336,6 +370,7 @@ def test_summarises_only_the_cold_repetition_when_that_is_all_there_is() -> None
         "Inference       2.500 s\n"
         "Tokens               30\n"
         "Tokens/second      12.0\n"
+        f"{result.recorded}"
     )
 
 
@@ -557,7 +592,7 @@ def test_renders_a_variant_that_would_not_load_as_a_row_carrying_its_reason() ->
         " (alias qwen3-vl-2b-instruct, GPU / NvTensorRtRtxExecutionProvider)\n"
         "Attempted    1st of 2\n"
         f"Not measured {WOULD_NOT_LOAD}\n"
-        f"\n{CPU_BLOCK}"
+        f"\n{CPU_BLOCK}{result.recorded}"
     )
 
 
@@ -627,6 +662,7 @@ def test_warns_when_two_variants_generated_materially_different_amounts_of_text(
         " qwen3-vl-2b-instruct-cuda-gpu:2's 26 — 100% more, so these Variants did not do the"
         " same amount of work and their latencies are not a hardware comparison;"
         " Tokens/second is the figure that survives it)\n"
+        f"{result.recorded}"
     )
 
 
@@ -835,6 +871,7 @@ def _measured(
                 inference=inference,
                 completion_tokens=count,
                 finish_reason=FinishReason.COMPLETE,
+                text=OBSERVED,
             )
             for inference, count in zip(latencies, tokens, strict=True)
         ),

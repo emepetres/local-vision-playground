@@ -189,6 +189,9 @@ Load         4.397 s
 Inference       5.037 s   5.040 s   4.970 s   5.058 s
 Tokens              104       104       104       104
 Tokens/second      20.6      20.6      20.6      20.9
+
+Recorded     D:\dev\local-vision-playground\docs\benchmarks\rtx-4090-i7-13700kf-20260907-140311.json
+             D:\dev\local-vision-playground\docs\benchmarks\rtx-4090-i7-13700kf-20260907-140311.md
 ```
 
 Taken on the development machine (RTX 4090 + i7-13700KF) with both Variants already
@@ -285,6 +288,49 @@ the report above is inside it — and a warning on every Benchmark is a warning 
 The divergence is carried on the Benchmark rather than only printed, so it travels into the
 persisted record instead of living in a terminal that has since scrolled.
 
+#### What a Benchmark leaves behind
+
+A Benchmark that measured something is written to **`docs/benchmarks/`** as two files, in one
+call and from the same value: a **JSON record** and a **Markdown document**. The numbers are
+then in git — they can be shown when the live demo fails, cited in a talk, and compared
+against the same Benchmark taken on another machine later. See
+[ADR-0008](./docs/adr/0008-a-benchmark-is-two-files-written-together.md).
+
+```bash
+uv run benchmark --hardware "RTX 4090 + i7-13700KF"
+```
+
+`--hardware` is how the **Hardware Profile** is declared, in words. A reader six months from
+now needs "RTX 4090 + i7-13700KF"; a hostname means nothing to them. Leave it off and it
+falls back to what the standard library reports about the machine — host, platform,
+architecture, CPU count — so a Benchmark is never anonymous. Nothing probes the hardware:
+there is no portable way to ask a machine what GPU it has.
+
+The file name is a slug of that Hardware Profile plus a full timestamp
+(`rtx-4090-i7-13700kf-20260907-140311.json`), so two machines' records never collide, and
+three Benchmarks taken while tuning the demo on the same afternoon are three pairs of files
+rather than one overwritten twice.
+
+The **JSON is the record**: a schema version, the instant, the Hardware Profile, the Workload
+— including the SHA-256 of the Frame's bytes, so that "the same Workload" is a claim a reader
+can check rather than one they take on trust — the repetition count, the registration cost,
+and per Variant the resolved id, the alias, the Execution Provider and device type, whether
+it loaded and why not, the load time, **every** Benchmark Run's seconds and completion
+tokens, and one Observation. That last one is what lets an Operator answer whether the CPU
+said the same thing as the GPU — the more interesting half of the comparison once the latency
+gap turns out to be eightfold.
+
+The **Markdown is the same Benchmark as one comparison table**, with the Observations under
+it and the token-divergence warning in it as well as in the terminal — the caveat travels
+with the number to whoever reads the file months later. Reading a record back, and
+cross-machine comparison tables, are deliberately not built here; the schema version is what
+keeps that door open.
+
+A Benchmark in which nothing at all could be measured is not written down: a Benchmark of
+only Unmeasured Variants has nothing to report, and a file with no numbers in it would sit
+beside the ones you compare machines with. Its reasons are printed to the terminal, where
+they are the whole answer.
+
 ### Development
 
 ```bash
@@ -312,7 +358,7 @@ mirrored here.
 - [x] **1. One Observation, on demand.** Capture a Frame from the camera (or take an
       image file), send it to the local model, print the Observation and the latency it
       took. Runs and exits.
-- [ ] **2. Benchmark Runs across Execution Providers.** The same fixed workload against
+- [x] **2. Benchmark Runs across Execution Providers.** The same fixed workload against
       the CUDA-GPU variant and the CPU variant, N times each, printed as a table and
       persisted to the repo so the numbers survive a demo that goes wrong. Each Benchmark
       Run is named against its Hardware Profile.

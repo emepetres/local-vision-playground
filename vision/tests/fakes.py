@@ -222,13 +222,24 @@ def make_identity(
     alias: str = "qwen3-vl-2b-instruct",
     variant: str = "qwen3-vl-2b-instruct-cuda-gpu:2",
     task: str | None = "vision-language-chat",
-    runtime: str | None = "GPU / NvTensorRtRtxExecutionProvider",
+    execution_provider: str | None = "NvTensorRtRtxExecutionProvider",
+    device_type: str | None = "GPU",
 ) -> ModelIdentity:
-    return ModelIdentity(alias=alias, variant=variant, task=task, runtime=runtime)
+    return ModelIdentity(
+        alias=alias,
+        variant=variant,
+        task=task,
+        execution_provider=execution_provider,
+        device_type=device_type,
+    )
+
+
+OBSERVED = "A wooden desk with a laptop, a coffee mug and an open notebook."
+"""What the fake model says about a Frame when a test does not care what it said."""
 
 
 def make_observation(
-    text: str = "A wooden desk with a laptop, a coffee mug and an open notebook.",
+    text: str = OBSERVED,
     finish_reason: FinishReason = FinishReason.COMPLETE,
     completion_tokens: int = 24,
 ) -> RawObservation:

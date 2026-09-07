@@ -43,19 +43,31 @@ class FakeCamera:
 class FakeFeed:
     """A Feed that hands out prepared images, one per read, and counts every read.
 
-    ``gives_nothing`` is the camera that opens but never yields — what a camera held by
-    another application looks like from here.
+    Several images are several images already waiting, which is what a reader coming back
+    after a pause is handed (CONTEXT.md, "Stale Frame"). ``gives_nothing`` is the camera
+    that opens but never yields — what a camera held by another application looks like —
+    and ``stops_after`` is the Feed that yields for a while and then dies, which ends a
+    Watch rather than one Observation. The first is the second with nothing to yield at
+    all, so they are one mechanism under two names worth telling apart.
     """
 
-    def __init__(self, images: Iterable[Image.Image], *, gives_nothing: bool = False) -> None:
+    def __init__(
+        self,
+        images: Iterable[Image.Image],
+        *,
+        gives_nothing: bool = False,
+        stops_after: int | None = None,
+    ) -> None:
         self._images = list(images)
-        self._gives_nothing = gives_nothing
+        self._stops_after = 0 if gives_nothing else stops_after
         self.reads = 0
         self.closed = False
 
     def read(self) -> Image.Image | None:
         self.reads += 1
-        if self._gives_nothing or self.reads > len(self._images):
+        if self._stops_after is not None and self.reads > self._stops_after:
+            return None
+        if self.reads > len(self._images):
             return None
         return self._images[self.reads - 1]
 

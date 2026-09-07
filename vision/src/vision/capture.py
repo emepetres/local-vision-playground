@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from itertools import count
 from pathlib import Path
+from threading import Condition, Thread
 from types import ModuleType
 from typing import TYPE_CHECKING, Protocol
 
@@ -40,6 +41,13 @@ A camera exposes and white-balances for a moment after it opens, so its first Fr
 dark or wrongly coloured (see CONTEXT.md, "Feed"). Discarding a fixed number of them is
 part of taking a Frame, not a sleep hidden in front of it: the discards happen inside
 ``capture`` and so inside the capture time the Operator is told about.
+"""
+
+READER_SHUTDOWN_SECONDS = 2.0
+"""How long closing a HeldFeed waits for its draining reader to come off the Feed.
+
+Long enough for a read of a working camera to return many times over, short enough that a
+camera which has stopped answering does not hold up the process that is shutting down.
 """
 
 REFERENCE_FRAME = Path(__file__).resolve().parents[3] / "docs" / "fixtures" / "reference-frame.jpg"
@@ -115,6 +123,280 @@ OpenFeed = Callable[[int], "Feed | None"]
 """Opens the Feed on the camera at an index, or reports there is no camera at that index."""
 
 
+@dataclass(frozen=True)
+class Present:
+    """What a held Feed hands out: the image now, and what was discarded to reach it.
+
+    The two travel together because neither is worth having alone — an image with no count
+    is an image that might be the past, and a count with no image is arithmetic about
+    nothing. Named rather than a pair so that the Stale Frames cannot be read as a
+    position (CONTEXT.md, "Stale Frame"), the way ``Frame.settling_discards`` is named.
+    """
+
+    image: Image.Image | None
+    """Nothing at all when the Feed has stopped giving images."""
+
+    stale_frames: int
+    """Images the Feed produced while nobody was reading, discarded to reach this one."""
+
+
+class Reader(Protocol):
+    """Whatever keeps the most recent image of a Feed available for the asking.
+
+    A Feed does not wait for its reader (CONTEXT.md, "Feed"), so *how* it is read decides
+    what a Stale Frame even is: a reader that only reads when asked never produces one,
+    while a reader draining the Feed continuously produces exactly as many as it discarded.
+    Both are real readers of the same Feed, which is why this is a port and not a class.
+    """
+
+    def latest(self) -> Present:
+        """The present. No image and no discards when the Feed has stopped giving them."""
+        ...
+
+    def stop(self) -> None:
+        """Stop consuming the Feed. Closing the Feed itself is the caller's business."""
+        ...
+
+
+MakeReader = Callable[["Feed"], Reader]
+"""Puts a reader on an opened Feed."""
+
+
+class LatestImage:
+    """The most recent image a Feed produced, and the count of what it displaced.
+
+    Not a reader: whoever reads the Feed offers images here, and whoever wants the present
+    takes them. Holding is split from reading so that the counting rule is written once and
+    can be driven either by a thread or by a test's own calls.
+
+    Taking empties it. The next image handed out is therefore one the Feed produced after
+    the last handout, which is what makes it the present rather than the last thing seen.
+    """
+
+    def __init__(self) -> None:
+        self._image: Image.Image | None = None
+        self._discarded = 0
+
+    @property
+    def is_empty(self) -> bool:
+        return self._image is None
+
+    def offer(self, image: Image.Image) -> None:
+        """Keep this image, discarding as a Stale Frame whichever one it displaces."""
+        if self._image is not None:
+            self._discarded += 1
+        self._image = image
+
+    def take(self) -> Present:
+        present = Present(image=self._image, stale_frames=self._discarded)
+        self._image, self._discarded = None, 0
+        return present
+
+
+class OnDemandReader:
+    """A Reader that touches the Feed only when the present is asked for.
+
+    One read, one image, no Stale Frames — which is the whole truth for a single-shot
+    capture, where nothing was buffered while nobody was reading because nobody was going
+    to read again. ``read_once`` is the same read made without handing anything out, so
+    that a test can put a Feed's images behind the reader without a thread to wait on.
+    """
+
+    def __init__(self, feed: Feed) -> None:
+        self._feed = feed
+        self._held = LatestImage()
+        self._ended = False
+
+    def read_once(self) -> bool:
+        """Read one image, keeping it and discarding whatever it displaces.
+
+        False when the Feed yielded nothing, which is the only signal that it is done —
+        a Feed reports its own death by handing back no image.
+        """
+        if self._ended:
+            return False
+        image = self._feed.read()
+        if image is None:
+            self._ended = True
+            return False
+        self._held.offer(image)
+        return True
+
+    def latest(self) -> Present:
+        if self._held.is_empty:
+            self.read_once()
+        return self._held.take()
+
+    def stop(self) -> None:
+        self._ended = True
+
+
+class DrainingReader:
+    """A Reader that keeps consuming the Feed, so that a Stale Frame is a counted fact.
+
+    This is the reader a Watch needs, and the reason a Stale Frame is a count rather than
+    an estimate (ADR-0006). OpenCV gives no way to ask whether a Feed has anything left —
+    ``read()`` always returns something — so "discard whatever arrived meanwhile" cannot be
+    discovered by reading until nothing comes back. Draining continuously and holding only
+    the most recent image turns it into arithmetic: every image the held one displaced is
+    one Stale Frame, counted as it happened.
+
+    The draining is one call, ``drain_once``, and the thread is nothing but a loop over it
+    (see ``drain_in_background``). That is where the boundary goes: the counting a Watch's
+    honesty rests on is then the same code whether a thread is turning the loop or a test
+    is, and no test has to wait on anything. A reader nothing is turning holds no images,
+    so a Feed is only ever given one of these through the factory that starts its thread.
+    """
+
+    def __init__(self, feed: Feed) -> None:
+        self._feed = feed
+        self._held = LatestImage()
+        self._arrived = Condition()
+        self._stopped = False
+        self._ended = False
+        self._thread: Thread | None = None
+
+    def start(self) -> None:
+        """Put a thread on the draining. A daemon, so a wedged read cannot outlive exit."""
+        self._thread = Thread(target=self._drain, name="feed-reader", daemon=True)
+        self._thread.start()
+
+    def drain_once(self) -> bool:
+        """Read one image, keeping it and discarding as a Stale Frame whatever it displaces.
+
+        False when there is no point reading again — the Feed handed back nothing, which is
+        how it reports its own death, or the reader has been stopped.
+
+        The read happens outside the lock: it is the one slow call here, and a caller
+        asking for the present must never wait on the Feed's next image to be handed the
+        one already held.
+        """
+        if self._stopped:
+            return False
+        image = self._feed.read()
+        with self._arrived:
+            if self._stopped:
+                return False
+            if image is None:
+                self._ended = True
+                self._arrived.notify_all()
+                return False
+            self._held.offer(image)
+            self._arrived.notify_all()
+            return True
+
+    def _drain(self) -> None:
+        while self.drain_once():
+            pass
+
+    def latest(self) -> Present:
+        """The most recent image, waiting if the Feed has not produced one yet.
+
+        Waiting is right rather than reporting nothing: an image is coming within a Frame
+        interval, and "no image" is reserved for a Feed that has actually stopped giving
+        them — which is what a caller turns into a failure. A stopped reader is that too,
+        so that asking a closed HeldFeed for the present is answered rather than waited on.
+        """
+        with self._arrived:
+            self._arrived.wait_for(lambda: not self._held.is_empty or self._ended or self._stopped)
+            return self._held.take()
+
+    def stop(self) -> None:
+        """Come off the Feed, and wait for the thread to be off it too.
+
+        The wait is bounded because the thread can be inside a ``read`` that never returns
+        — a camera unplugged mid-Watch — and a demo that will not exit is worse than a
+        thread left behind on a Feed that is already gone.
+        """
+        with self._arrived:
+            self._stopped = True
+            self._arrived.notify_all()
+        if self._thread is not None:
+            self._thread.join(timeout=READER_SHUTDOWN_SECONDS)
+
+
+def drain_in_background(feed: Feed) -> Reader:
+    """A DrainingReader with a thread already turning its loop — how a real Feed is read."""
+    reader = DrainingReader(feed)
+    reader.start()
+    return reader
+
+
+class HeldFeed:
+    """A Feed opened once and held for as long as many Observations need it.
+
+    ``LiveCamera`` opens one of these, takes a Frame and closes it; a Watch keeps the same
+    one for its whole run. Either way this is where the two facts a held Feed has and a
+    single read does not are kept apart: the Frames discarded once because the camera was
+    not ready yet, and the Stale Frames discarded on the way to the present because nobody
+    was reading (CONTEXT.md, "Stale Frame"). The first is reported once, here; the second
+    on every handout.
+    """
+
+    def __init__(self, feed: Feed, reader: Reader, settling_discards: int) -> None:
+        self._feed = feed
+        self._reader = reader
+        self._closed = False
+        self.settling_discards = settling_discards
+        """Frames discarded while the Feed settled — paid once, when it was opened."""
+
+    @classmethod
+    def open(cls, index: int, open_feed: OpenFeed, *, make_reader: MakeReader) -> HeldFeed | None:
+        """Open the camera at ``index`` and settle it, or report there is none there.
+
+        Reporting rather than raising, like the OpenFeed port it stands on: what to tell an
+        Operator with no camera attached depends on what they were trying to do, and only
+        the caller knows that.
+
+        Settling reads the Feed directly, before any reader is put on it: the whole point
+        of those reads is that nobody looks at what they returned, so a Feed that gives
+        nothing while settling is not a failure here. It becomes one on the first handout —
+        and a Feed that gave nothing discarded nothing, which is what is reported.
+        """
+        feed = open_feed(index)
+        if feed is None:
+            return None
+        try:
+            discards = sum(feed.read() is not None for _ in range(SETTLING_FRAMES))
+            reader = make_reader(feed)
+        except BaseException:
+            feed.close()
+            raise
+        return cls(feed, reader, discards)
+
+    def present(self) -> Present:
+        """The image in front of the camera now, and the Stale Frames discarded to reach it.
+
+        Nothing at all when the Feed yielded nothing: a camera another application is
+        holding opens and then reads empty forever (see ``open_camera_feed``), and what to
+        say about that is the caller's, as it is for a camera that was never there.
+        """
+        return self._reader.latest()
+
+    def close(self) -> None:
+        """Stop the reader and release the camera, in that order and only once.
+
+        The reader goes first: a reader still consuming a released Feed is reading a device
+        that is gone. But the camera is released whatever the reader did on the way down,
+        because a Feed left open holds it against every other application. Idempotent, so
+        that a caller closing on the way out of a failure it has already handled does not
+        turn one problem into two.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._reader.stop()
+        finally:
+            self._feed.close()
+
+    def __enter__(self) -> HeldFeed:
+        return self
+
+    def __exit__(self, *exception: object) -> None:
+        self.close()
+
+
 class ImageFileCamera:
     """A Camera that takes its Frame from an image file rather than from a Feed.
 
@@ -143,6 +425,11 @@ class ImageFileCamera:
 class LiveCamera:
     """A Camera that takes its Frame from a Feed on a camera attached to the machine.
 
+    A HeldFeed for the length of one Frame: open, settle, take the present, close. The
+    reader is the on-demand one, because a capture that happens once has nothing to drain —
+    no image arrived while nobody was reading, so no Stale Frame is discarded and the count
+    it reports is honestly zero.
+
     It owns the two failures a live demo actually hits — no camera attached, and a camera
     another application is holding — because both are answered the same way whatever
     opened the Feed, and a fake Feed can then drive both.
@@ -153,33 +440,25 @@ class LiveCamera:
         self._open_feed = open_feed
 
     def capture(self) -> Frame:
-        feed = self._open_feed(self._index)
-        if feed is None:
+        held = HeldFeed.open(self._index, self._open_feed, make_reader=OnDemandReader)
+        if held is None:
             raise VisionError(
                 f"there is no camera at index {self._index} — attach one, select another"
                 " with --camera N, or observe an image file with --image <path>"
             )
-        try:
-            for _ in range(SETTLING_FRAMES):
-                self._read(feed)
-            image = self._read(feed)
+        with held:
+            present = held.present()
+            if present.image is None:
+                raise VisionError(
+                    f"camera {self._index} opened but gave no Frame — another application is"
+                    " holding it; close that application, or observe an image file"
+                    " with --image <path>"
+                )
             return _to_frame(
-                image,
+                present.image,
                 provenance=f"camera {self._index}",
-                settling_discards=SETTLING_FRAMES,
+                settling_discards=held.settling_discards,
             )
-        finally:
-            feed.close()
-
-    def _read(self, feed: Feed) -> Image.Image:
-        image = feed.read()
-        if image is None:
-            raise VisionError(
-                f"camera {self._index} opened but gave no Frame — another application is"
-                " holding it; close that application, or observe an image file"
-                " with --image <path>"
-            )
-        return image
 
 
 def open_camera_feed(index: int) -> Feed | None:
@@ -192,10 +471,16 @@ def open_camera_feed(index: int) -> Feed | None:
     and every ``read`` comes back empty. That second half is not decided here: a Feed that
     reads nothing is what ``LiveCamera`` turns into the message.
     """
-    device = _cv2().VideoCapture(index)
+    cv2 = _cv2()
+    device = cv2.VideoCapture(index)
     if not device.isOpened():
         device.release()
         return None
+    # Ask the backend to keep one image rather than a queue of them, so that a reader
+    # coming back after a pause has less of the past to discard. Backends are free to
+    # ignore it and several do, which is why nothing depends on it: the Stale Frames are
+    # counted by the reader that discards them, not deduced from this depth.
+    device.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     return OpenCVFeed(device)
 
 

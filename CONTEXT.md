@@ -46,7 +46,14 @@ for differently. Whether an object being present *matters* is a [[Trigger]], not
 _Avoid_: object detection, bounding boxes, labels, classification
 
 **Scene Question**:
-A natural-language question an Operator asks about a Frame, answered from that Frame alone.
+A natural-language question an Operator asks about a Frame, answered from that Frame alone —
+from no earlier Frame and no earlier answer. There is no follow-up: *and what colour is it?*
+is not a question this project can answer, because nothing the model was told a moment ago is
+still there to be referred back to.
+
+A Scene Question outlives the Observation that answers it. Asked of a [[Watch]], it is what
+that Watch asks from its next [[Cadence]] onward, until the Operator replaces it — so asking
+one is not an interruption but a change of what the Watch is for.
 _Avoid_: prompt, query, ask
 
 ### Watching
@@ -56,7 +63,9 @@ A continuous run of Observations over a live [[Feed]], produced at a requested [
 for as long as the Operator lets it run. A Watch produces Observations in series; it does
 not relate them to one another. Noticing that something changed between two of them is a
 [[Trigger]], not a Watch — every Observation a Watch produces stands on its own Frame, as
-any Observation does.
+any Observation does. Every Observation a Watch produces answers the [[Scene Question]]
+standing when its Frame was taken — the plain description, until an Operator asks for
+something else.
 _Avoid_: loop, monitor, stream, session, live mode
 
 **Cadence**:

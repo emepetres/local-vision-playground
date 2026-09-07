@@ -375,7 +375,15 @@ mirrored here.
       deliberate answer to what happens when inference is slower than the capture
       interval.
 - [ ] **4. Scene Questions.** Ask a natural-language question about the current Frame and
-      get an answer from that Frame alone.
+      get an answer from that Frame alone — no follow-ups, because nothing the model was
+      told a moment ago is still there. Three surfaces: `observe --ask` replaces the fixed
+      prompt for one Frame; `benchmark --ask` makes the question a Workload, so that a
+      short answer and a description are measured as the different amounts of work they
+      are; and a Watch accepts a question typed while it runs, without stopping. In a Watch
+      the question is not an interruption — it takes effect at the next Cadence and stays
+      in effect until it is replaced, so that a skipped Cadence goes on meaning *this
+      machine could not keep up* and nothing else
+      ([ADR-0009](./docs/adr/0009-a-scene-question-changes-what-a-watch-asks.md)).
 - [ ] **5. Structured Observations.** Ask the model for a fixed shape — the list of
       objects present in a Frame — instead of prose.
 - [ ] **6. Triggers.** Fire when a condition over Observations holds: an object appears,

@@ -15,6 +15,7 @@ from PIL import Image
 
 from vision.capture import (
     Camera,
+    DrainingReader,
     Feed,
     Frame,
     MakeReader,
@@ -131,6 +132,55 @@ class FakeReaders:
 
     def __call__(self, feed: Feed) -> RecordingReader:
         reader = RecordingReader(feed)
+        self.readers.append(reader)
+        return reader
+
+
+class HandTurnedReader:
+    """A Reader that really drains the Feed, with the test turning the loop instead of a thread.
+
+    The reader a Watch runs on in production discards Stale Frames continuously (ADR-0006),
+    and how many it discarded is the count the report rests on — so a test about that count
+    has to be driven through the real counting rule rather than a fake of it. ``drain_once``
+    is where that rule lives and it is one call, so turning it by hand is the whole loop:
+    ``reads`` says how many images the Feed produced before each handout, and every one
+    beyond the first is a Stale Frame the real reader really discarded.
+    """
+
+    def __init__(self, feed: Feed, reads: Sequence[int]) -> None:
+        self._reader = DrainingReader(feed)
+        self._reads = tuple(reads)
+        self._handouts = 0
+        self.stopped = False
+
+    def latest(self) -> Present:
+        arrived = self._reads[self._handouts] if self._handouts < len(self._reads) else 1
+        self._handouts += 1
+        for _ in range(arrived):
+            if not self._reader.drain_once():
+                break
+        return self._reader.latest()
+
+    def stop(self) -> None:
+        self.stopped = True
+        self._reader.stop()
+
+
+class HandTurnedReaders:
+    """Puts a HandTurnedReader on the Feed, told in advance what arrived between handouts.
+
+    Several images between two handouts is what a machine short of its Cadence produces:
+    the Feed goes on yielding while the model is busy, so the reader has Stale Frames to
+    discard on the way to the present. Said as a schedule rather than as a rate so that no
+    test has to wait for one.
+    """
+
+    def __init__(self, reads: Sequence[int] = ()) -> None:
+        self._reads = tuple(reads)
+        self.readers: list[HandTurnedReader] = []
+
+    def __call__(self, feed: Feed) -> HandTurnedReader:
+        reader = HandTurnedReader(feed, self._reads)
         self.readers.append(reader)
         return reader
 
@@ -376,7 +426,9 @@ _camera: Camera = FakeCamera([])
 _feed: Feed = FakeFeed([])
 _open_feed: OpenFeed = FakeCameras({})
 _reader: Reader = RecordingReader(FakeFeed([]))
+_hand_turned: Reader = HandTurnedReader(FakeFeed([]), ())
 _make_reader: MakeReader = FakeReaders()
+_make_hand_turned: MakeReader = HandTurnedReaders()
 _sleep: Sleep = FakeSleep()
 _model: VisionModel = FakeVisionModel(make_identity(), [make_observation()])
 _foundry: FoundryLocal = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})

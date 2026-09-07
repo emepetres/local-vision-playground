@@ -24,6 +24,7 @@ from tests.fakes import (
     FakeReaders,
     FakeSleep,
     FakeVisionModel,
+    HandTurnedReaders,
     colour_of,
     make_identity,
     make_images,
@@ -97,7 +98,7 @@ class Run:
     out: str
     err: str
     cameras: FakeCameras
-    readers: FakeReaders
+    readers: FakeReaders | HandTurnedReaders
     feed: FakeFeed
     model: FakeVisionModel
     sleep: FakeSleep
@@ -111,6 +112,7 @@ def run(
     observations: int = len(TEXTS),
     clock: FakeClock | None = None,
     sleep: FakeSleep | None = None,
+    readers: FakeReaders | HandTurnedReaders | None = None,
     frames_dir: Path | None = None,
 ) -> Run:
     """One invocation, over a Feed read on demand rather than drained by a thread.
@@ -118,7 +120,8 @@ def run(
     The reader is a port of the held Feed's (see ``MakeReader``), which is what keeps this
     whole suite free of concurrency: one read, one image, and the Stale Frames a draining
     reader would count are a different question from keeping a Cadence, which is the one
-    this suite asks.
+    most of this suite asks. The tests about a Watch that fell behind ask the other one,
+    and hand in ``readers`` — a reader that really drains, with the test turning its loop.
     """
     feed = watching_feed(observations)
     feeds = feeds if feeds is not None else {0: feed}
@@ -129,7 +132,8 @@ def run(
         if model is not None
         else FakeVisionModel(make_identity(), [make_observation(text) for text in TEXTS])
     )
-    cameras, readers = FakeCameras(feeds), FakeReaders()
+    cameras = FakeCameras(feeds)
+    readers = readers if readers is not None else FakeReaders()
     sleep = sleep if sleep is not None else FakeSleep()
     out, err = io.StringIO(), io.StringIO()
     code = watch_main(
@@ -213,11 +217,250 @@ def test_every_zero_asks_for_observations_as_fast_as_the_model_allows() -> None:
     assert result.sleep.waits == []
 
 
+def test_every_zero_has_no_grid_to_skip_on_however_slow_the_model_is() -> None:
+    """No Cadence, no shortfall: an Observation asked for the moment the model is free
+    cannot be late for an instant nobody named.
+    """
+    result = run(
+        ["--count", "3", "--every", "0"],
+        clock=FakeClock(readings(3, cadence=0.0, inference=60.0)),
+    )
+
+    assert result.code == 0
+    assert "skipped" not in result.out
+
+
 def test_a_watch_that_keeps_its_cadence_says_nothing_about_skipping() -> None:
     result = run(["--count", "3"])
 
     assert "skip" not in result.out
     assert "Stale" not in result.out
+
+
+OVERRUN_COLOURS = (
+    (200, 40, 40),
+    (40, 200, 40),
+    (40, 40, 200),
+    (200, 200, 40),
+    (40, 200, 200),
+    (200, 40, 200),
+    (200, 200, 200),
+    (255, 255, 255),
+)
+"""One colour per image the Feed produces once the Watch is short of its Cadence.
+
+Every one of them survives the JPEG round-trip exactly, which is what lets a test name the
+colour it expects rather than allow a tolerance around it — and a tolerance is the last
+thing wanted here, where the whole question is *which* image was encoded.
+"""
+
+OVERRUN_READS = (1, 3, 4)
+"""What arrived between handouts: one, then three while the overrunning inference ran.
+
+Two of those three are Stale Frames — the reader holds only the most recent — so the
+Observation that follows the overrun is about the last colour of the three, not the first.
+
+Four before the third handout, and that one is *timely*: a camera yields many more images
+than a Watch asks Observations of, so discarding some of them is the ordinary case and not
+a shortfall. That is the case worth having in the suite, because it is the one where the
+rule about what a timely Observation says can actually be got wrong.
+"""
+
+OVERRUN = 5.0
+"""What the first inference costs: two and a half Cadences, so two instants are passed."""
+
+
+def overrun_feed() -> FakeFeed:
+    return FakeFeed(make_images([*SETTLING_COLOURS, *OVERRUN_COLOURS]))
+
+
+def overrun_clock() -> FakeClock:
+    """A machine that cannot keep the Cadence on its first Observation and then can.
+
+    The first Observation is due at ``T0`` and takes 5.000 s of a 2.000 s Cadence, so the
+    instants at ``T0 + 2`` and ``T0 + 4`` have both passed by the time the model is free.
+    The next one is therefore due at ``T0 + 6``, one second away — a Watch that queued the
+    passed instants would run the second Observation at once and stay a Cadence behind for
+    every Observation after it.
+    """
+    return FakeClock(
+        (
+            *SETUP_READINGS,
+            *LOAD_READINGS,
+            T0,
+            T0,
+            T0 + OVERRUN,
+            T0 + OVERRUN,
+            T0 + 3 * CADENCE,
+            T0 + 3 * CADENCE + INFERENCE,
+            T0 + 3 * CADENCE + INFERENCE,
+            T0 + 4 * CADENCE,
+            T0 + 4 * CADENCE + INFERENCE,
+        )
+    )
+
+
+def overrun(argv: list[str], *, frames_dir: Path | None = None) -> Run:
+    """The Watch of three Observations whose first one overran the Cadence by two instants."""
+    return run(
+        argv,
+        feeds={0: overrun_feed()},
+        clock=overrun_clock(),
+        readers=HandTurnedReaders(OVERRUN_READS),
+        frames_dir=frames_dir,
+    )
+
+
+def test_a_watch_that_overran_skips_the_passed_instants_and_resumes_on_the_grid() -> None:
+    """Five seconds of a two-second Cadence: the next instant is the sixth, not the second.
+
+    A Watch that deferred the instants it passed would ask to wait for nothing at all and
+    then be permanently a Cadence behind; this one waits out the second that is left of the
+    instant it skipped forward to.
+    """
+    result = overrun(["--count", "3"])
+
+    assert result.code == 0
+    assert result.sleep.waits == [1.0, 1.0]
+
+
+def test_says_on_the_late_observations_line_what_it_skipped_and_what_it_discarded() -> None:
+    result = overrun(["--count", "3"])
+
+    assert result.out == (
+        HEADER
+        + f"\n#1  inference {OVERRUN:.3f} s\n{TEXTS[0]}\n"
+        + observation_block(
+            2,
+            TEXTS[1],
+            extra=(
+                ", late — skipped 2 Cadences and discarded 2 Stale Frames to observe the present"
+            ),
+        )
+        + observation_block(3, TEXTS[2])
+        + "\n3 Observations, median inference 1.000 s, 2 Cadences skipped\n"
+    )
+
+
+def test_reports_the_stale_frames_apart_from_the_settling_discards() -> None:
+    """The same read, two different facts (CONTEXT.md, "Stale Frame") — so two sentences."""
+    result = overrun(["--count", "3"])
+
+    header, *blocks = result.out.split("\n\n")
+    assert f"Feed       camera 0, {SETTLING_FRAMES} Frames discarded while it settled\n" in header
+    assert "settled" not in "\n\n".join(blocks)
+    assert "Stale Frames" not in header
+
+
+def test_observes_the_most_recent_frame_after_an_overrun_and_not_the_oldest() -> None:
+    """The lie ADR-0006 exists to refuse: a confident description of a room already gone."""
+    result = overrun(["--count", "3"])
+
+    colours = [colour_of(workload.frame.data) for workload in result.model.observed]
+    assert colours == [OVERRUN_COLOURS[0], OVERRUN_COLOURS[3], OVERRUN_COLOURS[7]]
+
+
+def test_a_timely_observation_that_discarded_stale_frames_reports_neither() -> None:
+    """The third Observation is on time and still discarded three images on its way.
+
+    Which is every timely Observation on a real camera: a Feed yields Frames far faster
+    than a Watch asks Observations of it, so a Stale Frame on its own is not a shortfall
+    and saying so on every line would bury the lines where it is one.
+    """
+    result = overrun(["--count", "3"])
+
+    lines = [line for line in result.out.splitlines() if line.startswith("#")]
+    assert lines[2] == "#3  inference 1.000 s"
+    # And it really did discard them: the Frame it observed is the last of the four that
+    # arrived, not the first.
+    assert colour_of(result.model.observed[2].frame.data) == OVERRUN_COLOURS[7]
+
+
+def test_the_observations_that_kept_the_cadence_say_nothing_about_being_late() -> None:
+    result = overrun(["--count", "3"])
+
+    lines = [line for line in result.out.splitlines() if line.startswith("#")]
+    assert "late" not in lines[0]
+    assert "late" not in lines[2]
+
+
+def test_summarises_the_cadences_the_machine_could_not_keep() -> None:
+    """The lesson an Operator leaves with: the rate this machine actually sustained."""
+    result = overrun(["--count", "3"])
+
+    assert result.out.endswith("\n3 Observations, median inference 1.000 s, 2 Cadences skipped\n")
+
+
+def test_still_reports_the_skipped_cadences_when_the_watch_ended_inside_the_inference() -> None:
+    """An instant is abandoned before the Observation that follows it is asked for.
+
+    So a Watch interrupted during that inference still passed those instants, and a
+    summary that only added up the Observations it produced would report the machine as
+    having kept a Cadence it was failing at the very moment the Operator gave up on it.
+    """
+    interrupted = InterruptedModel(make_identity(), [make_observation(TEXTS[0])])
+    result = run(
+        ["--count", "3"],
+        model=interrupted,
+        feeds={0: overrun_feed()},
+        clock=overrun_clock(),
+        readers=HandTurnedReaders(OVERRUN_READS),
+    )
+
+    assert result.code == 0
+    assert len(interrupted.observed) == 1
+    assert result.out.endswith("\n1 Observation, median inference 5.000 s, 2 Cadences skipped\n")
+
+
+def test_an_instant_arrived_at_exactly_is_not_reported_as_one_more_skipped() -> None:
+    """A Cadence no float can hold is still a grid, and a skip is still a real count.
+
+    ``--every 0.1`` puts its instants a fraction of a nanosecond off where the arithmetic
+    says they are. An Observation that overran to land exactly on one of them skipped the
+    instants before it and no more — a Watch that rounded up would claim a skip that never
+    happened and then wait out a whole Cadence for it.
+    """
+    fine = 0.1
+    result = run(
+        ["--count", "2", "--every", str(fine)],
+        observations=2,
+        clock=FakeClock(
+            (
+                *SETUP_READINGS,
+                *LOAD_READINGS,
+                T0,
+                T0,
+                T0 + fine * 2,  # the first Observation overran onto the second instant
+                T0 + fine * 2,
+                T0 + fine * 2,
+                T0 + fine * 2 + 0.05,
+            )
+        ),
+    )
+
+    assert result.code == 0
+    assert result.sleep.waits == []
+    assert ", late — skipped 1 Cadence and discarded 0 Stale Frames" in result.out
+    assert result.out.endswith("\n2 Observations, median inference 0.125 s, 1 Cadence skipped\n")
+
+
+def test_turns_none_of_what_it_lost_into_a_benchmark(benchmarks: Path) -> None:
+    """A Watch is not a measurement, and a Watch that fell behind is not one either."""
+    overrun(["--count", "3"])
+
+    assert not benchmarks.exists()
+
+
+def test_keeps_the_observed_frames_after_an_overrun_and_never_a_stale_one(
+    tmp_path: Path,
+) -> None:
+    """Three Observations, five images read: the two nobody observed explain nothing."""
+    result = overrun(["--count", "3", "--keep-frames"], frames_dir=tmp_path)
+
+    kept = list(tmp_path.glob("*.jpg"))
+    assert len(kept) == 3
+    observed = {workload.frame.data for workload in result.model.observed}
+    assert {path.read_bytes() for path in kept} == observed
 
 
 def test_opens_and_settles_the_feed_once_however_many_observations_follow() -> None:

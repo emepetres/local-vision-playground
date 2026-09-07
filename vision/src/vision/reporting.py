@@ -133,14 +133,23 @@ def render_watch_summary(watch: Watch) -> str:
     The lesson the Operator leaves with, which is why it is a sentence rather than a table:
     the rate this machine actually managed. A Watch that produced nothing has no median to
     report, and says that rather than writing a zero that would read as an instant answer.
+
+    The skipped Cadences are the other half of that rate, and they are here in total
+    because a total is the one thing the per-Observation lines cannot be read as: a Watch
+    left running through a demo has scrolled by the time it ends. A Watch that kept its
+    Cadence says nothing about them — a "0 Cadences skipped" on every timely run would
+    make the number furniture rather than news.
     """
     median = watch.median_inference
     if median is None:
         return "\nNo Observations — the Watch ended before the model produced one\n"
-    return (
-        f"\n{_counted(len(watch.observations), 'Observation')},"
-        f" median inference {format_seconds(median)}\n"
+    sentence = (
+        f"{_counted(len(watch.observations), 'Observation')},"
+        f" median inference {format_seconds(median)}"
     )
+    if watch.skipped_cadences:
+        sentence += f", {_counted(watch.skipped_cadences, 'Cadence')} skipped"
+    return f"\n{sentence}\n"
 
 
 def _observation_clauses(observed: WatchedObservation) -> list[str]:
@@ -154,9 +163,31 @@ def _observation_clauses(observed: WatchedObservation) -> list[str]:
     clauses = [f"inference {format_seconds(observed.inference)}"]
     if observed.truncated:
         clauses.append(f"truncated — it hit {_output_limit(observed.max_output_tokens)}")
+    if observed.late:
+        clauses.append(_lateness(observed))
     if observed.saved is not None:
         clauses.append(f"saved {observed.saved}")
     return clauses
+
+
+def _lateness(observed: WatchedObservation) -> str:
+    """What an Observation that could not be taken on time cost, as two counts.
+
+    Said here rather than in the summary, and only on the line it happened on: the whole
+    point of counting a shortfall instead of averaging it is that an Operator can see
+    *when* the machine fell behind (ADR-0006). Both numbers are named because they are
+    different losses — the skipped Cadences are Observations that will never exist, the
+    Stale Frames are images nobody looked at — and a line reporting one of them would
+    leave the other looking like the same fact under another name.
+
+    "Stale Frames" rather than "discarded Frames", because the Feed also discarded Frames
+    while it settled and that is reported once, at the top, about the camera rather than
+    about the model (CONTEXT.md, "Stale Frame").
+    """
+    return (
+        f"late — skipped {_counted(observed.skipped_cadences, 'Cadence')} and discarded"
+        f" {_counted(observed.stale_frames, 'Stale Frame')} to observe the present"
+    )
 
 
 def _cadence(seconds: float) -> str:

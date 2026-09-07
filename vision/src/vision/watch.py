@@ -12,6 +12,15 @@ means that and not "two seconds plus however long inference took" (ADR-0006). Wa
 the next instant goes through an injected ``Sleep``, which is what lets a whole Watch be
 driven to its summary with no wall-clock time in the test at all.
 
+The grid is also what makes falling behind countable. An inference that overruns the
+Cadence passes one or more instants, and a Watch abandons them rather than deferring them:
+it skips forward to the next instant that has not arrived yet, takes the present off the
+Feed — discarding as Stale Frames whatever the Feed produced meanwhile — and carries on
+the grid it was asked for. What that cost travels on the Observation it cost, as a count of
+skipped Cadences and a count of discarded Stale Frames, rather than being averaged into a
+figure about the whole run: the shortfall happened at a moment, and the moment is the half
+of it an Operator can act on.
+
 Nothing here lays out a report: the rendering lives in ``reporting``, and each Observation
 is handed to whoever is writing them down as it is produced, because a Watch that printed
 its lines only at the end would be a Watch nobody could watch.
@@ -26,6 +35,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
 from statistics import median
 
@@ -40,6 +50,14 @@ CADENCE = 2.0
 Slow enough that an audience can read one Observation before the next arrives, and slow
 enough that a machine worth demonstrating can nearly keep it — a default Cadence nothing
 could keep would make the shortfall the only thing the command ever showed.
+"""
+
+GRID_TOLERANCE = 1e-9
+"""How close to an instant on the grid counts as having arrived at it, in instants.
+
+Small enough that no shortfall a machine could produce falls inside it — a nanosecond of a
+Cadence is nothing any camera or model works in — and large enough to absorb the rounding
+a Cadence that is not a binary fraction accumulates (see ``_first_instant_from``).
 """
 
 
@@ -64,12 +82,41 @@ class WatchedObservation:
     text: str
     finish_reason: FinishReason
     max_output_tokens: int
+    skipped_cadences: int = 0
+    """Instants on the grid that had already passed when the model came free. Usually none.
+
+    A count rather than a delay, which is the whole of ADR-0006: a Watch that queued would
+    have this be an ever-growing lateness with nothing to report it as. Zero is the
+    ordinary case and says nothing — an Observation on time skipped nothing.
+    """
+
+    stale_frames: int = 0
+    """Images the Feed produced while the model was busy, discarded to reach the present.
+
+    Never the Frames discarded while the Feed settled: those are a start-up cost, paid once
+    and reported once (CONTEXT.md, "Stale Frame").
+    """
+
     saved: Path | None = None
     """Where the observed Frame was kept, when the Operator asked for it to be kept."""
 
     @property
     def truncated(self) -> bool:
         return self.finish_reason is FinishReason.TRUNCATED
+
+    @property
+    def late(self) -> bool:
+        """Whether this Observation had to skip forward to be about the present.
+
+        Asked of the skipped Cadences alone, and it is what decides whether *either* count
+        is worth reporting. A reader draining the Feed discards images between every pair
+        of handouts, timely or not — a camera yields a good many more images than a Watch
+        asks Observations of — so a Stale Frame on its own says nothing about the machine.
+        What makes the count news is the Cadence having been missed, and that is this
+        question. Whoever writes an Observation down asks it rather than comparing two
+        numbers to zero and inventing its own rule for what late means.
+        """
+        return self.skipped_cadences > 0
 
 
 @dataclass(frozen=True)
@@ -103,6 +150,21 @@ class Watch:
     """
 
     observations: tuple[WatchedObservation, ...]
+
+    skipped_cadences: int = 0
+    """Every instant this Watch passed without observing, over the whole run.
+
+    Totalled rather than averaged, and reported beside the median inference, because
+    together they are the lesson: this is the rate the machine was asked for and this is
+    how often it could not manage it.
+
+    Kept here rather than summed back out of the Observations, even though every one of
+    them carries its own count, because the two do not always add up to the same number: an
+    instant is abandoned before the Observation that follows it is asked for, and where
+    that Observation never arrives — the Operator pressed Ctrl+C during the inference, the
+    camera was taken away — the skip still happened. Summing the Observations would let a
+    Watch look as though it kept a Cadence it was failing at the moment it ended.
+    """
 
     @property
     def median_inference(self) -> float | None:
@@ -182,20 +244,40 @@ def watch(
 
     ``count`` exists so that the whole command is drivable to its summary in a test with no
     signals and no wall-clock time; a Watch with no count runs until it is interrupted.
+
+    The instant an Observation was taken at is tracked apart from how many Observations
+    there have been, because on a machine short of the Cadence the two come apart: that is
+    what skipping *is*. A Watch that counted its way along the grid would have every
+    Observation after an overrun be about an instant that had already gone by, which is the
+    queuing ADR-0006 refuses, arrived at by arithmetic rather than by choice.
     """
     observations: list[WatchedObservation] = []
     began = clock()
+    instant, skipped, abandoned = 0, 0, 0
     try:
         while count is None or len(observations) < count:
             # The first Observation is due at t0, which is now, so there is nothing to wait
-            # for. Every later one is due on the grid rather than a Cadence after the last.
+            # for and nothing can have been skipped to reach it. Every later one is due on
+            # the grid rather than a Cadence after the last — and where the grid has moved
+            # on past the next instant, on the first one that has not arrived yet.
             if observations:
-                _wait_until(began + len(observations) * start.cadence, clock=clock, sleep=sleep)
+                instant, skipped = _wait_for_the_next_instant(
+                    instant + 1,
+                    began=began,
+                    cadence=start.cadence,
+                    clock=clock,
+                    sleep=sleep,
+                )
+                # Counted the moment the instants are given up on, rather than once the
+                # Observation that follows them has been produced: a Watch that ended
+                # part-way through that inference still passed them.
+                abandoned += skipped
             observed = _observe(
                 model,
                 feed=feed,
                 start=start,
                 order=len(observations) + 1,
+                skipped_cadences=skipped,
                 clock=clock,
                 keep_in=keep_in,
             )
@@ -204,19 +286,56 @@ def watch(
     except KeyboardInterrupt:
         pass
 
-    return Watch(observations=tuple(observations))
+    return Watch(observations=tuple(observations), skipped_cadences=abandoned)
 
 
-def _wait_until(instant: float, *, clock: Clock, sleep: Sleep) -> None:
-    """Wait for the next instant on the grid, and not at all when it has already arrived.
+def _wait_for_the_next_instant(
+    due: int, *, began: float, cadence: float, clock: Clock, sleep: Sleep
+) -> tuple[int, int]:
+    """Wait for the instant an Observation is next due at, and say what was passed to reach it.
 
     What is waited for is the distance from now to that instant, which is what makes the
     Cadence a grid: an inference that took one second of a two-second Cadence is followed by
     one second of waiting, not by two.
+
+    ``due`` is the instant that would be next if nothing had overrun. Where it and others
+    after it have already gone by, the Watch skips to the first that has not — it does not
+    run them all late, one after another (ADR-0006). Comes back as the instant actually
+    waited for and the number of them abandoned on the way, which is what the Observation
+    that follows reports.
+
+    The clock is read once: two readings would be two different nows, and the wait would be
+    computed against an instant chosen at the other one.
     """
-    remaining = instant - clock()
+    now = clock()
+    instant = _first_instant_from(due, now=now, began=began, cadence=cadence)
+    remaining = began + instant * cadence - now
     if remaining > 0:
         sleep(remaining)
+    return instant, instant - due
+
+
+def _first_instant_from(due: int, *, now: float, began: float, cadence: float) -> int:
+    """Which instant on the grid is the next one not yet arrived, counting from ``due``.
+
+    Never earlier than ``due``: the grid only ever moves forward, and an Observation is
+    never taken twice at one instant. An instant that falls exactly on ``now`` has arrived
+    and is therefore the one to take, which is why this rounds up rather than past.
+
+    A Cadence of zero has no grid to skip on — every instant is now, so nothing is ever
+    passed and there is nothing to divide by (see ``require_a_cadence``).
+
+    The tolerance is what keeps the count a quantity rather than an artefact of binary
+    floating point. A Cadence an Operator can ask for is not necessarily one a float can
+    hold — ``--every 0.1`` is three instants that land a fraction of a nanosecond past
+    where the arithmetic says they should — and without it an Observation that arrived
+    exactly on its instant would round up to the next one, wait out a whole Cadence and
+    report a skip that never happened. It is a tolerance in instants rather than in
+    seconds, so it means the same thing at every Cadence.
+    """
+    if cadence <= 0:
+        return due
+    return max(due, ceil((now - began) / cadence - GRID_TOLERANCE))
 
 
 def _observe(
@@ -225,6 +344,7 @@ def _observe(
     feed: HeldFeed,
     start: WatchStart,
     order: int,
+    skipped_cadences: int,
     clock: Clock,
     keep_in: Path | None,
 ) -> WatchedObservation:
@@ -234,8 +354,13 @@ def _observe(
     other command sends. An Observation is what the model reports about *a* Frame, and a
     Watch that let a conversation grow across its Observations would be describing its own
     history as much as the room in front of the camera.
+
+    The present is what the Feed hands out, so what it cost to reach it is counted by the
+    reader that discarded them rather than deduced here (ADR-0006) — this only carries the
+    number onto the Observation it was paid for.
     """
-    frame = feed.present().frame(provenance=start.provenance)
+    present = feed.present()
+    frame = present.frame(provenance=start.provenance)
     if frame is None:
         raise VisionError(
             f"{start.provenance} stopped giving Frames — it was unplugged, or another"
@@ -254,5 +379,7 @@ def _observe(
         text=raw.text,
         finish_reason=raw.finish_reason,
         max_output_tokens=workload.max_output_tokens,
+        skipped_cadences=skipped_cadences,
+        stale_frames=present.stale_frames,
         saved=saved,
     )

@@ -36,7 +36,7 @@ from vision.formatting import (
     format_tokens_per_second,
 )
 from vision.inference import Observation, Workload
-from vision.watch import Watch, WatchedObservation, WatchStart
+from vision.watch import FailedInference, Watch, WatchedObservation, WatchStart
 
 OBSERVE_LABEL_WIDTH = 11
 BENCHMARK_LABEL_WIDTH = 13
@@ -116,6 +116,38 @@ def render_watch_header(start: WatchStart) -> str:
     return "\n".join(_labelled(rows, WATCH_LABEL_WIDTH)) + "\n"
 
 
+def render_watch_line(produced: WatchedObservation | FailedInference) -> str:
+    """What one Cadence of a Watch came to, whichever of the two things it came to.
+
+    One entry point because both are written down in the order the Watch reached them: an
+    Operator following a column of Observations reads the turn numbers, and a failure
+    reported anywhere else would leave a gap in them with nothing to explain it.
+    """
+    if isinstance(produced, FailedInference):
+        return render_watch_failure(produced)
+    return render_watch_observation(produced)
+
+
+def render_watch_failure(failed: FailedInference) -> str:
+    """A Cadence the model did not answer at: its turn, and the reason, and no more.
+
+    One line rather than a block, because there is no Observation under it — and no advice
+    about what to do, because there is nothing to do: the Watch has already gone on to the
+    next Cadence by the time this is read, and a line telling an Operator so on every
+    failure would be furniture.
+
+    What it cost to reach this Cadence is said here on the terms it is said on an
+    Observation's line: the instants were passed and the Stale Frames were discarded before
+    the model was asked, so they are as true of a Cadence that failed as of one that did
+    not, and leaving them out would have a Watch under-report the shortfall precisely where
+    it was worst.
+    """
+    clauses = [f"failed — {failed.reason}"]
+    if failed.late:
+        clauses.append(_lateness(failed))
+    return f"\n#{failed.order}  {', '.join(clauses)}\n"
+
+
 def render_watch_observation(observed: WatchedObservation) -> str:
     """One Observation of a Watch: a short line of facts, and then what the model said.
 
@@ -138,18 +170,39 @@ def render_watch_summary(watch: Watch) -> str:
     because a total is the one thing the per-Observation lines cannot be read as: a Watch
     left running through a demo has scrolled by the time it ends. A Watch that kept its
     Cadence says nothing about them — a "0 Cadences skipped" on every timely run would
-    make the number furniture rather than news.
+    make the number furniture rather than news. The failed Observations are here on the
+    same terms, and for the further reason that they are what the median is *not* over:
+    a Watch that reported six Observations having attempted ten would be overstating the
+    rate it sustained.
+
+    Printed whatever ended the Watch, a Feed that died included: the Observations that were
+    produced are not lost with the failure, and why the Watch ended is said beside this
+    rather than in place of it.
     """
     median = watch.median_inference
     if median is None:
-        return "\nNo Observations — the Watch ended before the model produced one\n"
+        return f"\n{_nothing_produced(watch)}\n"
     sentence = (
         f"{_counted(len(watch.observations), 'Observation')},"
         f" median inference {format_seconds(median)}"
     )
     if watch.skipped_cadences:
         sentence += f", {_counted(watch.skipped_cadences, 'Cadence')} skipped"
+    if watch.failures:
+        sentence += f", {len(watch.failures)} failed"
     return f"\n{sentence}\n"
+
+
+def _nothing_produced(watch: Watch) -> str:
+    """A Watch with no median to report, saying which of the two nothings it is.
+
+    A zero would read as an instant answer, and "the Watch ended before the model produced
+    one" would be true of a Watch whose every inference failed while saying nothing about
+    the reasons standing above it.
+    """
+    if watch.failures:
+        return f"No Observations — {len(watch.failures)} failed"
+    return "No Observations — the Watch ended before the model produced one"
 
 
 def _observation_clauses(observed: WatchedObservation) -> list[str]:
@@ -170,8 +223,8 @@ def _observation_clauses(observed: WatchedObservation) -> list[str]:
     return clauses
 
 
-def _lateness(observed: WatchedObservation) -> str:
-    """What an Observation that could not be taken on time cost, as two counts.
+def _lateness(produced: WatchedObservation | FailedInference) -> str:
+    """What a Cadence that could not be reached on time cost, as two counts.
 
     Said here rather than in the summary, and only on the line it happened on: the whole
     point of counting a shortfall instead of averaging it is that an Operator can see
@@ -185,8 +238,8 @@ def _lateness(observed: WatchedObservation) -> str:
     about the model (CONTEXT.md, "Stale Frame").
     """
     return (
-        f"late — skipped {_counted(observed.skipped_cadences, 'Cadence')} and discarded"
-        f" {_counted(observed.stale_frames, 'Stale Frame')} to observe the present"
+        f"late — skipped {_counted(produced.skipped_cadences, 'Cadence')} and discarded"
+        f" {_counted(produced.stale_frames, 'Stale Frame')} to observe the present"
     )
 
 

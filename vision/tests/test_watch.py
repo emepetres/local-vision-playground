@@ -706,19 +706,272 @@ def test_takes_the_model_off_the_hardware_when_there_was_no_camera_to_watch() ->
     assert result.model.unloads == 1
 
 
+FEED_DIED = (
+    "error: camera 0 stopped giving Frames — it was unplugged, or another application"
+    " took it; a Watch cannot go on without a Feed\n"
+)
+"""What a Feed that died mid-Watch is reported as — and none of it is about opening one."""
+
+NOTHING_PRODUCED = "\nNo Observations — the Watch ended before the model produced one\n"
+
+
+def dying_feed(observations: int) -> FakeFeed:
+    """A Feed that settles, hands out this many images and then stops giving any."""
+    return FakeFeed(
+        make_images([*SETTLING_COLOURS, *WATCHED_COLOURS[:observations]]),
+        stops_after=SETTLING_FRAMES + observations,
+    )
+
+
 def test_ends_the_watch_when_the_feed_stops_giving_frames() -> None:
+    result = run(["--count", "3"], feeds={0: dying_feed(0)})
+
+    assert result.code == 1
+    assert result.err == FEED_DIED
+    assert result.feed.closed
+    assert result.readers.readers[0].stopped
+    assert result.model.unloads == 1
+
+
+def test_a_dead_feed_is_not_reported_as_either_of_the_ways_a_feed_fails_to_open() -> None:
+    """A Feed that was open and stopped is a third thing, and the words say so.
+
+    The other two are about *opening* one — there is no camera at that index, or there is
+    and another application is holding it — and an Operator told either of those about a
+    camera that had been producing Frames for a minute would go looking for the wrong
+    problem.
+    """
+    result = run(["--count", "3"], feeds={0: dying_feed(1)})
+
+    assert "there is no camera at index" not in result.err
+    assert "opened but gave no Frame" not in result.err
+    assert result.err == FEED_DIED
+
+
+def test_a_watch_ended_by_a_dead_feed_still_reports_what_it_produced() -> None:
+    """The Observations are not lost with the Feed that was giving them."""
+    result = run(["--count", "3"], feeds={0: dying_feed(2)})
+
+    assert result.code == 1
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + observation_block(2, TEXTS[1])
+        + "\n2 Observations, median inference 1.000 s\n"
+    )
+    assert result.err == FEED_DIED
+    assert result.feed.closed
+    assert result.readers.readers[0].stopped
+    assert result.model.unloads == 1
+
+
+def test_a_dead_feed_ends_the_watch_rather_than_being_asked_again() -> None:
+    """It cannot produce anything again, so there is no next Cadence worth waiting for."""
+    result = run(["--count", "3"], feeds={0: dying_feed(1)})
+
+    assert len(result.model.observed) == 1
+    assert result.sleep.waits == [CADENCE - INFERENCE]
+
+
+BROKEN = RuntimeError("the model server went away")
+"""A native fault mid-inference — not a VisionError, because Foundry Local raises its own."""
+
+FAILED = "\n#{order}  failed — RuntimeError: the model server went away\n"
+
+
+def failing_model(*outcomes: str | Exception | RawObservation) -> FakeVisionModel:
+    """A model that answers or fails, one outcome per Cadence the Watch reaches."""
+    return FakeVisionModel(
+        make_identity(),
+        [
+            make_observation(outcome) if isinstance(outcome, str) else outcome
+            for outcome in outcomes
+        ],
+    )
+
+
+def failing_readings(*failed: int, cadence: float = CADENCE) -> FakeClock:
+    """Every clock reading a Watch of these outcomes makes — a failed inference is one.
+
+    An inference that raises is timed from its start and never reaches the reading that
+    would end it, so a Cadence that failed costs one reading where one that produced an
+    Observation costs two.
+    """
+    values = [*SETUP_READINGS, *LOAD_READINGS, T0]
+    finished = T0
+    for order, broke in enumerate(failed):
+        if order:
+            values.append(finished)
+        due = T0 + order * cadence
+        values.append(due)
+        finished = due if broke else due + INFERENCE
+        if not broke:
+            values.append(finished)
+    return FakeClock(values)
+
+
+def test_a_failed_inference_is_one_line_and_the_watch_goes_on_to_the_next_cadence() -> None:
+    """A transient fault does not end a demo that was going fine: the next Cadence can
+    still produce something, and the Cadence it happened at is the one worth naming.
+    """
     result = run(
         ["--count", "3"],
-        feeds={0: FakeFeed(make_images(SETTLING_COLOURS), stops_after=SETTLING_FRAMES)},
+        model=failing_model(TEXTS[0], BROKEN, TEXTS[2]),
+        clock=failing_readings(0, 1, 0),
+    )
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + FAILED.format(order=2)
+        + observation_block(3, TEXTS[2])
+        + "\n2 Observations, median inference 1.000 s, 1 failed\n"
+    )
+
+
+def test_a_watch_that_carried_on_past_a_failure_still_comes_down_cleanly() -> None:
+    """The way out is the same one every other ending takes: reader, camera, model."""
+    result = run(
+        ["--count", "3"],
+        model=failing_model(TEXTS[0], BROKEN, TEXTS[2]),
+        clock=failing_readings(0, 1, 0),
+    )
+
+    assert result.feed.closed
+    assert result.readers.readers[0].stopped
+    assert result.model.unloads == 1
+
+
+def test_a_failed_inference_holds_the_grid_rather_than_shifting_it() -> None:
+    """The Cadence a failure happened at is spent, not deferred — the grid does not move."""
+    result = run(
+        ["--count", "3"],
+        model=failing_model(TEXTS[0], BROKEN, TEXTS[2]),
+        clock=failing_readings(0, 1, 0),
+    )
+
+    assert result.sleep.waits == [CADENCE - INFERENCE, CADENCE]
+
+
+def test_a_cadence_reached_late_says_what_it_lost_even_when_the_inference_then_failed() -> None:
+    """The instants were passed and the Stale Frames discarded before the model was asked.
+
+    So they are as true of this Cadence as of one that produced something, and a Watch that
+    reported them only where the model answered would under-report the shortfall exactly
+    where the machine was worst (ADR-0006).
+    """
+    result = run(
+        ["--count", "3"],
+        model=failing_model(make_observation(TEXTS[0]), BROKEN, TEXTS[2]),
+        feeds={0: overrun_feed()},
+        readers=HandTurnedReaders(OVERRUN_READS),
+        clock=FakeClock(
+            (
+                *SETUP_READINGS,
+                *LOAD_READINGS,
+                T0,
+                T0,
+                T0 + OVERRUN,
+                T0 + OVERRUN,
+                T0 + 3 * CADENCE,
+                T0 + 3 * CADENCE,
+                T0 + 4 * CADENCE,
+                T0 + 4 * CADENCE + INFERENCE,
+            )
+        ),
+    )
+
+    assert result.code == 0
+    assert (
+        "\n#2  failed — RuntimeError: the model server went away,"
+        " late — skipped 2 Cadences and discarded 2 Stale Frames to observe the present\n"
+    ) in result.out
+    assert result.out.endswith(
+        "\n2 Observations, median inference 3.000 s, 2 Cadences skipped, 1 failed\n"
+    )
+
+
+def test_a_watch_with_one_observation_among_failures_is_a_demo_and_exits_zero() -> None:
+    result = run(
+        ["--count", "2"],
+        model=failing_model(BROKEN, TEXTS[1]),
+        clock=failing_readings(1, 0),
+    )
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.out.endswith("\n1 Observation, median inference 1.000 s, 1 failed\n")
+
+
+def test_a_watch_in_which_every_observation_failed_exits_non_zero() -> None:
+    """Nothing was produced, so there is nothing the run can be called a success on."""
+    result = run(
+        ["--count", "2"],
+        model=failing_model(BROKEN, BROKEN),
+        clock=failing_readings(1, 1),
     )
 
     assert result.code == 1
+    assert result.out == (
+        HEADER + FAILED.format(order=1) + FAILED.format(order=2) + "\nNo Observations — 2 failed\n"
+    )
     assert result.err == (
-        "error: camera 0 stopped giving Frames — it was unplugged, or another application"
-        " took it; a Watch cannot go on without a Feed\n"
+        "error: no Observation succeeded — each one is reported above with the reason it failed\n"
     )
     assert result.feed.closed
+    assert result.readers.readers[0].stopped
     assert result.model.unloads == 1
+
+
+class NeverObservesModel(FakeVisionModel):
+    """A model the Operator interrupts before it has produced its first Observation."""
+
+    def observe(self, workload: Workload) -> RawObservation:
+        raise KeyboardInterrupt
+
+
+def test_a_watch_that_produced_no_observations_at_all_exits_non_zero() -> None:
+    """Even ended by the Operator: a scripted run has to tell a demo from a failure."""
+    model = NeverObservesModel(make_identity(), [])
+    result = run(["--count", "3"], model=model)
+
+    assert result.code == 1
+    assert result.out == HEADER + NOTHING_PRODUCED
+    assert result.err == "error: the Watch ended before it produced an Observation\n"
+    assert result.feed.closed
+    assert result.readers.readers[0].stopped
+    assert model.unloads == 1
+
+
+def test_a_feed_that_never_gave_a_frame_reports_the_dead_feed_and_not_the_empty_watch() -> None:
+    """One failure, one message: the Feed is why there was nothing, so it is what is said."""
+    result = run(["--count", "3"], feeds={0: dying_feed(0)})
+
+    assert result.code == 1
+    assert result.out == HEADER + NOTHING_PRODUCED
+    assert result.err == FEED_DIED
+
+
+def test_a_variant_that_will_not_load_still_ends_the_process_before_the_watch() -> None:
+    """Nothing to degrade to: a Watch with no model on the hardware has no Cadence to reach.
+
+    The failures a Watch carries on past are the ones it meets *inside* the loop, and this
+    is not one of them — there is no summary to print because there is no Watch.
+    """
+    unloadable = FakeVisionModel(
+        make_identity(), [make_observation()], load_error=RuntimeError("no CUDA device")
+    )
+    result = run(["--count", "3"], model=unloadable)
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.err.startswith(
+        "error: qwen3-vl-2b-instruct-cuda-gpu:2 would not load on GPU"
+        " / NvTensorRtRtxExecutionProvider — pin a different variant"
+    )
+    assert result.model.observed == []
 
 
 def test_debug_restores_the_traceback() -> None:

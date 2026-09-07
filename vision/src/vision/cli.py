@@ -49,7 +49,7 @@ from vision.capture import (
     open_camera_feed,
     save_frame,
 )
-from vision.errors import VisionError
+from vision.errors import VisionError, one_line
 from vision.inference import (
     DEFAULT_ALIAS,
     DEFAULT_VARIANTS,
@@ -65,7 +65,7 @@ from vision.reporting import (
     render_observation,
     render_recorded,
     render_watch_header,
-    render_watch_observation,
+    render_watch_line,
     render_watch_summary,
 )
 from vision.startup import (
@@ -78,6 +78,8 @@ from vision.startup import (
 )
 from vision.watch import (
     CADENCE,
+    FailedInference,
+    Watch,
     WatchedObservation,
     WatchStart,
     refuse_an_image_file,
@@ -221,6 +223,8 @@ def watch_main(
 
     The summary is printed after the camera has been released and the model unloaded, so
     that the last thing an Operator reads is not written while the machine is still held.
+    It is printed however the Watch ended, a Feed that died included: what the run produced
+    is not the failure's to take away.
     """
     args = _watch_parser().parse_args(argv)
     out, err = _streams(out, err)
@@ -245,6 +249,9 @@ def watch_main(
 
         model = accept_variant(foundry, args.model)
         providers = register_execution_providers(foundry, clock=clock, out=out)
+        # Named before the Feed is opened because both endings are about it: the camera
+        # that was never there, and the one that stopped answering half way through.
+        provenance = camera_provenance(args.camera)
 
         # An ExitStack rather than the list of closers the other commands keep, because
         # here the order matters and it is the reverse of the order things were acquired
@@ -257,7 +264,7 @@ def watch_main(
 
             start = WatchStart(
                 model=ready.identity,
-                provenance=camera_provenance(args.camera),
+                provenance=provenance,
                 cadence=args.every,
                 providers=providers,
                 load=ready.load,
@@ -281,14 +288,55 @@ def watch_main(
             close()
 
     print(render_watch_summary(watched), file=out, end="")
+    return _watch_status(watched, provenance=provenance, err=err)
+
+
+def _watch_status(watched: Watch, *, provenance: str, err: TextIO) -> int:
+    """Zero for a Watch that produced something over a Feed that survived it.
+
+    A demo and a failure have to be tellable apart by a script, and the line between them
+    is not how many things went wrong: a Watch that failed an inference and then went on
+    to describe the room did what it was run for. What it is not is a Watch that produced
+    no Observation at all — there is nothing to have watched — or one whose Feed was taken
+    away, which produced whatever it produced and then stopped being able to.
+
+    The dead Feed is reported ahead of the empty Watch where both are true, because it is
+    the reason there was nothing: two lines would have an Operator looking for two faults.
+    """
+    if watched.feed_died:
+        return _refuse(_feed_died(provenance), err=err)
+    if watched.produced_nothing:
+        # Two ways to have produced nothing, and an Operator handed the wrong one goes
+        # looking for the wrong thing: the reasons are above, or there were never any.
+        why = (
+            "no Observation succeeded — each one is reported above with the reason it failed"
+            if watched.failures
+            else "the Watch ended before it produced an Observation"
+        )
+        return _refuse(why, err=err)
     return 0
 
 
-def _announcing(out: TextIO) -> Callable[[WatchedObservation], None]:
-    """Write each Observation down as it arrives, flushed so an audience sees it arrive."""
+def _feed_died(provenance: str) -> str:
+    """A Feed that was open and stopped, which is neither of the ways one fails to open.
 
-    def announce(observed: WatchedObservation) -> None:
-        print(render_watch_observation(observed), file=out, end="", flush=True)
+    The other two are about *opening* a Feed — there is no camera at that index, or there
+    is one and another application is holding it — and neither fits a camera that was
+    producing Frames a moment ago. An Operator handed one of those would go looking for a
+    problem that was not there at start-up, so this says what actually happened and offers
+    no flag: there is nothing to pass that would have kept the camera plugged in.
+    """
+    return (
+        f"{provenance} stopped giving Frames — it was unplugged, or another application"
+        " took it; a Watch cannot go on without a Feed"
+    )
+
+
+def _announcing(out: TextIO) -> Callable[[WatchedObservation | FailedInference], None]:
+    """Write each Cadence down as it arrives, flushed so an audience sees it arrive."""
+
+    def announce(produced: WatchedObservation | FailedInference) -> None:
+        print(render_watch_line(produced), file=out, end="", flush=True)
 
     return announce
 
@@ -458,7 +506,10 @@ def _watch_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         metavar="N",
-        help="end the Watch after N Observations (default: run until you interrupt it)",
+        help=(
+            "end the Watch after N Observations, one that failed included"
+            " (default: run until you interrupt it)"
+        ),
     )
     parser.add_argument(
         "--camera",
@@ -699,6 +750,13 @@ def _observe(
 
 
 def _one_line(error: Exception) -> str:
+    """The failure as its line, with the way to get the rest of it where there is more.
+
+    Only for a failure that is ending the process: ``--debug`` re-raises what was about to
+    be printed here, and a Watch that carried on past a failed Observation has nothing left
+    to re-raise — so it says the same line without the offer.
+    """
+    line = one_line(error)
     if isinstance(error, VisionError):
-        return str(error)
-    return f"{type(error).__name__}: {error} — rerun with --debug for the full traceback"
+        return line
+    return f"{line} — rerun with --debug for the full traceback"

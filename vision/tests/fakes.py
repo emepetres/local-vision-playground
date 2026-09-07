@@ -212,7 +212,10 @@ class FakeVisionModel:
 
     The Observations are a sequence, one per call, so a test that asks for several can
     have them differ — in text, in finish reason or in completion tokens — which is what
-    a repeated measurement needs. ``downloads`` counts the downloads that were started,
+    a repeated measurement needs. An entry that is an ``Exception`` is an inference that
+    failed rather than an Observation: the Workload is recorded as asked for and the
+    exception is raised, which is the one way a Watch's failed Observation can be driven
+    without a model that really breaks. ``downloads`` counts the downloads that were started,
     which is what lets a test pin a refusal ahead of one rather than merely ahead of the
     Observation. ``load_error`` is the Variant that will not load on this machine, and
     ``download_error`` the one whose weights never arrive — the two ways a Variant fails to
@@ -227,7 +230,7 @@ class FakeVisionModel:
     def __init__(
         self,
         identity: ModelIdentity,
-        observations: Sequence[RawObservation],
+        observations: Sequence[RawObservation | Exception],
         *,
         is_cached: bool = True,
         download_progress: Sequence[float] = (),
@@ -276,7 +279,10 @@ class FakeVisionModel:
             )
         self.events.append("observe")
         self.observed.append(workload)
-        return self._observations[index]
+        answer = self._observations[index]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
 
 class FakeFoundry:

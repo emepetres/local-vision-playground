@@ -21,6 +21,12 @@ skipped Cadences and a count of discarded Stale Frames, rather than being averag
 figure about the whole run: the shortfall happened at a moment, and the moment is the half
 of it an Operator can act on.
 
+The two failures a live demo hits do not mean the same thing (ADR-0006). A failed
+inference is one line the Watch carries on past, because the next Cadence can still produce
+something. A Feed that dies ends the Watch, because it cannot produce anything again — and
+either way the Watch comes back as what it managed, with the failures counted on it, rather
+than as an exception that would take the Observations already produced down with it.
+
 Nothing here lays out a report: the rendering lives in ``reporting``, and each Observation
 is handed to whoever is writing them down as it is produced, because a Watch that printed
 its lines only at the end would be a Watch nobody could watch.
@@ -39,8 +45,8 @@ from math import ceil
 from pathlib import Path
 from statistics import median
 
-from vision.capture import HeldFeed, save_frame
-from vision.errors import VisionError
+from vision.capture import Frame, HeldFeed, save_frame
+from vision.errors import VisionError, one_line
 from vision.inference import PROMPT, FinishReason, ModelIdentity, VisionModel, Workload
 from vision.startup import Clock, Sleep, timed
 
@@ -120,6 +126,45 @@ class WatchedObservation:
 
 
 @dataclass(frozen=True)
+class FailedInference:
+    """A Cadence at which the model was asked about a Frame and did not answer.
+
+    Not a failed Observation: an Observation is what the model *reports* about a Frame
+    (CONTEXT.md), and this one reported nothing. What failed is the inference — the act of
+    running the model over a Frame, which is the thing CONTEXT.md keeps that word for and
+    the thing ADR-0006 says a Watch carries on past.
+
+    It takes a turn in the Watch's numbering rather than being left out of it, because the
+    number counts the Cadences the Watch reached and this was one of them: an Operator
+    reading ``#4`` after ``#2`` is being told that something happened at ``#3``.
+
+    The exception is kept rather than only its message, so that nothing about the fault is
+    thrown away by the value that reports it. What the Cadence cost to reach is kept for
+    the reason an Observation keeps it: the instants were passed and the Stale Frames were
+    discarded whether or not the model then answered, and ADR-0006 has a Watch say how many
+    of each it lost.
+    """
+
+    order: int
+    error: Exception
+    skipped_cadences: int = 0
+    stale_frames: int = 0
+
+    @property
+    def reason(self) -> str:
+        """The one line this failure is worth, in the shape every other failure is said in."""
+        return one_line(self.error)
+
+    @property
+    def late(self) -> bool:
+        """Whether this Cadence was reached by skipping forward, asked as an Observation
+        is asked it — same question, same answer, so that whoever writes a line down does
+        not have one rule for the Cadences that produced something and another for these.
+        """
+        return self.skipped_cadences > 0
+
+
+@dataclass(frozen=True)
 class WatchStart:
     """What a Watch cost before its first Observation, and what it was asked for.
 
@@ -151,6 +196,24 @@ class Watch:
 
     observations: tuple[WatchedObservation, ...]
 
+    failures: tuple[FailedInference, ...] = ()
+    """The Cadences at which the model was asked and did not answer.
+
+    Kept beside the Observations rather than among them: an Observation is what the model
+    reported about a Frame (CONTEXT.md), and a median inference taken over runs that
+    produced no text would be a number about nothing. They are still the same series —
+    every one of them carries the turn it took in it.
+    """
+
+    feed_died: bool = False
+    """Whether the Feed stopped giving Frames, which is what ended this Watch.
+
+    A Watch is over either way, and this is what makes the two endings tell apart: an
+    Operator who stopped a Watch got what they asked for, and one whose camera was taken
+    away did not. It is a fact about the run rather than a message about it — what to tell
+    them is the caller's, as it is for a camera that was never there.
+    """
+
     skipped_cadences: int = 0
     """Every instant this Watch passed without observing, over the whole run.
 
@@ -179,9 +242,24 @@ class Watch:
             return None
         return median(observed.inference for observed in self.observations)
 
+    @property
+    def produced_nothing(self) -> bool:
+        """Whether this Watch has nothing at all to show for having been run.
 
-Announce = Callable[["WatchedObservation"], None]
-"""Says what one Observation was, as it happens rather than once the Watch is over."""
+        Asked rather than compared against an empty tuple, because it is the question the
+        exit status is decided on and there is exactly one right way to ask it: a Watch
+        that produced no Observation is a failure however it came to produce none.
+        """
+        return not self.observations
+
+
+Announce = Callable[["WatchedObservation | FailedInference"], None]
+"""Says what one Cadence came to, as it happens rather than once the Watch is over.
+
+One port for both outcomes rather than two, because a Watch produces its Observations in
+series and a failure took a turn in that series: reported anywhere else, it would leave an
+Operator reading a column whose numbering skips for no reason they can see.
+"""
 
 
 def require_a_cadence(seconds: float) -> None:
@@ -239,28 +317,42 @@ def watch(
 
     An interruption ends the Watch rather than the process: ending a demo is not itself an
     error, so it comes back as the Observations that were produced and the caller reports
-    them and exits zero. It is caught around the whole body because Ctrl+C arrives whenever
-    the Operator presses it — inside the wait, or half way through an inference.
+    them. What the caller then exits with is the ordinary question of whether the Watch
+    produced anything, asked of an interrupted Watch exactly as of any other. The
+    interruption is caught around the whole body because Ctrl+C arrives whenever the
+    Operator presses it — inside the wait, or half way through an inference.
 
-    ``count`` exists so that the whole command is drivable to its summary in a test with no
-    signals and no wall-clock time; a Watch with no count runs until it is interrupted.
+    A failed inference is one line and the next Cadence is taken as though nothing had
+    happened: a transient runtime fault must not end a demo that was going fine, and the
+    grid does not move for it — the Cadence it happened at is spent, not deferred. A Feed
+    that has stopped giving Frames ends the Watch instead, because it cannot produce
+    anything again and an Operator should not be left watching a Watch that never will.
+    Neither is raised: both come back on the Watch, so that whatever was produced is
+    reported and the caller decides what to exit with.
 
-    The instant an Observation was taken at is tracked apart from how many Observations
-    there have been, because on a machine short of the Cadence the two come apart: that is
-    what skipping *is*. A Watch that counted its way along the grid would have every
+    ``count`` is the number of Cadences the Watch takes, a failed one included, which is
+    what makes a Watch whose every inference fails end rather than run for ever. It exists
+    so that the whole command is drivable to its summary in a test with no signals and no
+    wall-clock time; a Watch with no count runs until it is interrupted.
+
+    The instant an Observation was taken at is tracked apart from how many Cadences the
+    Watch has reached, because on a machine short of the Cadence the two come apart: that
+    is what skipping *is*. A Watch that counted its way along the grid would have every
     Observation after an overrun be about an instant that had already gone by, which is the
     queuing ADR-0006 refuses, arrived at by arithmetic rather than by choice.
     """
     observations: list[WatchedObservation] = []
+    failures: list[FailedInference] = []
     began = clock()
-    instant, skipped, abandoned = 0, 0, 0
+    instant, skipped, abandoned, cadences = 0, 0, 0, 0
+    died = False
     try:
-        while count is None or len(observations) < count:
+        while count is None or cadences < count:
             # The first Observation is due at t0, which is now, so there is nothing to wait
             # for and nothing can have been skipped to reach it. Every later one is due on
             # the grid rather than a Cadence after the last — and where the grid has moved
             # on past the next instant, on the first one that has not arrived yet.
-            if observations:
+            if cadences:
                 instant, skipped = _wait_for_the_next_instant(
                     instant + 1,
                     began=began,
@@ -272,21 +364,38 @@ def watch(
                 # Observation that follows them has been produced: a Watch that ended
                 # part-way through that inference still passed them.
                 abandoned += skipped
-            observed = _observe(
+            cadences += 1
+            present = feed.present()
+            frame = present.frame(provenance=start.provenance)
+            # A Feed with nothing left to give is the end of the Watch, and it is decided
+            # here rather than anywhere below because it is the one failure the next
+            # Cadence cannot recover from.
+            if frame is None:
+                died = True
+                break
+            produced = _observe(
                 model,
-                feed=feed,
-                start=start,
-                order=len(observations) + 1,
+                frame=frame,
+                stale_frames=present.stale_frames,
+                order=cadences,
                 skipped_cadences=skipped,
                 clock=clock,
                 keep_in=keep_in,
             )
-            observations.append(observed)
-            announce(observed)
+            if isinstance(produced, FailedInference):
+                failures.append(produced)
+            else:
+                observations.append(produced)
+            announce(produced)
     except KeyboardInterrupt:
         pass
 
-    return Watch(observations=tuple(observations), skipped_cadences=abandoned)
+    return Watch(
+        observations=tuple(observations),
+        failures=tuple(failures),
+        feed_died=died,
+        skipped_cadences=abandoned,
+    )
 
 
 def _wait_for_the_next_instant(
@@ -341,38 +450,46 @@ def _first_instant_from(due: int, *, now: float, began: float, cadence: float) -
 def _observe(
     model: VisionModel,
     *,
-    feed: HeldFeed,
-    start: WatchStart,
+    frame: Frame,
+    stale_frames: int,
     order: int,
     skipped_cadences: int,
     clock: Clock,
     keep_in: Path | None,
-) -> WatchedObservation:
-    """Take the present off the Feed and ask the model about it, once.
+) -> WatchedObservation | FailedInference:
+    """Ask the model about one Frame, once, and come back with whichever way it went.
+
+    Every fault is caught, not a chosen few: what breaks an inference on a local runtime is
+    Foundry Local's business and the shapes it raises in are not ours to enumerate, while
+    what a Watch does about any of them is the same — say so at the Cadence it happened at
+    and take the next one (ADR-0006). Catching narrowly would mean a Watch that survived
+    the faults we had thought of and ended on the first one we had not, in front of an
+    audience. ``KeyboardInterrupt`` is not among them: it is not a fault of the inference
+    but the Operator ending the Watch, and it passes through to whoever runs the grid.
 
     The Workload is built fresh from this Frame and carries the same fixed prompt every
     other command sends. An Observation is what the model reports about *a* Frame, and a
     Watch that let a conversation grow across its Observations would be describing its own
     history as much as the room in front of the camera.
 
-    The present is what the Feed hands out, so what it cost to reach it is counted by the
-    reader that discarded them rather than deduced here (ADR-0006) — this only carries the
-    number onto the Observation it was paid for.
+    Handed the Frame rather than the Feed, and deliberately: a Feed with nothing left to
+    give is the end of the Watch and every fault in here is not, so the two are decided in
+    different places. What reaching the present cost is counted by the reader that
+    discarded them rather than deduced here (ADR-0006) — this only carries the number onto
+    the Observation it was paid for.
     """
-    present = feed.present()
-    frame = present.frame(provenance=start.provenance)
-    if frame is None:
-        raise VisionError(
-            f"{start.provenance} stopped giving Frames — it was unplugged, or another"
-            " application took it; a Watch cannot go on without a Feed"
+    try:
+        # Kept before inference runs, as the single-shot path keeps it: a Frame worth
+        # explaining is worth keeping even when the Observation that would have prompted
+        # the question never arrives. Only the observed Frame is ever written — a Stale
+        # Frame explains nothing, because nobody observed it.
+        saved = save_frame(frame, keep_in) if keep_in is not None else None
+        workload = Workload(prompt=PROMPT, frame=frame)
+        raw, inference = timed(clock, lambda: model.observe(workload))
+    except Exception as error:
+        return FailedInference(
+            order=order, error=error, skipped_cadences=skipped_cadences, stale_frames=stale_frames
         )
-    # Kept before inference runs, as the single-shot path keeps it: a Frame worth explaining
-    # is worth keeping even when the Observation that would have prompted the question never
-    # arrives. Only the observed Frame is ever written — a Stale Frame explains nothing,
-    # because nobody observed it.
-    saved = save_frame(frame, keep_in) if keep_in is not None else None
-    workload = Workload(prompt=PROMPT, frame=frame)
-    raw, inference = timed(clock, lambda: model.observe(workload))
     return WatchedObservation(
         order=order,
         inference=inference,
@@ -380,6 +497,6 @@ def _observe(
         finish_reason=raw.finish_reason,
         max_output_tokens=workload.max_output_tokens,
         skipped_cadences=skipped_cadences,
-        stale_frames=present.stale_frames,
+        stale_frames=stale_frames,
         saved=saved,
     )

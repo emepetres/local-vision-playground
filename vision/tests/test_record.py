@@ -462,3 +462,54 @@ def test_a_record_that_cannot_be_written_costs_the_file_and_not_the_numbers(
         f" {blocked / 'benchmarks'} — its numbers are in the report above,"
         " and nothing else was lost."
     )
+
+
+class BreaksOnWrite:
+    """A file that was created and then would not take its contents.
+
+    The half-written case, which is the one the pair has to survive: exclusive creation
+    has already succeeded, so a rollback that forgets this file leaves an empty document
+    behind under a name a reader will open.
+    """
+
+    def __init__(self, file: Any) -> None:
+        self._file = file
+
+    def __enter__(self) -> BreaksOnWrite:
+        self._file.__enter__()
+        return self
+
+    def __exit__(self, *closing: Any) -> None:
+        self._file.__exit__(*closing)
+
+    def write(self, _: str) -> int:
+        raise OSError("no space left on device")
+
+
+def test_a_document_that_breaks_mid_write_leaves_neither_half_behind(
+    benchmarks: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A truncated Markdown with no record beside it reads like a real one to whoever opens
+    it next, which is exactly the half a reader is more likely to open."""
+    opening = Path.open
+
+    def breaking(self: Path, *arguments: Any, **keywords: Any) -> Any:
+        file = opening(self, *arguments, **keywords)
+        return BreaksOnWrite(file) if self.suffix == ".md" else file
+
+    monkeypatch.setattr(Path, "open", breaking)
+    out, err = io.StringIO(), io.StringIO()
+
+    code = benchmark_main(
+        ["--hardware", PROFILE],
+        camera=FakeCamera([make_frame(width=640, height=360)]),
+        foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+        clock=FakeClock(READINGS),
+        now=lambda: AT,
+        out=out,
+        err=err,
+        benchmarks_dir=benchmarks,
+    )
+
+    assert code == 1
+    assert list(benchmarks.iterdir()) == []

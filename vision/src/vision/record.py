@@ -267,8 +267,8 @@ def _claim(directory: Path, stem: str, *, payload: str, document: str) -> Record
     module exists to prevent.
 
     A name is only taken when both halves of it were free. If the second file cannot be
-    written the first is taken back off disk, because a record with no document beside it
-    is a pair that was never written together.
+    written both are taken back off disk, because a record with no document beside it — or
+    a document written only halfway — is a pair that was never written together.
     """
     for attempt in count():
         suffix = "" if attempt == 0 else f"-{attempt}"
@@ -287,7 +287,11 @@ def _claim(directory: Path, stem: str, *, payload: str, document: str) -> Record
             path.unlink()
             continue
         except OSError:
+            # Both halves go, not only the record: exclusive creation has already put the
+            # document on disk, and a truncated Markdown left in this directory reads like
+            # a real record to whoever opens it next.
             path.unlink()
+            markdown.unlink(missing_ok=True)
             raise
         return Recorded(json=path, markdown=markdown)
     raise AssertionError("unreachable")

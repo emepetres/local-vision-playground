@@ -201,6 +201,7 @@ class UnmeasuredVariant:
     model: ModelIdentity
     order: int
     reason: str
+    """Why it never ran, on a single line, because both reports render it inline."""
 
 
 @dataclass(frozen=True)
@@ -352,6 +353,17 @@ def measure(
     )
 
 
+def _single_line(reason: str) -> str:
+    """Flatten a failure reason onto one line, keeping it renderable where it is read.
+
+    A native message from Foundry Local routinely spans several lines, and both reports
+    put the reason inline: in the table it would land under the wrong column, and in the
+    Markdown notes a blank line inside it would merge the rest of the document into the
+    note. The reason is worth carrying whole, so it is folded rather than truncated.
+    """
+    return " ".join(reason.split())
+
+
 def _measure_one(
     model: VisionModel,
     *,
@@ -376,7 +388,14 @@ def _measure_one(
     try:
         ready = bring_up(model, clock=clock, out=out)
     except VisionError as error:
-        return UnmeasuredVariant(model=model.identity, order=order, reason=str(error))
+        # A load that failed is not necessarily a load that left nothing behind: the port
+        # loads the model and then opens a session on it, and a failure between the two
+        # leaves the weights on the device with nobody holding them. Unload on the way out
+        # of a failed bring-up, so the next Variant in the sitting is measured on the
+        # hardware this one promised to give back.
+        with suppress(Exception):
+            model.unload()
+        return UnmeasuredVariant(model=model.identity, order=order, reason=_single_line(str(error)))
 
     try:
         runs = _repeat(

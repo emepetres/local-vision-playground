@@ -311,7 +311,7 @@ class InProcessFoundryLocal:
         ]
         if not versions:
             return None
-        return max(versions, key=lambda variant: variant.info.version)
+        return max(versions, key=lambda variant: _version_key(variant.info.version))
 
     def close(self) -> None:
         self._manager.close()
@@ -411,6 +411,22 @@ class FoundryLocalModel:
             finish_reason=finish_reason,
             completion_tokens=completion_tokens,
         )
+
+
+def _version_key(version: object) -> tuple[int, int, str]:
+    """Order catalogue versions numerically, so that ``10`` beats ``9``.
+
+    The version is the ``:N`` suffix of a Variant id, and the SDK ships as a native
+    extension with no stubs to say whether it hands that over as a number or as the string
+    it was parsed from **[unverified]**. Under the string reading a plain comparison picks
+    version 9 over version 10 the day the catalogue reaches double digits, which is a
+    silently older build rather than a failure. Numeric first, with anything unparseable
+    sorted below and broken by its own text, so the answer is the same either way.
+    """
+    try:
+        return (1, int(str(version)), "")
+    except ValueError:
+        return (0, 0, str(version))
 
 
 def _forget_previous_turns(session: ChatSession) -> None:

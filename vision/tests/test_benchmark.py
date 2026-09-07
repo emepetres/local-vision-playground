@@ -602,7 +602,48 @@ def test_carries_on_to_the_next_variant_when_one_will_not_load() -> None:
     result = run_past_an_unloadable_gpu()
 
     assert len(result.cpu.observed) == 5
-    assert result.events == ["resolve", "resolve", "register", "load", *["observe"] * 5, "unload"]
+    assert result.events == [
+        "resolve",
+        "resolve",
+        "register",
+        "unload",
+        "load",
+        *["observe"] * 5,
+        "unload",
+    ]
+
+
+def test_takes_a_variant_that_would_not_load_off_the_hardware_anyway() -> None:
+    """A load can fail with the weights already on the device — the port loads the model and
+    then opens a session on it — so the failed Variant is unloaded before the next one is
+    brought up. Otherwise the Variant that did get measured was measured on hardware the
+    report claims was free."""
+    result = run_past_an_unloadable_gpu()
+
+    assert result.gpu.unloads == 1
+    assert result.events.index("unload") < result.events.index("load")
+
+
+def test_folds_a_multi_line_reason_onto_one_line() -> None:
+    """Foundry Local's native messages routinely span several lines, and the reason is
+    rendered inline in both reports: unfolded, its second line lands under the wrong column
+    of the table, and a blank line inside it merges the rest of the Markdown into the note.
+    """
+    result = run(
+        gpu=FakeVisionModel(
+            make_identity(),
+            [],
+            load_error=RuntimeError("the ONNX graph is invalid\n\n  at Load(model.onnx)"),
+        ),
+        readings=(*PROVIDER_READINGS, 10.0, *CPU_READINGS),
+    )
+
+    assert (
+        "Not measured qwen3-vl-2b-instruct-cuda-gpu:2 would not load on GPU /"
+        " NvTensorRtRtxExecutionProvider — pin a different variant with --variant (run"
+        " `foundry model list`; a -generic-cpu variant is the safe one). Foundry Local"
+        " said: the ONNX graph is invalid at Load(model.onnx)\n"
+    ) in result.out
 
 
 def test_a_benchmark_that_measured_at_least_one_variant_exits_zero() -> None:

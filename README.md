@@ -460,6 +460,54 @@ with: how many Observations this machine produced, and the median inference it s
 It is printed however the Watch ended — after the camera has been released and the model
 unloaded, so that the last thing read is not written while the machine is still held.
 
+#### Starting a Watch on a question
+
+`--ask "<question>"` starts the Watch on a **Scene Question** rather than on the plain
+description, and it stands: every Observation from `#1` onward answers it, on its own
+Frame.
+
+```bash
+uv run watch --ask "is anyone looking at the camera?"
+```
+
+```
+Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
+Cadence    one Observation every 2.000 s
+Feed       camera 0, settled in 0.411 s, 5 Frames discarded
+Providers  4.102 s
+Load       3.207 s
+
+#1  inference 1.271 s
+Yes. The man in front of the bookshelf is facing the camera directly.
+
+#2  inference 1.238 s
+No. He has turned to his left and is looking at the bookshelf.
+
+#3  inference 1.305 s
+No one is in front of the camera.
+^C
+
+3 Observations, median inference 1.284 s
+```
+
+Nothing else about the Watch moves: the header, the per-Observation lines and the summary
+are the ones above, the Cadence is still a grid, and a Watch that falls behind still skips
+and says so. Each Observation still stands on its own Frame — the question is carried from
+one Cadence to the next, never the answers, so there are no follow-ups inside a Watch any
+more than there are inside a single `observe`. Leaving the flag off sends the prompt it has
+always sent. An empty or whitespace-only `--ask` is refused before the camera is opened or
+the model is loaded, because a shell-quoting mistake should cost an Operator a line rather
+than a whole run-up.
+
+The question is chosen on the command line and stands for the whole run. **Replacing it
+while the Watch runs — typing a new question at the keyboard, without stopping — is the
+rest of [ADR-0009](./docs/adr/0009-a-scene-question-changes-what-a-watch-asks.md) and is
+still to come.** What is here is the half of it a scripted demo needs: starting on the
+right question rather than on the plain description.
+
+A standing question does not make a Watch a measurement: the Frames still differ from one
+Observation to the next, so there is still nothing to compare and nothing is written down.
+
 #### When the machine cannot keep the Cadence
 
 Pin the CPU Variant and the same Watch stops keeping its Cadence, in front of the audience
@@ -561,6 +609,11 @@ or which produced nothing at all.
   inference fails end rather than run for ever. Default: run until it is interrupted.
   Anything below one is refused: it is not a Watch.
 - `--camera N` — index of the camera to open the Feed on. Default `0`.
+- `--ask "<question>"` — the Scene Question the Watch starts on, standing over every
+  Cadence it then reaches. Default: the fixed prompt, which describes the Frame. An
+  empty or whitespace-only question is refused, before the camera or the model.
+  Replacing the question while the Watch runs is still to come; for now it is chosen
+  on the command line and stands for the whole run.
 - `--variant ID` — pin the Variant, and with it the Execution Provider, exactly as for
   `observe`. Default: resolve the alias `qwen3-vl-2b-instruct` and let Foundry Local pick
   the hardware. This is the lever the demo above turns.

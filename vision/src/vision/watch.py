@@ -47,7 +47,7 @@ from statistics import median
 
 from vision.capture import Frame, HeldFeed, save_frame
 from vision.errors import VisionError, one_line
-from vision.inference import PROMPT, FinishReason, ModelIdentity, VisionModel, Workload
+from vision.inference import FinishReason, ModelIdentity, VisionModel, Workload
 from vision.startup import Clock, Sleep, timed
 
 CADENCE = 2.0
@@ -188,6 +188,21 @@ class WatchStart:
     """Where the Frames come from, in the words a single Observation names it by too."""
 
     cadence: float
+    question: str
+    """The Scene Question this Watch starts on, answered by every Observation it produces.
+
+    Part of the start rather than of the loop because it is what the Watch was *asked for*,
+    as the Cadence is: chosen before the first Frame was taken, and read by the loop rather
+    than owned by it. Not that it is settled for ever — ADR-0009 has an Operator replace
+    the question while the Watch runs, and the last question wins; what is not built yet is
+    the surface they replace it at, so for now the value that stands from the first Cadence
+    is the only one there is.
+
+    Not reported in the header, which is the costs and the Cadence: an Operator who typed
+    the question is looking at it already, and one who typed none is reading the prompt
+    this command has always sent.
+    """
+
     providers: float
     load: float
     settling: float
@@ -404,6 +419,7 @@ def keep_watch(
                 model,
                 frame=frame,
                 order=cadences,
+                question=start.question,
                 shortfall=Shortfall(skipped_cadences=skipped, stale_frames=present.stale_frames),
                 clock=clock,
                 keep_in=keep_in,
@@ -478,6 +494,7 @@ def _observe(
     *,
     frame: Frame,
     order: int,
+    question: str,
     shortfall: Shortfall,
     clock: Clock,
     keep_in: Path | None,
@@ -492,10 +509,12 @@ def _observe(
     audience. ``KeyboardInterrupt`` is not among them: it is not a fault of the inference
     but the Operator ending the Watch, and it passes through to whoever runs the grid.
 
-    The Workload is built fresh from this Frame and carries the same fixed prompt every
-    other command sends. An Observation is what the model reports about *a* Frame, and a
-    Watch that let a conversation grow across its Observations would be describing its own
-    history as much as the room in front of the camera.
+    The Workload is built fresh from this Frame and carries the Scene Question standing
+    over the Watch — which is the fixed prompt, until an Operator asks for something else.
+    An Observation is what the model reports about *a* Frame, and a Watch that let a
+    conversation grow across its Observations would be describing its own history as much
+    as the room in front of the camera: the question is carried from one Cadence to the
+    next, never the answers.
 
     Handed the Frame rather than the Feed, and deliberately: a Feed with nothing left to
     give is the end of the Watch and every fault in here is not, so the two are decided in
@@ -509,7 +528,7 @@ def _observe(
         # the question never arrives. Only the observed Frame is ever written — a Stale
         # Frame explains nothing, because nobody observed it.
         saved = save_frame(frame, keep_in) if keep_in is not None else None
-        workload = Workload(prompt=PROMPT, frame=frame)
+        workload = Workload(prompt=question, frame=frame)
         raw, inference = timed(clock, lambda: model.observe(workload))
     except Exception as error:
         return FailedInference(order=order, error=error, shortfall=shortfall)

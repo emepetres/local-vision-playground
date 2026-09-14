@@ -265,6 +265,11 @@ def watch_main(
         refuse_an_image_file(args.image)
         require_a_cadence(args.every)
         require_an_observation(args.count)
+        # Asked here with the other invariants of a Watch, and for the sharper version of
+        # the reason ``observe`` asks it early: a Watch that took the mistake to the
+        # hardware would settle a camera and load the model before saying the question
+        # the whole run was to stand on was never there.
+        require_a_scene_question(args.ask)
         foundry = _resolve_foundry(foundry, owned)
         clock = _resolve_clock(clock)
         sleep = _resolve_sleep(sleep)
@@ -292,6 +297,7 @@ def watch_main(
                 model=ready.identity,
                 provenance=provenance,
                 cadence=args.every,
+                question=args.ask,
                 providers=providers,
                 load=ready.load,
                 settling=settling,
@@ -514,7 +520,7 @@ def _benchmark_parser() -> argparse.ArgumentParser:
     )
     _add_ask(
         parser,
-        costing=(
+        what_it_means=(
             " The question is the Workload, so two Benchmarks asked different questions"
             " measured different amounts of generation and are not comparable."
         ),
@@ -554,6 +560,13 @@ def _watch_parser() -> argparse.ArgumentParser:
         ),
     )
     _add_camera(parser)
+    _add_ask(
+        parser,
+        what_it_means=(
+            " Stands from the first Observation onward, so a rehearsed demo starts on the"
+            " question it is about rather than on the plain description."
+        ),
+    )
     # Offered only to be refused; see ``refuse_an_image_file`` for what it is told.
     parser.add_argument(
         "--image",
@@ -611,7 +624,7 @@ def _add_camera(container: argparse._ActionsContainer) -> None:
     )
 
 
-def _add_ask(parser: argparse.ArgumentParser, *, costing: str = "") -> None:
+def _add_ask(parser: argparse.ArgumentParser, *, what_it_means: str = "") -> None:
     """The Scene Question, which is the prompt — so the fixed prompt is its default.
 
     Written as a default rather than as a branch on ``None`` because there is no third
@@ -622,11 +635,13 @@ def _add_ask(parser: argparse.ArgumentParser, *, costing: str = "") -> None:
     what keeps a new record comparable with the ones already in ``docs/benchmarks/``.
 
     Shared by the commands that carry a Scene Question, because the question means the
-    same thing to each of them. ``costing`` is what it costs *that* command, for the one
-    where it costs something: a Benchmark measures the generation the question asks for,
-    so two Benchmarks asked different questions measured different work and are not
-    comparable — which an Operator should be able to read where the flag is offered, as
-    they can read the divergence note where the latencies are.
+    same thing to each of them. ``what_it_means`` is what asking one means for *that*
+    command, where it means more than the one Frame in front of it: a Benchmark measures
+    the generation the question asks for, so two Benchmarks asked different questions
+    measured different work and are not comparable — which an Operator should be able to
+    read where the flag is offered, as they can read the divergence note where the
+    latencies are; and a Watch keeps the question standing over every Cadence it reaches
+    rather than answering it once.
     """
     parser.add_argument(
         "--ask",
@@ -635,7 +650,7 @@ def _add_ask(parser: argparse.ArgumentParser, *, costing: str = "") -> None:
         help=(
             "ask this about the Frame instead of having it described"
             ' (--ask "is anyone looking at the camera?") — answered from that one Frame'
-            f" alone, so there are no follow-ups.{costing} Default: describe the Frame"
+            f" alone, so there are no follow-ups.{what_it_means} Default: describe the Frame"
         ),
     )
 

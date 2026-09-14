@@ -65,6 +65,9 @@ HEADER = (
 TEXTS = ("An empty desk.", "A hand holding a coffee mug.", "The mug, put down again.")
 """One Observation apiece, told apart so that the order they were printed in is assertable."""
 
+STANDING = "is anyone looking at the camera?"
+"""A Scene Question a Watch is started on, standing over every Cadence it then reaches."""
+
 
 def readings(
     observations: int, *, cadence: float = CADENCE, inference: float = INFERENCE
@@ -626,6 +629,90 @@ def test_sends_every_observation_on_its_own_frame_with_the_one_fixed_prompt() ->
     assert len(set(frames)) == 3
     # And each one is the image the Feed produced for it, in the order it produced them.
     assert [colour_of(frame) for frame in frames] == list(WATCHED_COLOURS)
+
+
+def test_asks_the_standing_scene_question_from_the_very_first_observation() -> None:
+    """A Watch started on a question is on it at once: there is no first Observation that
+    describes the room before the question the Operator meant takes effect."""
+    result = run(["--count", "3", "--ask", STANDING])
+
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [STANDING] * 3
+
+
+def test_a_standing_question_moves_nothing_else_about_the_watch() -> None:
+    """The one thing --ask replaces is the prompt sent at each Cadence.
+
+    Asserted against the whole output rather than one line, because the claim is that a
+    standing question changes nothing an Operator reads: the header, every Observation's
+    line and the summary are the ones a Watch without a question writes.
+    """
+    asked = run(["--count", "3", "--ask", STANDING])
+    described = run(["--count", "3"])
+
+    assert asked.code == described.code == 0
+    # The two runs really did ask different things — without this the equality below would
+    # hold for a --ask that never reached the model at all.
+    assert [workload.prompt for workload in asked.model.observed] != [
+        workload.prompt for workload in described.model.observed
+    ]
+    assert asked.out == described.out
+    assert asked.sleep.waits == described.sleep.waits
+
+
+def test_a_watch_that_fell_behind_on_a_standing_question_counts_what_it_lost_as_ever() -> None:
+    """The shortfall is about the machine, never about what was being asked of it.
+
+    Driven through the Watch that overran its Cadence by two instants, because that is the
+    only place the skipped Cadences and the Stale Frames are anything but zero: a standing
+    question must leave both counts, and the lines they are said on, exactly where they
+    were (ADR-0006).
+    """
+    asked = overrun(["--count", "3", "--ask", STANDING])
+    described = overrun(["--count", "3"])
+
+    assert asked.code == described.code == 0
+    assert all(workload.prompt == STANDING for workload in asked.model.observed)
+    assert asked.out == described.out
+    assert (
+        ", late — skipped 2 Cadences and discarded 2 Stale Frames to observe the present"
+    ) in asked.out
+    assert asked.out.endswith("\n3 Observations, median inference 1.000 s, 2 Cadences skipped\n")
+
+
+def test_keeps_the_observed_frames_of_a_watch_on_a_standing_question(tmp_path: Path) -> None:
+    """The Frames a Watch keeps are kept regardless of what it was asking about them."""
+    result = run(["--count", "3", "--keep-frames", "--ask", STANDING], frames_dir=tmp_path)
+
+    assert result.code == 0
+    assert len(list(tmp_path.glob("*.jpg"))) == 3
+
+
+def test_persists_nothing_it_produced_on_a_standing_question(benchmarks: Path) -> None:
+    """A standing question does not make a Watch a measurement: every Observation still
+    ran against a different Frame, so there is still nothing comparable to write down."""
+    run(["--count", "3", "--ask", STANDING])
+
+    assert not benchmarks.exists()
+
+
+@pytest.mark.parametrize("question", ["", "   ", "\t\n"])
+def test_refuses_an_empty_scene_question_before_foundry_local_is_started(question: str) -> None:
+    """Refused as the other commands refuse it, and ahead of the camera as well as the
+    model: a Watch that took the mistake to the hardware would settle a Feed and load
+    several gigabytes of weights before saying the question was never there."""
+    result = run(["--count", "1", "--ask", question])
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.err == (
+        "error: --ask was given no question — pass one in quotes"
+        ' (--ask "is anyone looking at the camera?"), or leave --ask off to have the'
+        " Frame described\n"
+    )
+    assert result.cameras.opened == []
+    assert not result.model.loaded
+    assert result.model.observed == []
 
 
 def test_fixes_the_generation_limits_on_every_workload_it_sends() -> None:

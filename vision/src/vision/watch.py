@@ -371,11 +371,14 @@ class Questions(Protocol):
 class NoQuestions:
     """A Watch nobody can steer: whatever it started on stands until it ends.
 
-    The port has an implementation from the moment it exists, so that the loop is written
-    against a port and never against a ``None``. It is the only one there is yet — reading
-    the Operator's keystrokes off ``stdin`` is still to be built — and it will go on being
-    what a Watch runs on wherever there is no terminal to read them from: a pipe, CI,
-    output redirected to a file (ADR-0009).
+    What a Watch runs on wherever there is no terminal to read the Operator's keystrokes
+    from: a pipe, CI, output redirected to a file (ADR-0009). Reading a real keyboard is
+    ``keyboard.TypedLines``, and which of the two a command gets is decided once, in
+    ``keyboard.read_the_keyboard``.
+
+    It lives here rather than beside that reader because it is the port's own answer to
+    having nobody at it, so the loop is written against a port and never against a
+    ``None`` — a Watch handed no keyboard at all is still a Watch.
     """
 
     def pending(self) -> str | None:

@@ -86,7 +86,6 @@ from vision.startup import (
 from vision.watch import (
     CADENCE,
     Announce,
-    NoQuestions,
     Produced,
     Questions,
     Watch,
@@ -225,6 +224,7 @@ def watch_main(
     clock: Clock | None = None,
     sleep: Sleep | None = None,
     questions: Questions | None = None,
+    stdin: TextIO | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
     frames_dir: Path | None = None,
@@ -245,10 +245,12 @@ def watch_main(
     names no model, a task that is not ``vision-language-chat``, a Variant that will not
     load. There is nothing to degrade to.
 
-    Where the Operator's questions are read from is a port like the rest, and a Watch given
-    none runs on what ``--ask`` gave it for as long as it lasts. It is stopped whichever
-    way the run ended — the Watch itself, a Variant that would not load, an interruption in
-    the run-up — because there is nothing left for a question to steer in any of them.
+    Where the Operator's questions are read from is a port like the rest: the keyboard
+    where ``stdin`` is a terminal, and nobody where it is not — a Watch in a pipe or in CI
+    runs on what ``--ask`` gave it for as long as it lasts (ADR-0009). It is stopped
+    whichever way the run ended — the Watch itself, a Variant that would not load, an
+    interruption in the run-up — because there is nothing left for a question to steer in
+    any of them.
 
     The summary is printed after the camera has been released and the model unloaded, so
     that the last thing an Operator reads is not written while the machine is still held.
@@ -297,7 +299,7 @@ def watch_main(
             # for — a Variant that will not load, a camera that is not there, Ctrl+C during
             # either — take the reader of the Operator's keystrokes down with them rather
             # than leaving one reading a keyboard nobody is watching the output of.
-            questions = questions if questions is not None else NoQuestions()
+            questions = _resolve_questions(questions, stdin)
             lifetime.callback(questions.stop)
             ready = bring_up(model, clock=clock, out=out)
             lifetime.callback(ready.model.unload)
@@ -747,6 +749,21 @@ def _resolve_foundry(foundry: FoundryLocal | None, owned: list[Callable[[], None
     real = InProcessFoundryLocal()
     owned.append(real.close)
     return real
+
+
+def _resolve_questions(questions: Questions | None, stdin: TextIO | None) -> Questions:
+    """The keyboard a Watch is steered from, unless a caller handed one in.
+
+    ``stdin`` rather than a caller's stream is the default for the reason the real clock
+    and the real sleep are: this is where the machine the command runs on is named, and a
+    test names its own. Imported here, beside the resolving, as the rest of them are.
+    """
+    if questions is not None:
+        return questions
+
+    from vision.keyboard import read_the_keyboard
+
+    return read_the_keyboard(stdin if stdin is not None else sys.stdin)
 
 
 def _resolve_clock(clock: Clock | None) -> Clock:

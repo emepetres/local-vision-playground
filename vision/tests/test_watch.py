@@ -1342,3 +1342,29 @@ def test_a_variant_that_will_not_load_still_ends_the_process_before_the_watch() 
 def test_debug_restores_the_traceback() -> None:
     with pytest.raises(Exception, match="cannot run over"):
         run(["--image", "desk.jpg", "--debug"])
+
+
+def test_reads_no_keyboard_where_stdin_is_not_a_terminal() -> None:
+    """A pipe, CI, output redirected to a file: nobody is typing, and lines arriving on
+    ``stdin`` are a script rather than an Operator. No reader is started — this is the one
+    test that gives the command no ``Questions`` of its own — and the Watch runs on what
+    ``--ask`` gave it (ADR-0009).
+    """
+    out, err = io.StringIO(), io.StringIO()
+    model = FakeVisionModel(make_identity(), [make_observation(text) for text in TEXTS])
+
+    code = watch_main(
+        ["--count", "3", "--ask", STANDING],
+        open_feed=FakeCameras({0: watching_feed(len(TEXTS))}),
+        make_reader=FakeReaders(),
+        foundry=FakeFoundry.resolving_everything_to(model),
+        clock=FakeClock(readings(len(TEXTS))),
+        sleep=FakeSleep(),
+        stdin=io.StringIO(f"{TYPED}\n"),
+        out=out,
+        err=err,
+    )
+
+    assert code == 0
+    assert "Asking:" not in out.getvalue()
+    assert [workload.prompt for workload in model.observed] == [STANDING] * 3

@@ -167,6 +167,10 @@ def benchmark_main(
     try:
         refuse_a_live_camera(args.camera)
         require_a_benchmark_run(args.repetitions)
+        # Asked here for the reason ``observe`` asks it before its own model load, with one
+        # more behind it: a Benchmark that took the mistake to the hardware would download
+        # and load every Variant before saying anything.
+        require_a_scene_question(args.ask)
         if camera is None:
             camera = _benchmark_source(args.image)
         foundry = _resolve_foundry(foundry, owned)
@@ -174,7 +178,9 @@ def benchmark_main(
 
         # Read once, and reuse these exact bytes: re-reading the file per repetition would
         # re-encode it, and a Workload is the Frame's bytes rather than its resolution.
-        workload = Workload(prompt=PROMPT, frame=camera.capture())
+        # The Scene Question joins them here and nowhere else, so one question stands over
+        # the whole sitting; what that costs and what it buys is in ``_add_ask``.
+        workload = Workload(prompt=args.ask, frame=camera.capture())
         benchmark = measure(
             foundry=foundry,
             clock=clock,
@@ -506,6 +512,13 @@ def _benchmark_parser() -> argparse.ArgumentParser:
             " reports about this machine, which tells two machines apart and no more"
         ),
     )
+    _add_ask(
+        parser,
+        costing=(
+            " The question is the Workload, so two Benchmarks asked different questions"
+            " measured different amounts of generation and are not comparable."
+        ),
+    )
     _add_variants(parser)
     _add_debug(parser)
     return parser
@@ -598,14 +611,22 @@ def _add_camera(container: argparse._ActionsContainer) -> None:
     )
 
 
-def _add_ask(parser: argparse.ArgumentParser) -> None:
+def _add_ask(parser: argparse.ArgumentParser, *, costing: str = "") -> None:
     """The Scene Question, which is the prompt — so the fixed prompt is its default.
 
     Written as a default rather than as a branch on ``None`` because there is no third
     state: a command either sends the question it was given or sends the one it has always
     sent, and a Workload carries a prompt either way. Leaving the flag off therefore
     reaches the model as exactly the bytes it reached it as before this flag existed,
-    which is what keeps a command already on a slide working.
+    which is what keeps a command already on a slide working — and, for ``benchmark``,
+    what keeps a new record comparable with the ones already in ``docs/benchmarks/``.
+
+    Shared by the commands that carry a Scene Question, because the question means the
+    same thing to each of them. ``costing`` is what it costs *that* command, for the one
+    where it costs something: a Benchmark measures the generation the question asks for,
+    so two Benchmarks asked different questions measured different work and are not
+    comparable — which an Operator should be able to read where the flag is offered, as
+    they can read the divergence note where the latencies are.
     """
     parser.add_argument(
         "--ask",
@@ -614,7 +635,7 @@ def _add_ask(parser: argparse.ArgumentParser) -> None:
         help=(
             "ask this about the Frame instead of having it described"
             ' (--ask "is anyone looking at the camera?") — answered from that one Frame'
-            " alone, so there are no follow-ups. Default: describe the Frame"
+            f" alone, so there are no follow-ups.{costing} Default: describe the Frame"
         ),
     )
 

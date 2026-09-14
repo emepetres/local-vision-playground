@@ -247,6 +247,29 @@ that is what makes the whole sitting comparable, and it is why the live camera i
 different Frame each time is not a Workload. `--image <path>` measures a file of your own
 instead of the reference Frame; `--debug` behaves as it does for `observe`.
 
+`--ask "<question>"` makes the **Scene Question** part of the Workload, so that what is
+measured is the work an Operator actually cares about — a two-word answer and a request for
+a paragraph are wildly different amounts of generation:
+
+```bash
+uv run benchmark --ask "how many cups are on that desk?"
+```
+
+The question travels unchanged to every Benchmark Run of every Variant — one Workload for
+the whole sitting, which is what keeps the Variants comparable with each other — and it is
+printed on the `Prompt` line above the tables, written into the JSON record and into the
+Markdown beside the Frame's hash and the generation limits. Nothing else moves: the limits
+are the ones they always were, and an answer that hits the output limit gets the same
+truncation note.
+
+**Two Benchmarks taken under different questions are not comparable**, however alike their
+hardware — they measured different amounts of generation, which is the whole reason the
+flag exists. That is why the question is in both files: a reader months later can see which
+question produced which numbers. Leaving `--ask` off measures the prompt it has always
+measured, so a new record is still comparable with the ones already in `docs/benchmarks/`.
+An empty or whitespace-only `--ask` is refused before any weights are fetched, exactly as
+`observe` refuses it.
+
 **Variants are resolved through the catalogue**, not by a version suffix written into the
 source, so the command does not break the day the catalogue publishes a new version — and
 the Model line names the exact Variant id that was resolved, so the numbers say which build

@@ -34,6 +34,7 @@ from vision.inference import (
     Workload,
 )
 from vision.startup import Sleep
+from vision.watch import Questions
 
 
 class FakeCamera:
@@ -205,6 +206,35 @@ class FakeSleep:
         self.waits.append(seconds)
         if self._interrupts_on is not None and len(self.waits) == self._interrupts_on:
             raise KeyboardInterrupt
+
+
+class TypedQuestions:
+    """The Operator's keyboard as a schedule: what was typed before each poll, in order.
+
+    A schedule rather than a thread, for the reason the hand-turned reader is one: a Watch
+    is driven here by turning its loop, and a test that had to race a real ``stdin`` reader
+    would be asserting on timing rather than on the rule. One entry per Cadence — ``()``
+    for a Cadence nobody typed at, one line for a question, several for the lines typed
+    between two Cadences of which only the last survives, which is the collapsing rule the
+    port owns (ADR-0009) and therefore has to be in the fake too.
+
+    Polls past the end of the schedule answer with nothing, so a test only says as much of
+    the keyboard as it is about. ``stopped`` is how a test pins that the reader was taken
+    down when the Watch ended.
+    """
+
+    def __init__(self, typed: Sequence[Sequence[str]] = ()) -> None:
+        self._typed = tuple(tuple(lines) for lines in typed)
+        self.polls = 0
+        self.stopped = False
+
+    def pending(self) -> str | None:
+        lines = self._typed[self.polls] if self.polls < len(self._typed) else ()
+        self.polls += 1
+        return lines[-1] if lines else None
+
+    def stop(self) -> None:
+        self.stopped = True
 
 
 class FakeVisionModel:
@@ -436,5 +466,6 @@ _hand_turned: Reader = HandTurnedReader(FakeFeed([]), ())
 _make_reader: MakeReader = FakeReaders()
 _make_hand_turned: MakeReader = HandTurnedReaders()
 _sleep: Sleep = FakeSleep()
+_questions: Questions = TypedQuestions()
 _model: VisionModel = FakeVisionModel(make_identity(), [make_observation()])
 _foundry: FoundryLocal = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})

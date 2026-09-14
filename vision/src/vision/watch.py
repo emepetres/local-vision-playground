@@ -44,10 +44,11 @@ from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
 from statistics import median
+from typing import Protocol
 
 from vision.capture import Frame, HeldFeed, save_frame
 from vision.errors import VisionError, one_line
-from vision.inference import FinishReason, ModelIdentity, VisionModel, Workload
+from vision.inference import PROMPT, FinishReason, ModelIdentity, VisionModel, Workload
 from vision.startup import Clock, Sleep, timed
 
 CADENCE = 2.0
@@ -135,6 +136,16 @@ class WatchedObservation:
     saved: Path | None = None
     """Where the observed Frame was kept, when the Operator asked for it to be kept."""
 
+    changed_question: str | None = None
+    """The Scene Question this Observation is the first to answer, where it just changed.
+
+    Nothing on every other Observation, which is nearly all of them: the question stands
+    until the Operator replaces it (ADR-0009), so this is news exactly once per change and
+    a value repeated on every line would be furniture rather than news. It travels on the
+    Observation rather than being announced the moment it was typed so that the report has
+    one writer and the echo cannot race the answers it belongs above.
+    """
+
     @property
     def truncated(self) -> bool:
         return self.finish_reason is FinishReason.TRUNCATED
@@ -167,6 +178,15 @@ class FailedInference:
     on, so that whoever writes a line down does not have one rule for the Cadences that
     produced something and another for these."""
 
+    changed_question: str | None = None
+    """The Scene Question this Cadence was the first to ask, where it just changed.
+
+    Carried here as well because the question took effect at this Cadence whether or not
+    the model then answered: a change echoed only on the Cadences that produced something
+    would go unsaid altogether whenever the first inference under it failed, and the
+    Observations that followed would be answering a question nobody was ever told about.
+    """
+
     @property
     def reason(self) -> str:
         """The one line this failure is worth, in the shape every other failure is said in."""
@@ -194,9 +214,10 @@ class WatchStart:
     Part of the start rather than of the loop because it is what the Watch was *asked for*,
     as the Cadence is: chosen before the first Frame was taken, and read by the loop rather
     than owned by it. Not that it is settled for ever — ADR-0009 has an Operator replace
-    the question while the Watch runs, and the last question wins; what is not built yet is
-    the surface they replace it at, so for now the value that stands from the first Cadence
-    is the only one there is.
+    the question while the Watch runs, and the last question wins. This is the one the
+    Watch starts on, and it is not somewhere the Watch returns to: a line typed at it
+    replaces this, and an empty line typed at it goes to the plain description rather than
+    back here (see ``_standing_question``).
 
     Not reported in the header, which is the costs and the Cadence: an Operator who typed
     the question is looking at it already, and one who typed none is reading the prompt
@@ -304,6 +325,47 @@ Operator reading a column whose numbering skips for no reason they can see.
 """
 
 
+class Questions(Protocol):
+    """Whatever the Operator is typing at a running Watch, read one line at a time.
+
+    Shaped like the Feed's reader (``capture.Reader``) because it is the same problem: what
+    is being read arrives on its own schedule and the Watch reads it on the grid, so this
+    answers with what is there *now* and never waits for more. A Watch that blocked on a
+    line would stop being a Watch the moment nobody typed.
+
+    **The last question wins**, and that rule is this port's rather than the loop's
+    (ADR-0009): whatever arrived since the last poll collapses to the most recent line and
+    the rest is discarded here, so the loop never sees a queue and cannot grow one. What an
+    empty line *means* is not this port's — it answers with the raw text, and the Watch
+    reads it (see ``_standing_question``).
+    """
+
+    def pending(self) -> str | None:
+        """The most recent line typed since the last poll, or nothing where none was."""
+        ...
+
+    def stop(self) -> None:
+        """Stop reading. Whatever the lines are read from is the caller's to close."""
+        ...
+
+
+class NoQuestions:
+    """A Watch nobody can steer: whatever it started on stands until it ends.
+
+    The port has an implementation from the moment it exists, so that the loop is written
+    against a port and never against a ``None``. It is the only one there is yet — reading
+    the Operator's keystrokes off ``stdin`` is still to be built — and it will go on being
+    what a Watch runs on wherever there is no terminal to read them from: a pipe, CI,
+    output redirected to a file (ADR-0009).
+    """
+
+    def pending(self) -> str | None:
+        return None
+
+    def stop(self) -> None:
+        return None
+
+
 def require_a_cadence(seconds: float) -> None:
     """Refuse a Cadence that is not a rhythm, before a camera or a model is touched.
 
@@ -354,6 +416,7 @@ def keep_watch(
     sleep: Sleep,
     keep_in: Path | None,
     announce: Announce,
+    questions: Questions,
 ) -> Watch:
     """Produce Observations on the grid until the Operator stops it, or ``count`` is met.
 
@@ -377,6 +440,13 @@ def keep_watch(
     so that the whole command is drivable to its summary in a test with no signals and no
     wall-clock time; a Watch with no count runs until it is interrupted.
 
+    The Scene Question is read on the grid — once per Cadence, after the wait and before
+    the Frame is taken — so a question always applies from a Frame taken after it was
+    typed, and one typed while an inference is running does not reach back into it. It then
+    stands until it is replaced (ADR-0009): the Watch is steered rather than interrupted,
+    and nothing about a question is ever counted against the machine, so no skipped Cadence
+    and no Stale Frame is ever attributable to somebody having typed.
+
     The instant an Observation was taken at is tracked apart from how many Cadences the
     Watch has reached, because on a machine short of the Cadence the two come apart: that
     is what skipping *is*. A Watch that counted its way along the grid would have every
@@ -385,6 +455,7 @@ def keep_watch(
     """
     observations: list[WatchedObservation] = []
     failures: list[FailedInference] = []
+    question = start.question
     began = clock()
     instant, skipped, skipped_in_total, cadences = 0, 0, 0, 0
     died = False
@@ -407,6 +478,12 @@ def keep_watch(
                 # part-way through that inference still passed them.
                 skipped_in_total += skipped
             cadences += 1
+            # Read here, between the wait and the Frame, which is what makes a question
+            # take effect from the next Cadence rather than from the middle of one. Read on
+            # the first Cadence too: there is no wait before it, but a Watch that only
+            # started listening at its second Observation would silently drop a question
+            # typed while the camera was still settling.
+            question, changed = _standing_question(question, typed=questions.pending())
             present = feed.present()
             frame = present.frame(provenance=start.provenance)
             # A Feed with nothing left to give is the end of the Watch, and it is decided
@@ -419,7 +496,8 @@ def keep_watch(
                 model,
                 frame=frame,
                 order=cadences,
-                question=start.question,
+                question=question,
+                changed_question=question if changed else None,
                 shortfall=Shortfall(skipped_cadences=skipped, stale_frames=present.stale_frames),
                 clock=clock,
                 keep_in=keep_in,
@@ -489,12 +567,32 @@ def _first_instant_from(due: int, *, now: float, began: float, cadence: float) -
     return max(due, ceil((now - began) / cadence - GRID_TOLERANCE))
 
 
+def _standing_question(standing: str, *, typed: str | None) -> tuple[str, bool]:
+    """What the Watch asks from this Cadence on, and whether that is news.
+
+    The meaning of the line is decided here rather than in the port, because the port reads
+    keystrokes and this is where a Watch's prompt is: an empty or whitespace-only line is a
+    return to the plain description, not a question that asks nothing. ``--ask ""`` is
+    refused on the command line for the opposite reason — there, a question was meant and
+    the shell ate it, and there is nothing to go back to.
+
+    Retyping the question already standing is not a change and is not echoed. The echo says
+    what the Watch is now asking, and an Operator handed the same sentence twice would
+    start looking for the difference between them.
+    """
+    if typed is None:
+        return standing, False
+    asked = typed.strip() or PROMPT
+    return asked, asked != standing
+
+
 def _observe(
     model: VisionModel,
     *,
     frame: Frame,
     order: int,
     question: str,
+    changed_question: str | None,
     shortfall: Shortfall,
     clock: Clock,
     keep_in: Path | None,
@@ -510,7 +608,7 @@ def _observe(
     but the Operator ending the Watch, and it passes through to whoever runs the grid.
 
     The Workload is built fresh from this Frame and carries the Scene Question standing
-    over the Watch — which is the fixed prompt, until an Operator asks for something else.
+    over the Watch at this Cadence, which the loop has just read off the keyboard.
     An Observation is what the model reports about *a* Frame, and a Watch that let a
     conversation grow across its Observations would be describing its own history as much
     as the room in front of the camera: the question is carried from one Cadence to the
@@ -531,7 +629,9 @@ def _observe(
         workload = Workload(prompt=question, frame=frame)
         raw, inference = timed(clock, lambda: model.observe(workload))
     except Exception as error:
-        return FailedInference(order=order, error=error, shortfall=shortfall)
+        return FailedInference(
+            order=order, error=error, shortfall=shortfall, changed_question=changed_question
+        )
     return WatchedObservation(
         order=order,
         inference=inference,
@@ -540,4 +640,5 @@ def _observe(
         max_output_tokens=workload.max_output_tokens,
         shortfall=shortfall,
         saved=saved,
+        changed_question=changed_question,
     )

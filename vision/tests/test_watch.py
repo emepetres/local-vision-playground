@@ -25,6 +25,7 @@ from tests.fakes import (
     FakeSleep,
     FakeVisionModel,
     HandTurnedReaders,
+    TypedQuestions,
     colour_of,
     make_identity,
     make_images,
@@ -32,7 +33,7 @@ from tests.fakes import (
 )
 from vision.capture import SETTLING_FRAMES
 from vision.cli import watch_main
-from vision.inference import FinishReason, RawObservation, Workload
+from vision.inference import PROMPT, FinishReason, RawObservation, Workload
 
 SETUP_READINGS = (0.0, 0.5)
 """Registering the Execution Providers: 0.500 s."""
@@ -109,6 +110,7 @@ class Run:
     feeds: dict[int, FakeFeed]
     model: FakeVisionModel
     sleep: FakeSleep
+    questions: TypedQuestions
 
     @property
     def feed(self) -> FakeFeed:
@@ -131,6 +133,7 @@ def run(
     clock: FakeClock | None = None,
     sleep: FakeSleep | None = None,
     readers: FakeReaders | HandTurnedReaders | None = None,
+    questions: TypedQuestions | None = None,
     frames_dir: Path | None = None,
 ) -> Run:
     """One invocation, over a Feed read on demand rather than drained by a thread.
@@ -151,6 +154,7 @@ def run(
     cameras = FakeCameras(feeds)
     readers = readers if readers is not None else FakeReaders()
     sleep = sleep if sleep is not None else FakeSleep()
+    questions = questions if questions is not None else TypedQuestions()
     out, err = io.StringIO(), io.StringIO()
     code = watch_main(
         argv,
@@ -159,11 +163,14 @@ def run(
         foundry=FakeFoundry.resolving_everything_to(model),
         clock=clock if clock is not None else FakeClock(readings(observations)),
         sleep=sleep,
+        questions=questions,
         out=out,
         err=err,
         frames_dir=frames_dir,
     )
-    return Run(code, out.getvalue(), err.getvalue(), cameras, readers, feeds, model, sleep)
+    return Run(
+        code, out.getvalue(), err.getvalue(), cameras, readers, feeds, model, sleep, questions
+    )
 
 
 def observation_block(order: int, text: str, extra: str = "") -> str:
@@ -318,13 +325,19 @@ def overrun_clock() -> FakeClock:
     )
 
 
-def overrun(argv: list[str], *, frames_dir: Path | None = None) -> Run:
+def overrun(
+    argv: list[str],
+    *,
+    frames_dir: Path | None = None,
+    questions: TypedQuestions | None = None,
+) -> Run:
     """The Watch of three Observations whose first one overran the Cadence by two instants."""
     return run(
         argv,
         feeds={0: overrun_feed()},
         clock=overrun_clock(),
         readers=HandTurnedReaders(OVERRUN_READS),
+        questions=questions,
         frames_dir=frames_dir,
     )
 
@@ -694,6 +707,203 @@ def test_persists_nothing_it_produced_on_a_standing_question(benchmarks: Path) -
     run(["--count", "3", "--ask", STANDING])
 
     assert not benchmarks.exists()
+
+
+TYPED = "how many people are in the room?"
+"""A Scene Question typed at a Watch that is already running."""
+
+REPLACEMENT = "what colour is the mug?"
+"""The question that replaces it before a Cadence reached either, so last-wins is nameable."""
+
+ASKING_TYPED = f"\nAsking: {TYPED}\n"
+"""The echo a changed question is announced by, above the first Observation to answer it."""
+
+ASKING_PLAINLY = "\nAsking: for a plain description\n"
+"""The echo of the way back: the default prompt named rather than quoted at an audience."""
+
+
+def test_a_question_typed_mid_watch_applies_from_the_next_observation_and_then_stands() -> None:
+    """The Observation in flight is not reached back into, and the next is not a one-off.
+
+    Typed before the second Cadence, so the first Observation is the plain description the
+    Watch started on and every Observation from the second onwards answers the question —
+    which is the whole demonstration: the same question asked again as the scene moves.
+    """
+    result = run(["--count", "3"], questions=TypedQuestions([(), (TYPED,), ()]))
+
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [PROMPT, TYPED, TYPED]
+
+
+def test_a_question_replaced_before_the_next_cadence_is_never_sent_to_the_model() -> None:
+    """The last question wins, and the one it replaced is discarded unanswered (ADR-0009).
+
+    Not queued to be answered a tick later: an answer to a question the Operator has
+    already retyped is the same lie as an answer about a moment they have already left.
+    """
+    result = run(["--count", "3"], questions=TypedQuestions([(), (TYPED, REPLACEMENT), ()]))
+
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [
+        PROMPT,
+        REPLACEMENT,
+        REPLACEMENT,
+    ]
+    assert TYPED not in result.out
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t"])
+def test_an_empty_line_goes_back_to_the_plain_description(blank: str) -> None:
+    """Nothing typed is not a question that asks nothing — it is the way back.
+
+    ``--ask ""`` is refused for the opposite reason: there a question was meant and the
+    shell ate it, and there is nothing standing to go back from.
+    """
+    result = run(["--count", "3", "--ask", STANDING], questions=TypedQuestions([(), (blank,), ()]))
+
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [STANDING, PROMPT, PROMPT]
+
+
+def test_echoes_each_change_once_above_the_first_answer_to_it_and_never_again() -> None:
+    """The echo is the reporting module's, so it lands in the series rather than beside it.
+
+    Asserted against the whole output because the claim is about *where* the sentence goes:
+    above the first Observation that answers the question, and not repeated over the ones
+    that follow it — a Watch that echoed on every line would bury the answers changing.
+    """
+    result = run(["--count", "3"], questions=TypedQuestions([(), (TYPED,), ()]))
+
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + ASKING_TYPED
+        + observation_block(2, TEXTS[1])
+        + observation_block(3, TEXTS[2])
+        + "\n3 Observations, median inference 1.000 s\n"
+    )
+
+
+def test_echoes_the_return_to_plain_description_as_a_change_of_its_own() -> None:
+    """A recording of the talk should show every time the Watch changed what it asked."""
+    result = run(["--count", "3"], questions=TypedQuestions([(TYPED,), (), ("",)]))
+
+    assert result.out == (
+        HEADER
+        + ASKING_TYPED
+        + observation_block(1, TEXTS[0])
+        + observation_block(2, TEXTS[1])
+        + ASKING_PLAINLY
+        + observation_block(3, TEXTS[2])
+        + "\n3 Observations, median inference 1.000 s\n"
+    )
+
+
+def test_retyping_the_question_already_standing_is_not_a_change_and_is_not_echoed() -> None:
+    """An Operator handed the same sentence twice goes looking for the difference."""
+    result = run(["--count", "3"], questions=TypedQuestions([(TYPED,), (TYPED,), (TYPED,)]))
+
+    assert result.code == 0
+    assert result.out.count(ASKING_TYPED) == 1
+    assert [workload.prompt for workload in result.model.observed] == [TYPED] * 3
+
+
+def test_echoes_a_change_that_took_effect_at_a_cadence_whose_inference_then_failed() -> None:
+    """The question took effect whether or not the model answered, and the Observations
+    after it answer something an Operator would otherwise never have been told about — so
+    the echo is on the Cadence rather than on the answer.
+    """
+    broken = FakeVisionModel(
+        make_identity(),
+        [
+            make_observation(TEXTS[0]),
+            RuntimeError("the runtime gave up"),
+            make_observation(TEXTS[2]),
+        ],
+    )
+    result = run(["--count", "3"], model=broken, questions=TypedQuestions([(), (TYPED,), ()]))
+
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + ASKING_TYPED
+        + "\n#2  failed — RuntimeError: the runtime gave up\n"
+        + observation_block(3, TEXTS[2])
+        + "\n2 Observations, median inference 1.000 s, 1 failed\n"
+    )
+
+
+def test_typing_is_not_a_fault_of_the_hardware_and_moves_no_count_in_the_summary() -> None:
+    """A skipped Cadence means one thing: this machine could not keep up (ADR-0006).
+
+    Driven through the Watch that overran its Cadence by two instants, because that is the
+    only place the counts are anything but zero. The echo is the only thing a question adds
+    to the report — take it back out and the two runs are the same run, the shortfall, the
+    line it is said on and the summary included.
+    """
+    typed = overrun(["--count", "3"], questions=TypedQuestions([(), (TYPED,), ()]))
+    quiet = overrun(["--count", "3"])
+
+    assert typed.code == quiet.code == 0
+    assert [workload.prompt for workload in typed.model.observed] == [PROMPT, TYPED, TYPED]
+    assert typed.out.replace(ASKING_TYPED, "", 1) == quiet.out
+    assert typed.out.endswith("\n3 Observations, median inference 1.000 s, 2 Cadences skipped\n")
+
+
+def test_reads_the_keyboard_once_per_cadence_rather_than_between_them() -> None:
+    """Once per Observation, on the grid: one poll per Cadence and not one more.
+
+    A Watch that polled inside the wait, or twice around an inference, would let a question
+    take effect from a Frame taken before it was typed — which is the one thing reading on
+    the grid is placed to rule out.
+    """
+    result = run(["--count", "3"])
+
+    assert result.questions.polls == 3
+
+
+def test_stops_reading_the_keyboard_when_the_watch_ends() -> None:
+    result = run(["--count", "3"])
+
+    assert result.code == 0
+    assert result.questions.stopped
+
+
+def test_stops_reading_the_keyboard_when_there_was_never_a_watch_to_steer() -> None:
+    """The run-up is where a Watch fails, and a reader left on a keyboard nobody is
+    watching the output of is exactly what the Watch's take-down order exists to prevent.
+    """
+    result = run(["--count", "1"], feeds={})
+
+    assert result.code == 1
+    assert result.questions.stopped
+    assert result.model.unloads == 1
+
+
+def test_stops_reading_the_keyboard_after_an_interruption_too() -> None:
+    """Ctrl+C is how a Watch ordinarily ends, so it is the ending this has to survive."""
+    result = run(["--count", "3"], sleep=FakeSleep(interrupts_on=1))
+
+    assert result.code == 0
+    assert result.questions.stopped
+    assert result.feed.closed
+    assert result.model.unloads == 1
+
+
+def test_a_watch_nobody_types_at_runs_exactly_as_it_did_before() -> None:
+    """The port is not a behaviour: a Watch given a keyboard nobody touches is the Watch
+    that had no keyboard at all.
+    """
+    result = run(["--count", "3"])
+
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + observation_block(2, TEXTS[1])
+        + observation_block(3, TEXTS[2])
+        + "\n3 Observations, median inference 1.000 s\n"
+    )
+    assert [workload.prompt for workload in result.model.observed] == [PROMPT] * 3
 
 
 @pytest.mark.parametrize("question", ["", "   ", "\t\n"])

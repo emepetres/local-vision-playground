@@ -86,7 +86,9 @@ from vision.startup import (
 from vision.watch import (
     CADENCE,
     Announce,
+    NoQuestions,
     Produced,
+    Questions,
     Watch,
     WatchStart,
     keep_watch,
@@ -222,6 +224,7 @@ def watch_main(
     foundry: FoundryLocal | None = None,
     clock: Clock | None = None,
     sleep: Sleep | None = None,
+    questions: Questions | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
     frames_dir: Path | None = None,
@@ -241,6 +244,11 @@ def watch_main(
     Everything else in the run-up ends the process as it does in ``observe`` — a name that
     names no model, a task that is not ``vision-language-chat``, a Variant that will not
     load. There is nothing to degrade to.
+
+    Where the Operator's questions are read from is a port like the rest, and a Watch given
+    none runs on what ``--ask`` gave it for as long as it lasts. It is stopped whichever
+    way the run ended — the Watch itself, a Variant that would not load, an interruption in
+    the run-up — because there is nothing left for a question to steer in any of them.
 
     The summary is printed after the camera has been released and the model unloaded, so
     that the last thing an Operator reads is not written while the machine is still held.
@@ -285,6 +293,12 @@ def watch_main(
         # in: the reader comes off the Feed and the camera is released, then the model is
         # taken off the hardware, and only then is Foundry Local itself closed.
         with ExitStack() as lifetime:
+            # Registered before anything is brought up, so that the paths this stack exists
+            # for — a Variant that will not load, a camera that is not there, Ctrl+C during
+            # either — take the reader of the Operator's keystrokes down with them rather
+            # than leaving one reading a keyboard nobody is watching the output of.
+            questions = questions if questions is not None else NoQuestions()
+            lifetime.callback(questions.stop)
             ready = bring_up(model, clock=clock, out=out)
             lifetime.callback(ready.model.unload)
             # Timed here rather than inside the held Feed, because what an Operator waits
@@ -313,6 +327,7 @@ def watch_main(
                 sleep=sleep,
                 keep_in=frames_dir if args.keep_frames else None,
                 announce=_announcing(out),
+                questions=questions,
             )
     except KeyboardInterrupt:
         # Caught rather than raised, and then asked which interruption it was: the Watch

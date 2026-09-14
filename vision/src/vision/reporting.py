@@ -35,10 +35,11 @@ from vision.formatting import (
     format_tokens,
     format_tokens_per_second,
 )
-from vision.inference import PROMPT, Observation, Workload
+from vision.inference import Observation, Workload
 from vision.watch import (
     FailedInference,
     Produced,
+    QuestionChanged,
     Shortfall,
     Watch,
     WatchedObservation,
@@ -173,23 +174,23 @@ def render_watch_observation(observed: WatchedObservation) -> str:
     return f"\n#{observed.order}  {', '.join(_observation_clauses(observed))}\n{observed.text}\n"
 
 
-def render_question_changed(question: str | None) -> str:
+def render_question_changed(changed: QuestionChanged | None) -> str:
     """The Scene Question a Watch has just been steered onto, said once, above the answers.
 
     Above rather than beside, because what follows it is a run of Observations all
     answering it and an Operator scrolling back wants the sentence that explains the
     column. Said on the way back to the plain description too — a recording of the talk
     should show every time the Watch changed what it asked, and stopping asking is such a
-    time (ADR-0009). The default prompt is named for what it is rather than quoted, because
-    it is not something the Operator typed.
+    time (ADR-0009). That way back is named for what it is rather than quoted: nobody
+    typed it, so there is no sentence of theirs to give back.
 
     Nothing at all where the question did not change at this Cadence, which is nearly every
     Cadence: the question stands until it is replaced, and repeating it on every line would
     bury the one line that changes.
     """
-    if question is None:
+    if changed is None:
         return ""
-    asking = "for a plain description" if question == PROMPT else question
+    asking = changed.question if changed.question is not None else "for a plain description"
     return f"\nAsking: {asking}\n"
 
 

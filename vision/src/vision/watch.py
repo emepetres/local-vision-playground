@@ -110,7 +110,60 @@ class Shortfall:
 
 
 @dataclass(frozen=True)
-class WatchedObservation:
+class QuestionChanged:
+    """What a Watch has just been steered onto, on the Cadence it was steered at.
+
+    A value rather than the question itself, because "the question changed" and "this is
+    the question" are two facts and only one of them is a sentence: an Operator who typed
+    an empty line stopped asking, and what the Watch does then is not something they wrote
+    down. Told apart here, where the line was read, so that whoever writes the change down
+    is not left comparing a prompt against a constant to work out which of the two happened
+    (ADR-0009).
+    """
+
+    question: str | None
+    """The Scene Question now standing, or nothing where the Watch went back to describing."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReachedCadence:
+    """One Cadence a Watch reached: which it was, what reaching it cost, what it asked.
+
+    Everything true of a Cadence whether or not the model then answered at it, held once
+    so that the two ways one ends cannot drift apart — a Watch that counted a Shortfall on
+    its Observations and not on its failures would under-report the machine precisely where
+    it was worst, and one that echoed a changed question only on the Cadences that produced
+    something would let a change go unsaid altogether.
+
+    Keyword-only, as both of its two shapes already were at every call site: what a Cadence
+    is carries defaults and what makes an Observation an Observation does not, and an
+    inherited field order that put the defaults first would otherwise be unwritable.
+    """
+
+    order: int
+    """Which Cadence of the Watch this was, counting from one.
+
+    A turn in one series rather than a count of Observations, because a Cadence the model
+    did not answer at still happened: an Operator reading ``#4`` after ``#2`` is being told
+    that something took place at ``#3``.
+    """
+
+    shortfall: Shortfall = Shortfall()
+    """What reaching this Cadence cost, where it cost anything."""
+
+    changed_question: QuestionChanged | None = None
+    """The Scene Question this Cadence is the first to ask, where it just changed.
+
+    Nothing on every other Cadence, which is nearly all of them: the question stands until
+    the Operator replaces it (ADR-0009), so this is news exactly once per change and a
+    value repeated on every line would be furniture. It travels on the Cadence rather than
+    being announced the moment it was typed so that the report has one writer and the echo
+    cannot race the answers it belongs above.
+    """
+
+
+@dataclass(frozen=True, kw_only=True)
+class WatchedObservation(ReachedCadence):
     """One Observation a Watch produced, and what producing it cost.
 
     Only the inference is timed. Registering the Execution Providers and loading the model
@@ -123,36 +176,21 @@ class WatchedObservation:
     Observation was actually generated under.
     """
 
-    order: int
-    """Which Observation of the Watch this was, counting from one."""
-
     inference: float
     text: str
     finish_reason: FinishReason
     max_output_tokens: int
-    shortfall: Shortfall = Shortfall()
-    """What reaching this Observation's Cadence cost, where it cost anything."""
 
     saved: Path | None = None
     """Where the observed Frame was kept, when the Operator asked for it to be kept."""
-
-    changed_question: str | None = None
-    """The Scene Question this Observation is the first to answer, where it just changed.
-
-    Nothing on every other Observation, which is nearly all of them: the question stands
-    until the Operator replaces it (ADR-0009), so this is news exactly once per change and
-    a value repeated on every line would be furniture rather than news. It travels on the
-    Observation rather than being announced the moment it was typed so that the report has
-    one writer and the echo cannot race the answers it belongs above.
-    """
 
     @property
     def truncated(self) -> bool:
         return self.finish_reason is FinishReason.TRUNCATED
 
 
-@dataclass(frozen=True)
-class FailedInference:
+@dataclass(frozen=True, kw_only=True)
+class FailedInference(ReachedCadence):
     """A Cadence at which the model was asked about a Frame and did not answer.
 
     Not a failed Observation: an Observation is what the model *reports* about a Frame
@@ -160,32 +198,13 @@ class FailedInference:
     running the model over a Frame, which is the thing CONTEXT.md keeps that word for and
     the thing ADR-0006 says a Watch carries on past.
 
-    It takes a turn in the Watch's numbering rather than being left out of it, because the
-    number counts the Cadences the Watch reached and this was one of them: an Operator
-    reading ``#4`` after ``#2`` is being told that something happened at ``#3``.
-
     The exception is kept rather than only its message, so that nothing about the fault is
-    thrown away by the value that reports it. What the Cadence cost to reach is kept for
-    the reason an Observation keeps it: the instants were passed and the Stale Frames were
-    discarded whether or not the model then answered, and ADR-0006 has a Watch say how many
-    of each it lost.
+    thrown away by the value that reports it. Everything else about the Cadence — its turn
+    in the series, what it cost to reach, what it asked — is the Cadence's rather than this
+    failure's, and is inherited from it unchanged.
     """
 
-    order: int
     error: Exception
-    shortfall: Shortfall = Shortfall()
-    """What reaching this Cadence cost, carried on the same value an Observation carries it
-    on, so that whoever writes a line down does not have one rule for the Cadences that
-    produced something and another for these."""
-
-    changed_question: str | None = None
-    """The Scene Question this Cadence was the first to ask, where it just changed.
-
-    Carried here as well because the question took effect at this Cadence whether or not
-    the model then answered: a change echoed only on the Cadences that produced something
-    would go unsaid altogether whenever the first inference under it failed, and the
-    Observations that followed would be answering a question nobody was ever told about.
-    """
 
     @property
     def reason(self) -> str:
@@ -497,7 +516,7 @@ def keep_watch(
                 frame=frame,
                 order=cadences,
                 question=question,
-                changed_question=question if changed else None,
+                changed_question=changed,
                 shortfall=Shortfall(skipped_cadences=skipped, stale_frames=present.stale_frames),
                 clock=clock,
                 keep_in=keep_in,
@@ -567,8 +586,8 @@ def _first_instant_from(due: int, *, now: float, began: float, cadence: float) -
     return max(due, ceil((now - began) / cadence - GRID_TOLERANCE))
 
 
-def _standing_question(standing: str, *, typed: str | None) -> tuple[str, bool]:
-    """What the Watch asks from this Cadence on, and whether that is news.
+def _standing_question(standing: str, *, typed: str | None) -> tuple[str, QuestionChanged | None]:
+    """What the Watch asks from this Cadence on, and the change worth saying out loud.
 
     The meaning of the line is decided here rather than in the port, because the port reads
     keystrokes and this is where a Watch's prompt is: an empty or whitespace-only line is a
@@ -576,14 +595,22 @@ def _standing_question(standing: str, *, typed: str | None) -> tuple[str, bool]:
     refused on the command line for the opposite reason — there, a question was meant and
     the shell ate it, and there is nothing to go back to.
 
+    Which of the two happened is settled here as well, where the line was read, rather than
+    left for the report to deduce from the prompt: an Operator who typed a question gets
+    their own words back, and one who stopped asking is not quoted a sentence they never
+    wrote.
+
     Retyping the question already standing is not a change and is not echoed. The echo says
     what the Watch is now asking, and an Operator handed the same sentence twice would
     start looking for the difference between them.
     """
     if typed is None:
-        return standing, False
-    asked = typed.strip() or PROMPT
-    return asked, asked != standing
+        return standing, None
+    asked = typed.strip()
+    prompt = asked or PROMPT
+    if prompt == standing:
+        return standing, None
+    return prompt, QuestionChanged(question=asked or None)
 
 
 def _observe(
@@ -592,7 +619,7 @@ def _observe(
     frame: Frame,
     order: int,
     question: str,
-    changed_question: str | None,
+    changed_question: QuestionChanged | None,
     shortfall: Shortfall,
     clock: Clock,
     keep_in: Path | None,

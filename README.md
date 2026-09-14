@@ -93,6 +93,36 @@ and model rockets. A white door is open behind him, and a blue mesh chair is beh
 takes the Frame from a file instead, and is the way to run everything but a Watch with no
 camera at all.
 
+`--ask "<question>"` aims the Observation at something in particular — a **Scene Question**
+— instead of having the Frame described:
+
+```bash
+uv run observe --ask "is anyone looking at the camera?"
+```
+
+```
+Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
+Frame      640x480 jpeg, fit to 640x480, from camera 0
+Providers  4.138 s
+Load       3.251 s
+Capture    5.125 s (including 5 Frames discarded while the Feed settled)
+Inference  0.642 s
+
+Yes. The man in front of the bookshelf is facing the camera directly.
+```
+
+The answer is an Observation and is reported as one: same layout, same timings, same note
+when the output limit cut it short. Nothing else about the request changes, so `--ask`
+composes with `--image`, `--variant` and `--keep-frames` — rehearse a question against a
+fixed Frame, then ask the same one of the CPU build and the GPU build. Leaving the flag off
+sends the prompt it has always sent, so a command already on a slide keeps working.
+
+A Scene Question is answered from that one Frame alone: no earlier Frame, no earlier
+answer, and so no follow-ups. *And what colour is it?* is not a question this can ask —
+put the whole question in the one `--ask`. An empty or whitespace-only `--ask` is refused
+in one line before anything is downloaded, because a shell-quoting mistake should cost a
+line rather than a model load.
+
 A Feed does not yield a usable Frame the instant it opens — the camera exposes and
 white-balances for a moment first — so **five Frames are read and discarded** before the
 one that is observed. That wait is not hidden in a sleep in front of the capture: it

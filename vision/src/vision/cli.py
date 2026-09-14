@@ -64,6 +64,7 @@ from vision.inference import (
     Observation,
     Timings,
     Workload,
+    require_a_scene_question,
 )
 from vision.record import Now, Recorded, benchmarks_directory, hardware_profile, record
 from vision.reporting import (
@@ -117,6 +118,8 @@ def main(
 
     owned: list[Callable[[], None]] = []
     try:
+        # Asked before Foundry Local is started, as a Watch asks its own invariants.
+        require_a_scene_question(args.ask)
         default_camera, keep_in = _source(args, open_feed, frames_dir)
         if camera is None:
             camera = default_camera
@@ -128,6 +131,7 @@ def main(
             foundry=foundry,
             clock=clock,
             model_name=args.model,
+            question=args.ask,
             out=out,
             keep_in=keep_in,
         )
@@ -449,6 +453,7 @@ def _observe_parser() -> argparse.ArgumentParser:
         help="take the Frame from this image file instead of from a camera",
     )
     _add_camera(source)
+    _add_ask(parser)
     _add_pinned_variant(parser)
     _add_keep_frames(parser)
     _add_debug(parser)
@@ -590,6 +595,27 @@ def _add_camera(container: argparse._ActionsContainer) -> None:
         default=0,
         metavar="N",
         help="index of the camera to open the Feed on (default: 0)",
+    )
+
+
+def _add_ask(parser: argparse.ArgumentParser) -> None:
+    """The Scene Question, which is the prompt — so the fixed prompt is its default.
+
+    Written as a default rather than as a branch on ``None`` because there is no third
+    state: a command either sends the question it was given or sends the one it has always
+    sent, and a Workload carries a prompt either way. Leaving the flag off therefore
+    reaches the model as exactly the bytes it reached it as before this flag existed,
+    which is what keeps a command already on a slide working.
+    """
+    parser.add_argument(
+        "--ask",
+        metavar="QUESTION",
+        default=PROMPT,
+        help=(
+            "ask this about the Frame instead of having it described"
+            ' (--ask "is anyone looking at the camera?") — answered from that one Frame'
+            " alone, so there are no follow-ups. Default: describe the Frame"
+        ),
     )
 
 
@@ -743,6 +769,7 @@ def _observe(
     foundry: FoundryLocal,
     clock: Clock,
     model_name: str,
+    question: str,
     out: TextIO,
     keep_in: Path | None,
 ) -> tuple[Workload, Observation, Path | None]:
@@ -758,7 +785,7 @@ def _observe(
     # Kept before inference runs: a Frame worth explaining is worth keeping even when the
     # Observation that would have prompted the question never arrives.
     saved = save_frame(frame, keep_in) if keep_in is not None else None
-    workload = Workload(prompt=PROMPT, frame=frame)
+    workload = Workload(prompt=question, frame=frame)
     raw, inference = timed(clock, lambda: ready.model.observe(workload))
 
     observation = Observation(

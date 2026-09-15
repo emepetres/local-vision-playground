@@ -610,20 +610,27 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
 
     The fall-back the spike behind issue #30 landed on: `qwen3-vl-2b-instruct` never honours
     a forced tool call but answers a JSON-in-prompt request in the exact ``{name, count}``
-    shape, wrapped in a markdown code fence and — at a hot temperature — sometimes truncated
-    mid-array. So the fence is stripped, the array is taken from the first ``[`` to the last
-    ``]``, and anything that then fails to parse or to validate is a ``NoShape`` carrying its
-    reason rather than an exception (ADR-0011). ``truncated`` is passed so that the commonest
-    failure — an array the output limit cut off before its closing ``]`` — names the limit
-    rather than reading as malformed JSON.
+    shape, wrapped in a markdown code fence and sometimes truncated mid-array when the output
+    limit stops generation. So the fence is stripped, the array is taken from the first ``[``
+    to the last ``]``, and anything that then fails to parse or to validate is a ``NoShape``
+    carrying its reason rather than an exception (ADR-0011).
+
+    A **truncated** array is repaired rather than discarded: the objects that finished before
+    the output limit cut in are real, so they are salvaged one at a time and only the
+    incomplete tail is dropped (the repair the spike named). What comes back is the recovered
+    list — the caller's ``finish_reason`` still says it was truncated, which is what has the
+    report note it may be short — and a truncation that cut in before even the first object
+    closed leaves nothing to salvage and names the limit instead.
     """
     cut_off = "the model's list of objects was cut off by the output limit before it closed"
 
     start = text.find("[")
     end = text.rfind("]")
     if start == -1 or end <= start:
+        # No closed array. Under truncation the array may have opened and been cut off with
+        # complete objects already in it, so salvage those before giving up on a shape.
         if truncated:
-            return NoShape(cut_off)
+            return _salvage(text, start, cut_off)
         return NoShape(
             "the model answered in prose instead of the list of objects the shape asks for"
         )
@@ -632,10 +639,10 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
         parsed = json.loads(text[start : end + 1])
     except json.JSONDecodeError:
         # A ``]`` inside a string value can leave brackets on both sides of a reply the
-        # output limit cut off mid-array, so a decode failure under truncation names the
-        # limit too rather than reading as ordinary malformed JSON.
+        # output limit cut off mid-array, so a decode failure under truncation salvages the
+        # complete objects rather than reading as ordinary malformed JSON.
         if truncated:
-            return NoShape(cut_off)
+            return _salvage(text, start, cut_off)
         return NoShape("the model's reply was not the well-formed JSON the shape asks for")
 
     if not isinstance(parsed, list):
@@ -648,6 +655,48 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
             return NoShape("the model's reply did not match the expected {name, count} shape")
         objects.append(present)
     return ObjectsPresent(tuple(objects))
+
+
+def _salvage(text: str, start: int, cut_off: str) -> Shape:
+    """The objects a truncated array had finished before the output limit cut it off.
+
+    An array the limit stopped mid-object still carries the objects it closed before that,
+    and those are worth showing rather than throwing away with the incomplete tail (ADR-0011,
+    and the repair the #30 spike named). Nothing salvageable — the limit cut in before the
+    first object closed, or there was no array at all — names the limit instead.
+    """
+    if start == -1:
+        return NoShape(cut_off)
+    objects = _salvage_present(text[start + 1 :])
+    if objects:
+        return ObjectsPresent(tuple(objects))
+    return NoShape(cut_off)
+
+
+def _salvage_present(fragment: str) -> list[PresentObject]:
+    """Decode the complete ``{name, count}`` objects at the front of a truncated array.
+
+    One value at a time from just after the opening ``[``, skipping the commas and whitespace
+    between them, and stopping at the first thing that will not decode or does not match the
+    shape — which is the object the output limit cut off, or the missing closing ``]``.
+    """
+    decoder = json.JSONDecoder()
+    objects: list[PresentObject] = []
+    index = 0
+    while index < len(fragment):
+        while index < len(fragment) and fragment[index] in " \t\r\n,":
+            index += 1
+        if index >= len(fragment):
+            break
+        try:
+            value, index = decoder.raw_decode(fragment, index)
+        except json.JSONDecodeError:
+            break
+        present = _present_object(value)
+        if present is None:
+            break
+        objects.append(present)
+    return objects
 
 
 def _present_object(element: object) -> PresentObject | None:

@@ -44,14 +44,30 @@ def test_prose_with_no_array_is_a_no_shape() -> None:
     assert "prose" in shape.reason
 
 
-def test_a_truncated_array_flagged_as_such_names_the_output_limit() -> None:
-    """The commonest failure: the output limit cut the array off before its closing ']'."""
-    cut_off = '[{"name": "book", "count": 1}, {"name": "book", "count": 1}, {"name": "boo'
+def test_a_truncated_array_salvages_the_objects_that_closed_before_the_cut() -> None:
+    """The output limit cut the array off mid-object; the finished objects are recovered."""
+    cut_off = '[{"name": "book", "count": 1}, {"name": "chair", "count": 2}, {"name": "doo'
 
     shape = parse_objects_present(cut_off, truncated=True)
 
+    assert shape == ObjectsPresent((PresentObject("book", 1), PresentObject("chair", 2)))
+
+
+def test_a_truncation_that_cut_in_before_the_first_object_closed_names_the_limit() -> None:
+    """Nothing finished before the cut, so there is nothing to salvage and no shape."""
+    shape = parse_objects_present('[{"name": "boo', truncated=True)
+
     assert isinstance(shape, NoShape)
     assert "output limit" in shape.reason
+
+
+def test_a_decode_failure_under_truncation_still_salvages_complete_objects() -> None:
+    """A ']' inside a string leaves brackets that do not parse; the closed object survives."""
+    cut_off = '[{"name": "box]", "count": 1}, {"nam'
+
+    shape = parse_objects_present(cut_off, truncated=True)
+
+    assert shape == ObjectsPresent((PresentObject("box]", 1),))
 
 
 def test_malformed_json_that_is_not_flagged_truncated_is_a_no_shape() -> None:
@@ -59,16 +75,6 @@ def test_malformed_json_that_is_not_flagged_truncated_is_a_no_shape() -> None:
 
     assert isinstance(shape, NoShape)
     assert "output limit" not in shape.reason
-
-
-def test_a_decode_failure_under_truncation_names_the_output_limit() -> None:
-    """A ']' inside a string can leave a truncated reply with brackets that do not parse."""
-    cut_off = '[{"name": "box]", "count": 1}, {"nam'
-
-    shape = parse_objects_present(cut_off, truncated=True)
-
-    assert isinstance(shape, NoShape)
-    assert "output limit" in shape.reason
 
 
 def test_an_array_of_bare_strings_does_not_match_the_shape() -> None:

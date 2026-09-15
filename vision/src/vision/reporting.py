@@ -35,7 +35,15 @@ from vision.formatting import (
     format_tokens,
     format_tokens_per_second,
 )
-from vision.inference import Observation, Workload
+from vision.inference import (
+    ModelIdentity,
+    NoShape,
+    ObjectsPresent,
+    Observation,
+    StructuredObservation,
+    Timings,
+    Workload,
+)
 from vision.watch import (
     FailedInference,
     Produced,
@@ -96,12 +104,55 @@ def render_observation(observation: Observation, workload: Workload, saved: Path
     The token limit is read off the Workload rather than off a constant: the number an
     Operator is shown is the one the Observation was actually generated under.
     """
-    lines = _labelled(_observation_rows(observation, workload.frame, saved), OBSERVE_LABEL_WIDTH)
+    rows = _observation_rows(observation.model, observation.timings, workload.frame, saved)
+    lines = _labelled(rows, OBSERVE_LABEL_WIDTH)
     lines += ["", observation.text]
     if observation.truncated:
         limit = _output_limit(workload.max_output_tokens)
         lines += ["", f"(truncated: the Observation hit {limit})"]
     return "\n".join(lines) + "\n"
+
+
+def render_structured_observation(
+    observation: StructuredObservation, workload: Workload, saved: Path | None
+) -> str:
+    """The ``observe --structured`` report: the objects present, under the same facts block.
+
+    The facts block is the prose Observation's, unchanged — Model, Frame, the set-up and the
+    latencies — because getting the Frame onto the hardware cost the same whichever shape was
+    asked of it, and an Operator moving between the two should read one shape (CONTEXT.md,
+    "Structured Observation"). What sits below it is the shape rather than prose: an aligned
+    list of the objects present, or, where the model did not return a well-formed one, the
+    reason there is no shape — never a silent degrade to prose (ADR-0011).
+    """
+    rows = _observation_rows(observation.model, observation.timings, workload.frame, saved)
+    lines = _labelled(rows, OBSERVE_LABEL_WIDTH)
+    lines += ["", *_shape_lines(observation.shape)]
+    # The list may have parsed cleanly and still have been cut short: the model can close the
+    # array and go on generating until the output limit stops it. An Operator shown a list
+    # with no note reads it as complete — and a Benchmark that mixed a truncated list with a
+    # full one would compare shapes it cannot vouch for (ADR-0011). A NoShape already carries
+    # its own reason, the limit included, so the note is only owed where a list is shown.
+    if isinstance(observation.shape, ObjectsPresent) and observation.truncated:
+        limit = _output_limit(workload.max_output_tokens)
+        lines += ["", f"(truncated: the list may be incomplete — the Observation hit {limit})"]
+    return "\n".join(lines) + "\n"
+
+
+def _shape_lines(shape: ObjectsPresent | NoShape) -> list[str]:
+    """The body of a Structured Observation: the objects present, or why there are none.
+
+    An empty list is a success and says so in words — "nothing present" — rather than as a
+    blank the Operator has to read as either an answer or a failure. A ``NoShape`` is that
+    failure, and it renders as its reason: an ordinary outcome carrying what went wrong, not
+    a blank and not a traceback.
+    """
+    if isinstance(shape, NoShape):
+        return [shape.reason]
+    if not shape.objects:
+        return ["nothing present"]
+    width = max(len(str(present.count)) for present in shape.objects)
+    return [f"{present.count:>{width}}  {present.name}" for present in shape.objects]
 
 
 def render_watch_header(start: WatchStart) -> str:
@@ -437,11 +488,10 @@ def _ordinal(order: int) -> str:
 
 
 def _observation_rows(
-    observation: Observation, frame: Frame, saved: Path | None
+    model: ModelIdentity, timings: Timings, frame: Frame, saved: Path | None
 ) -> list[tuple[str, str]]:
-    timings = observation.timings
     rows = [
-        ("Model", format_model(observation.model)),
+        ("Model", format_model(model)),
         ("Frame", format_frame(frame)),
     ]
     if saved is not None:

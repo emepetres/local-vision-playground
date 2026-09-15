@@ -260,6 +260,86 @@ def test_sends_one_workload_carrying_the_fixed_prompt_and_the_captured_frame() -
     assert workload.prompt == "Describe what you see in this image in two or three sentences."
 
 
+def test_asks_the_scene_question_it_was_given_instead_of_the_fixed_prompt() -> None:
+    result = run(["--image", "a.jpg", "--ask", "is anyone looking at the camera?"])
+
+    (workload,) = result.model.observed
+    assert workload.prompt == "is anyone looking at the camera?"
+
+
+def test_a_scene_question_changes_nothing_else_about_the_request() -> None:
+    """The one thing --ask replaces is the prompt: same Frame, same limits, same report."""
+    asked = run(["--image", "docs/fixtures/reference-frame.jpg", "--ask", "how many cups?"])
+
+    assert asked.code == 0
+    assert asked.err == ""
+    assert asked.out == f"{REPORT}\n{OBSERVATION}"
+    (workload,) = asked.model.observed
+    assert workload.frame.provenance == "docs/fixtures/reference-frame.jpg"
+    assert workload.max_output_tokens == 128
+    assert workload.temperature == 0.0
+
+
+def test_labels_an_answer_cut_short_by_the_output_limit_as_truncated() -> None:
+    """A Scene Question's answer is an Observation, so it hits the same note."""
+    model = FakeVisionModel(
+        make_identity(),
+        [make_observation("Two cups, and a third one behind the", FinishReason.TRUNCATED)],
+    )
+    result = run(
+        ["--image", "docs/fixtures/reference-frame.jpg", "--ask", "how many cups are there?"],
+        model=model,
+    )
+
+    assert result.code == 0
+    assert result.out == (
+        f"{REPORT}"
+        "\n"
+        "Two cups, and a third one behind the\n"
+        "\n"
+        "(truncated: the Observation hit the 128-token output limit)\n"
+    )
+
+
+def test_asks_a_scene_question_of_a_pinned_variant() -> None:
+    result = run(
+        [
+            "--image",
+            "a.jpg",
+            "--variant",
+            "qwen3-vl-2b-instruct-generic-cpu:2",
+            "--ask",
+            "is the whiteboard readable?",
+        ]
+    )
+
+    assert result.code == 0
+    assert result.foundry.resolved == ["qwen3-vl-2b-instruct-generic-cpu:2"]
+    (workload,) = result.model.observed
+    assert workload.prompt == "is the whiteboard readable?"
+
+
+@pytest.mark.parametrize("question", ["", "   ", "\t\n"])
+def test_refuses_an_empty_scene_question_before_anything_is_downloaded(question: str) -> None:
+    """A shell-quoting mistake must never reach the model as nothing at all — and being
+    told so after several gigabytes of weights is the failure this refusal exists to
+    prevent, so it lands ahead of the download and of the Execution Providers alike.
+    """
+    model = FakeVisionModel(make_identity(), [make_observation()], is_cached=False)
+    result = run(["--image", "a.jpg", "--ask", question], model=model)
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.model.downloads == 0
+    assert result.model.observed == []
+    assert result.foundry.events == []
+    assert result.err == (
+        "error: --ask was given no question — pass one in quotes"
+        ' (--ask "is anyone looking at the camera?"), or leave --ask off to have the'
+        " Frame described\n"
+    )
+
+
 def test_fixes_the_generation_limits_on_the_workload_it_sends() -> None:
     """The limits an Observation was generated under travel with it, for the Benchmark."""
     result = run(["--image", "a.jpg"])
@@ -577,3 +657,14 @@ def test_keeps_both_frames_when_the_clock_hands_out_the_same_stamp(
 def test_refuses_an_image_file_and_a_camera_at_once(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         run_live(["--image", "a.jpg", "--camera", "1"], tmp_path)
+
+
+def test_asks_a_scene_question_of_a_camera_frame_it_also_keeps(tmp_path: Path) -> None:
+    result = run_live(["--keep-frames", "--ask", "is anyone looking at the camera?"], tmp_path)
+
+    assert result.code == 0
+    (saved,) = sorted(tmp_path.glob("*.jpg"))
+    assert f"Saved      {saved}\n" in result.out
+    (workload,) = result.model.observed
+    assert workload.prompt == "is anyone looking at the camera?"
+    assert saved.read_bytes() == workload.frame.data

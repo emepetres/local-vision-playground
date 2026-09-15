@@ -31,6 +31,7 @@ from tests.fakes import (
 from tests.test_benchmark import (
     CPU_IDENTITY,
     CPU_VARIANT,
+    CUPS,
     GPU_VARIANT,
     INVALID_GRAPH,
     READINGS,
@@ -38,6 +39,7 @@ from tests.test_benchmark import (
     make_gpu,
 )
 from vision.cli import benchmark_main
+from vision.inference import PROMPT
 from vision.record import SCHEMA_VERSION, hardware_profile, this_machine
 
 PROFILE = "RTX 4090 + i7-13700KF"
@@ -206,6 +208,39 @@ def test_the_record_identifies_the_frame_by_its_bytes(benchmarks: Path) -> None:
     assert workload["prompt"].startswith("Describe what you see")
     assert workload["max_output_tokens"] == 128
     assert workload["temperature"] == 0.0
+
+
+def test_the_scene_question_is_the_prompt_the_record_carries(benchmarks: Path) -> None:
+    """A record whose question is not in it cannot be compared with any other record: two
+    Benchmarks taken under different Scene Questions measured different work."""
+    workload = keep(benchmarks, ["--ask", CUPS]).record["workload"]
+
+    assert workload["prompt"] == CUPS
+    assert workload["max_output_tokens"] == 128
+    assert workload["temperature"] == 0.0
+
+
+def test_the_markdown_carries_the_scene_question_beside_the_frame_and_the_limits(
+    benchmarks: Path,
+) -> None:
+    """The three facts that say what was measured travel together, so a reader months
+    later can tell whether two documents are comparable at all."""
+    frame = make_frame(width=640, height=360)
+    document = keep(benchmarks, ["--ask", CUPS]).document
+
+    assert f"- **Prompt** — {CUPS}\n" in document
+    assert f"- **Frame bytes** — sha256 {hashlib.sha256(frame.data).hexdigest()}," in document
+    assert "- **Limits** — at most 128 tokens, temperature 0.0\n" in document
+
+
+def test_a_benchmark_with_no_scene_question_is_recorded_as_it_always_was(
+    benchmarks: Path,
+) -> None:
+    """The records already committed to the repository keep their peers."""
+    kept = keep(benchmarks)
+
+    assert kept.record["workload"]["prompt"] == PROMPT
+    assert f"- **Prompt** — {PROMPT}\n" in kept.document
 
 
 def test_the_record_carries_the_order_the_variants_were_measured_in(benchmarks: Path) -> None:

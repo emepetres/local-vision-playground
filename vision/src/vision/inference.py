@@ -23,7 +23,12 @@ if TYPE_CHECKING:
     from foundry_local_sdk import ChatSession, IModel, Item, Response
 
 PROMPT = "Describe what you see in this image in two or three sentences."
-"""The fixed workload's prompt. The length bound lives here; the token limit is a net."""
+"""The prompt a Workload carries when the Operator asks no Scene Question of their own.
+
+The length bound lives here; the token limit is a net. It is the default value of ``--ask``
+rather than *the* prompt: a command that is handed a Scene Question puts that on the
+Workload in the same one place, and nothing else about the request moves.
+"""
 
 # The generation limits a Workload takes when a caller does not say otherwise. They are
 # defaults on the Workload rather than constants read inside the model, so that the caller
@@ -206,6 +211,36 @@ class FoundryLocal(Protocol):
     def resolve(self, name: str) -> VisionModel:
         """Resolve an alias (Foundry picks the hardware) or a variant id (pins it)."""
         ...
+
+
+def require_a_scene_question(question: str) -> str:
+    """Refuse a Scene Question that asks nothing, and return the one that was asked.
+
+    ``--ask ""`` is a shell-quoting mistake rather than an intention — an Operator who
+    wanted the Frame described would have left the flag off — and a Workload built from it
+    would send the model an empty prompt and report whatever came back as an Observation.
+    A silent answer to a question nobody asked is the worst thing this could do in front of
+    an audience, so it is said out loud instead.
+
+    The question is returned with its surrounding whitespace removed, and that is the value
+    the commands go on to use: it is the same normalisation a typed line gets in the Watch
+    (``watch._standing_question``), so ``--ask "cups "`` and a keystroke of ``cups`` stand
+    for one question and not two. For ``benchmark`` that is what keeps two operators' runs
+    of the same question comparable (docs/benchmarks/); for ``watch`` it keeps retyping the
+    standing question from being read as a change.
+
+    It lives here, beside the prompt it stands in for, because it is a fact about a Scene
+    Question rather than about the flag that carries one — which is also why it is asked
+    before Foundry Local is started, as the other commands ask their own invariants.
+    """
+    asked = question.strip()
+    if asked:
+        return asked
+    raise VisionError(
+        "--ask was given no question — pass one in quotes"
+        ' (--ask "is anyone looking at the camera?"), or leave --ask off to have the'
+        " Frame described"
+    )
 
 
 def require_vision_task(identity: ModelIdentity) -> None:

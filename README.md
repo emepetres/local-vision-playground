@@ -93,6 +93,36 @@ and model rockets. A white door is open behind him, and a blue mesh chair is beh
 takes the Frame from a file instead, and is the way to run everything but a Watch with no
 camera at all.
 
+`--ask "<question>"` aims the Observation at something in particular — a **Scene Question**
+— instead of having the Frame described:
+
+```bash
+uv run observe --ask "is anyone looking at the camera?"
+```
+
+```
+Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
+Frame      640x480 jpeg, fit to 640x480, from camera 0
+Providers  4.138 s
+Load       3.251 s
+Capture    5.125 s (including 5 Frames discarded while the Feed settled)
+Inference  0.642 s
+
+Yes. The man in front of the bookshelf is facing the camera directly.
+```
+
+The answer is an Observation and is reported as one: same layout, same timings, same note
+when the output limit cut it short. Nothing else about the request changes, so `--ask`
+composes with `--image`, `--variant` and `--keep-frames` — rehearse a question against a
+fixed Frame, then ask the same one of the CPU build and the GPU build. Leaving the flag off
+sends the prompt it has always sent, so a command already on a slide keeps working.
+
+A Scene Question is answered from that one Frame alone: no earlier Frame, no earlier
+answer, and so no follow-ups. *And what colour is it?* is not a question this can ask —
+put the whole question in the one `--ask`. An empty or whitespace-only `--ask` is refused
+in one line before anything is downloaded, because a shell-quoting mistake should cost a
+line rather than a model load.
+
 A Feed does not yield a usable Frame the instant it opens — the camera exposes and
 white-balances for a moment first — so **five Frames are read and discarded** before the
 one that is observed. That wait is not hidden in a sleep in front of the capture: it
@@ -216,6 +246,29 @@ The **Frame is read once** and those exact bytes go to every repetition of every
 that is what makes the whole sitting comparable, and it is why the live camera is refused: a
 different Frame each time is not a Workload. `--image <path>` measures a file of your own
 instead of the reference Frame; `--debug` behaves as it does for `observe`.
+
+`--ask "<question>"` makes the **Scene Question** part of the Workload, so that what is
+measured is the work an Operator actually cares about — a two-word answer and a request for
+a paragraph are wildly different amounts of generation:
+
+```bash
+uv run benchmark --ask "how many cups are on that desk?"
+```
+
+The question travels unchanged to every Benchmark Run of every Variant — one Workload for
+the whole sitting, which is what keeps the Variants comparable with each other — and it is
+printed on the `Prompt` line above the tables, written into the JSON record and into the
+Markdown beside the Frame's hash and the generation limits. Nothing else moves: the limits
+are the ones they always were, and an answer that hits the output limit gets the same
+truncation note.
+
+**Two Benchmarks taken under different questions are not comparable**, however alike their
+hardware — they measured different amounts of generation, which is the whole reason the
+flag exists. That is why the question is in both files: a reader months later can see which
+question produced which numbers. Leaving `--ask` off measures the prompt it has always
+measured, so a new record is still comparable with the ones already in `docs/benchmarks/`.
+An empty or whitespace-only `--ask` is refused before any weights are fetched, exactly as
+`observe` refuses it.
 
 **Variants are resolved through the catalogue**, not by a version suffix written into the
 source, so the command does not break the day the catalogue publishes a new version — and
@@ -407,6 +460,94 @@ with: how many Observations this machine produced, and the median inference it s
 It is printed however the Watch ended — after the camera has been released and the model
 unloaded, so that the last thing read is not written while the machine is still held.
 
+#### Starting a Watch on a question
+
+`--ask "<question>"` starts the Watch on a **Scene Question** rather than on the plain
+description, and it stands: every Observation from `#1` onward answers it, on its own
+Frame.
+
+```bash
+uv run watch --ask "is anyone looking at the camera?"
+```
+
+```
+Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
+Cadence    one Observation every 2.000 s
+Feed       camera 0, settled in 0.411 s, 5 Frames discarded
+Providers  4.102 s
+Load       3.207 s
+
+#1  inference 1.271 s
+Yes. The man in front of the bookshelf is facing the camera directly.
+
+#2  inference 1.238 s
+No. He has turned to his left and is looking at the bookshelf.
+
+#3  inference 1.305 s
+No one is in front of the camera.
+^C
+
+3 Observations, median inference 1.284 s
+```
+
+Nothing else about the Watch moves: the header, the per-Observation lines and the summary
+are the ones above, the Cadence is still a grid, and a Watch that falls behind still skips
+and says so. Each Observation still stands on its own Frame — the question is carried from
+one Cadence to the next, never the answers, so there are no follow-ups inside a Watch any
+more than there are inside a single `observe`. Leaving the flag off sends the prompt it has
+always sent. An empty or whitespace-only `--ask` is refused before the camera is opened or
+the model is loaded, because a shell-quoting mistake should cost an Operator a line rather
+than a whole run-up.
+
+A standing question does not make a Watch a measurement: the Frames still differ from one
+Observation to the next, so there is still nothing to compare and nothing is written down.
+
+#### Asking a question while the Watch runs
+
+Type a question at the running Watch and press Enter. **Nothing stops**: the Feed goes on
+being read and the Cadence goes on being kept while the question is being typed, and the
+new question takes effect at the **next Cadence** — it is a change of what the Watch asks,
+not an interruption of what it was doing
+([ADR-0009](./docs/adr/0009-a-scene-question-changes-what-a-watch-asks.md)). It then stands
+until it is replaced, exactly as `--ask` does.
+
+The Watch says once, above the Observations that answer it, what it has been steered onto:
+
+```
+#2  inference 1.238 s
+A man sitting at a desk in front of a bookshelf.
+
+Asking: how many people are there?
+
+#3  inference 1.305 s
+One.
+```
+
+The question is never counted against the machine. No Cadence is skipped and no Stale Frame
+is discarded because somebody typed, and the summary reports what the hardware did with no
+tally of how often the keyboard was used.
+
+**Press Enter on an empty line to stop asking** — the Watch goes back to describing the
+Frame from the next Cadence, and says so (`Asking: for a plain description`). Retyping the
+question already standing changes nothing and is not echoed twice.
+
+**There are no follow-up questions.** Every Observation stands on its own Frame and on the
+standing question alone, so *and what colour is it?* is not a question this project can
+answer — nothing the model was told a moment ago is still there to refer back to. Ask whole
+questions, and build the demo on that.
+
+A line typed while the Watch is mid-inference is read at the next Cadence, not pushed into
+the inference already running. Of several lines typed between two Cadences **only the last
+survives**: the questions are not queued, for the same reason Frames are not
+([ADR-0006](./docs/adr/0006-a-watch-discards-it-never-queues.md)). Typed characters
+interleave with the Observations being printed — this is a terminal in a talk, not a TUI.
+
+**Where `stdin` is not a terminal there is no keyboard**: a pipe, CI, output redirected to a
+file. No reader is started at all and the Watch runs on whatever `--ask` gave it, in the
+same spirit as the progress bars taking themselves off when the output is not a terminal.
+Lines arriving on a redirected `stdin` are a script rather than an Operator, and are never
+read as questions.
+
 #### When the machine cannot keep the Cadence
 
 Pin the CPU Variant and the same Watch stops keeping its Cadence, in front of the audience
@@ -508,6 +649,11 @@ or which produced nothing at all.
   inference fails end rather than run for ever. Default: run until it is interrupted.
   Anything below one is refused: it is not a Watch.
 - `--camera N` — index of the camera to open the Feed on. Default `0`.
+- `--ask "<question>"` — the Scene Question the Watch *starts* on, standing over every
+  Cadence it then reaches. Default: the fixed prompt, which describes the Frame. An
+  empty or whitespace-only question is refused, before the camera or the model. It is only
+  the question the Watch begins with: typing one at the keyboard replaces it from the next
+  Cadence, and an empty line at the keyboard goes back to the plain description.
 - `--variant ID` — pin the Variant, and with it the Execution Provider, exactly as for
   `observe`. Default: resolve the alias `qwen3-vl-2b-instruct` and let Foundry Local pick
   the hardware. This is the lever the demo above turns.
@@ -541,10 +687,12 @@ uv run ruff check .
 The tests drive all three commands end to end through fakes: a camera, Foundry and a
 clock, and then the Feed itself — which is what lets a test assert that the settling
 Frames really are discarded, and that the Frame observed is the one after them rather
-than the first one. A Watch needs two more. The reader that drains a held Feed is faked,
+than the first one. A Watch needs three more. The reader that drains a held Feed is faked,
 so a test can hand an Observation the Stale Frames it had to discard to reach the
-present; and so is the sleep between one Cadence and the next, so that the grid and the
-Cadences skipped off it are asserted in full without a suite that waits in real seconds.
+present; so is the sleep between one Cadence and the next, so that the grid and the
+Cadences skipped off it are asserted in full without a suite that waits in real seconds;
+and so is the Operator's keyboard, as a schedule of what was typed before each Cadence,
+so that steering a Watch is pinned without a thread or a race in the suite.
 They do **not** prove the Foundry Local SDK behaves as we believe — the fakes encode our
 reading of the 2.x type signatures. Running the command against the real model is the only
 thing that validates that.
@@ -569,7 +717,7 @@ mirrored here.
       when inference is slower than the Cadence — it skips the moments it has passed,
       discards the Stale Frames and says how many of each it lost
       ([ADR-0006](./docs/adr/0006-a-watch-discards-it-never-queues.md)).
-- [ ] **4. Scene Questions.** Ask a natural-language question about the current Frame and
+- [x] **4. Scene Questions.** Ask a natural-language question about the current Frame and
       get an answer from that Frame alone — no follow-ups, because nothing the model was
       told a moment ago is still there. Three surfaces: `observe --ask` replaces the fixed
       prompt for one Frame; `benchmark --ask` makes the question a Workload, so that a

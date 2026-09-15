@@ -34,6 +34,7 @@ from vision.inference import (
     Workload,
 )
 from vision.startup import Sleep
+from vision.watch import Abandoned, Composed, Questions, Resolution
 
 
 class FakeCamera:
@@ -205,6 +206,52 @@ class FakeSleep:
         self.waits.append(seconds)
         if self._interrupts_on is not None and len(self.waits) == self._interrupts_on:
             raise KeyboardInterrupt
+
+
+class TypedQuestions:
+    """The Operator's keyboard as a schedule of compositions, one slot per Observation.
+
+    A schedule rather than a thread, for the reason the hand-turned reader is one: a Watch
+    is driven here by turning its loop, and a test that had to race a real ``stdin`` reader
+    would be asserting on timing rather than on the rule. One entry per Observation the
+    Watch shows — ``None`` for one the Operator did not interrupt, or a ``Resolution`` (a
+    ``Composed`` line, or an ``Abandoned``) for one they pressed Space at and composed a
+    question at. The Watch asks ``interrupted`` once each Observation has been shown, and
+    where the slot holds a ``Resolution`` it then asks ``compose`` and is handed it.
+
+    Checks past the end of the schedule answer as an Observation nobody interrupted, so a
+    test only says as much of the keyboard as it is about. ``stopped`` is how a test pins
+    that the reader was taken down when the Watch ended.
+    """
+
+    def __init__(self, presses: Sequence[Resolution | None] = ()) -> None:
+        self._presses = tuple(presses)
+        self.checks = 0
+        self._pending: Resolution | None = None
+        self.stopped = False
+
+    def interrupted(self) -> bool:
+        press = self._presses[self.checks] if self.checks < len(self._presses) else None
+        self.checks += 1
+        self._pending = press
+        return press is not None
+
+    def compose(self) -> Resolution:
+        assert self._pending is not None, "compose() was asked for without an interrupt"
+        return self._pending
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+def asks(question: str) -> Composed:
+    """A slot in a ``TypedQuestions`` schedule: the Operator composed this question."""
+    return Composed(question)
+
+
+def abandons() -> Abandoned:
+    """A slot in a ``TypedQuestions`` schedule: the Operator pressed Escape and kept what stood."""
+    return Abandoned()
 
 
 class FakeVisionModel:
@@ -436,5 +483,6 @@ _hand_turned: Reader = HandTurnedReader(FakeFeed([]), ())
 _make_reader: MakeReader = FakeReaders()
 _make_hand_turned: MakeReader = HandTurnedReaders()
 _sleep: Sleep = FakeSleep()
+_questions: Questions = TypedQuestions()
 _model: VisionModel = FakeVisionModel(make_identity(), [make_observation()])
 _foundry: FoundryLocal = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})

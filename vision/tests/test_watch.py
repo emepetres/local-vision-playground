@@ -25,6 +25,9 @@ from tests.fakes import (
     FakeSleep,
     FakeVisionModel,
     HandTurnedReaders,
+    TypedQuestions,
+    abandons,
+    asks,
     colour_of,
     make_identity,
     make_images,
@@ -32,7 +35,7 @@ from tests.fakes import (
 )
 from vision.capture import SETTLING_FRAMES
 from vision.cli import watch_main
-from vision.inference import FinishReason, RawObservation, Workload
+from vision.inference import PROMPT, FinishReason, RawObservation, Workload
 
 SETUP_READINGS = (0.0, 0.5)
 """Registering the Execution Providers: 0.500 s."""
@@ -64,6 +67,9 @@ HEADER = (
 
 TEXTS = ("An empty desk.", "A hand holding a coffee mug.", "The mug, put down again.")
 """One Observation apiece, told apart so that the order they were printed in is assertable."""
+
+STANDING = "is anyone looking at the camera?"
+"""A Scene Question a Watch is started on, standing over every Cadence it then reaches."""
 
 
 def readings(
@@ -106,6 +112,7 @@ class Run:
     feeds: dict[int, FakeFeed]
     model: FakeVisionModel
     sleep: FakeSleep
+    questions: TypedQuestions
 
     @property
     def feed(self) -> FakeFeed:
@@ -128,6 +135,7 @@ def run(
     clock: FakeClock | None = None,
     sleep: FakeSleep | None = None,
     readers: FakeReaders | HandTurnedReaders | None = None,
+    questions: TypedQuestions | None = None,
     frames_dir: Path | None = None,
 ) -> Run:
     """One invocation, over a Feed read on demand rather than drained by a thread.
@@ -148,6 +156,7 @@ def run(
     cameras = FakeCameras(feeds)
     readers = readers if readers is not None else FakeReaders()
     sleep = sleep if sleep is not None else FakeSleep()
+    questions = questions if questions is not None else TypedQuestions()
     out, err = io.StringIO(), io.StringIO()
     code = watch_main(
         argv,
@@ -156,11 +165,14 @@ def run(
         foundry=FakeFoundry.resolving_everything_to(model),
         clock=clock if clock is not None else FakeClock(readings(observations)),
         sleep=sleep,
+        questions=questions,
         out=out,
         err=err,
         frames_dir=frames_dir,
     )
-    return Run(code, out.getvalue(), err.getvalue(), cameras, readers, feeds, model, sleep)
+    return Run(
+        code, out.getvalue(), err.getvalue(), cameras, readers, feeds, model, sleep, questions
+    )
 
 
 def observation_block(order: int, text: str, extra: str = "") -> str:
@@ -315,13 +327,19 @@ def overrun_clock() -> FakeClock:
     )
 
 
-def overrun(argv: list[str], *, frames_dir: Path | None = None) -> Run:
+def overrun(
+    argv: list[str],
+    *,
+    frames_dir: Path | None = None,
+    questions: TypedQuestions | None = None,
+) -> Run:
     """The Watch of three Observations whose first one overran the Cadence by two instants."""
     return run(
         argv,
         feeds={0: overrun_feed()},
         clock=overrun_clock(),
         readers=HandTurnedReaders(OVERRUN_READS),
+        questions=questions,
         frames_dir=frames_dir,
     )
 
@@ -626,6 +644,288 @@ def test_sends_every_observation_on_its_own_frame_with_the_one_fixed_prompt() ->
     assert len(set(frames)) == 3
     # And each one is the image the Feed produced for it, in the order it produced them.
     assert [colour_of(frame) for frame in frames] == list(WATCHED_COLOURS)
+
+
+def test_asks_the_standing_scene_question_from_the_very_first_observation() -> None:
+    """A Watch started on a question is on it at once: there is no first Observation that
+    describes the room before the question the Operator meant takes effect."""
+    result = run(["--count", "3", "--ask", STANDING])
+
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [STANDING] * 3
+
+
+def test_a_standing_question_moves_nothing_else_about_the_watch() -> None:
+    """The one thing --ask replaces is the prompt sent at each Cadence.
+
+    Asserted against the whole output rather than one line, because the claim is that a
+    standing question changes nothing an Operator reads: the header, every Observation's
+    line and the summary are the ones a Watch without a question writes.
+    """
+    asked = run(["--count", "3", "--ask", STANDING])
+    described = run(["--count", "3"])
+
+    assert asked.code == described.code == 0
+    # The two runs really did ask different things — without this the equality below would
+    # hold for a --ask that never reached the model at all.
+    assert [workload.prompt for workload in asked.model.observed] != [
+        workload.prompt for workload in described.model.observed
+    ]
+    assert asked.out == described.out
+    assert asked.sleep.waits == described.sleep.waits
+
+
+def test_a_watch_that_fell_behind_on_a_standing_question_counts_what_it_lost_as_ever() -> None:
+    """The shortfall is about the machine, never about what was being asked of it.
+
+    Driven through the Watch that overran its Cadence by two instants, because that is the
+    only place the skipped Cadences and the Stale Frames are anything but zero: a standing
+    question must leave both counts, and the lines they are said on, exactly where they
+    were (ADR-0006).
+    """
+    asked = overrun(["--count", "3", "--ask", STANDING])
+    described = overrun(["--count", "3"])
+
+    assert asked.code == described.code == 0
+    assert all(workload.prompt == STANDING for workload in asked.model.observed)
+    assert asked.out == described.out
+    assert (
+        ", late — skipped 2 Cadences and discarded 2 Stale Frames to observe the present"
+    ) in asked.out
+    assert asked.out.endswith("\n3 Observations, median inference 1.000 s, 2 Cadences skipped\n")
+
+
+def test_keeps_the_observed_frames_of_a_watch_on_a_standing_question(tmp_path: Path) -> None:
+    """The Frames a Watch keeps are kept regardless of what it was asking about them."""
+    result = run(["--count", "3", "--keep-frames", "--ask", STANDING], frames_dir=tmp_path)
+
+    assert result.code == 0
+    assert len(list(tmp_path.glob("*.jpg"))) == 3
+
+
+def test_persists_nothing_it_produced_on_a_standing_question(benchmarks: Path) -> None:
+    """A standing question does not make a Watch a measurement: every Observation still
+    ran against a different Frame, so there is still nothing comparable to write down."""
+    run(["--count", "3", "--ask", STANDING])
+
+    assert not benchmarks.exists()
+
+
+TYPED = "how many people are in the room?"
+"""A Scene Question composed at a Watch that is already running."""
+
+ASKING_TYPED = f"\nAsking: {TYPED}\n"
+"""The echo a changed question is announced by, above the first Observation to answer it."""
+
+ASKING_PLAINLY = "\nAsking: for a plain description\n"
+"""The echo of the way back: the default prompt named rather than quoted at an audience."""
+
+
+def test_a_question_composed_mid_watch_applies_from_the_next_observation_and_then_stands() -> None:
+    """The Observation in flight is not reached back into, and the next is not a one-off.
+
+    Composed at the first Observation, so it is the plain description the Watch started on
+    and every Observation from the second onwards answers the question — which is the whole
+    demonstration: the same question asked again as the scene moves (ADR-0010).
+    """
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), None, None]))
+
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [PROMPT, TYPED, TYPED]
+
+
+def test_an_abandoned_composition_leaves_the_standing_question_untouched() -> None:
+    """Escape is *keep what stood*: the Watch was suspended and resumed, and what it asks is
+    exactly what it asked before — no new question, and no echo of one (ADR-0010)."""
+    result = run(
+        ["--count", "3", "--ask", STANDING],
+        questions=TypedQuestions([abandons(), None, None]),
+    )
+
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [STANDING] * 3
+    assert "Asking:" not in result.out
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t"])
+def test_an_empty_line_goes_back_to_the_plain_description(blank: str) -> None:
+    """Nothing typed is not a question that asks nothing — it is the way back.
+
+    ``--ask ""`` is refused for the opposite reason: there a question was meant and the
+    shell ate it, and there is nothing standing to go back from.
+    """
+    result = run(
+        ["--count", "3", "--ask", STANDING],
+        questions=TypedQuestions([asks(blank), None, None]),
+    )
+
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [STANDING, PROMPT, PROMPT]
+
+
+def test_echoes_each_change_once_above_the_first_answer_to_it_and_never_again() -> None:
+    """The echo is the reporting module's, so it lands in the series rather than beside it.
+
+    Asserted against the whole output because the claim is about *where* the sentence goes:
+    above the first Observation that answers the question, and not repeated over the ones
+    that follow it — a Watch that echoed on every line would bury the answers changing.
+    """
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), None, None]))
+
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + ASKING_TYPED
+        + observation_block(2, TEXTS[1])
+        + observation_block(3, TEXTS[2])
+        + "\n3 Observations, median inference 1.000 s\n"
+    )
+
+
+def test_echoes_the_return_to_plain_description_as_a_change_of_its_own() -> None:
+    """A recording of the talk should show every time the Watch changed what it asked."""
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), asks(""), None]))
+
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + ASKING_TYPED
+        + observation_block(2, TEXTS[1])
+        + ASKING_PLAINLY
+        + observation_block(3, TEXTS[2])
+        + "\n3 Observations, median inference 1.000 s\n"
+    )
+
+
+def test_retyping_the_question_already_standing_is_not_a_change_and_is_not_echoed() -> None:
+    """An Operator handed the same sentence twice goes looking for the difference.
+
+    Composed once so it stands, then composed again unchanged: the second time is not a
+    change, so the question is not echoed a second time and the answers go on unbroken.
+    """
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), asks(TYPED), None]))
+
+    assert result.code == 0
+    assert result.out.count(ASKING_TYPED) == 1
+    assert [workload.prompt for workload in result.model.observed] == [PROMPT, TYPED, TYPED]
+
+
+def test_echoes_a_change_that_took_effect_at_a_cadence_whose_inference_then_failed() -> None:
+    """The question took effect whether or not the model answered, and the Observations
+    after it answer something an Operator would otherwise never have been told about — so
+    the echo is on the Cadence rather than on the answer.
+    """
+    broken = FakeVisionModel(
+        make_identity(),
+        [
+            make_observation(TEXTS[0]),
+            RuntimeError("the runtime gave up"),
+            make_observation(TEXTS[2]),
+        ],
+    )
+    result = run(
+        ["--count", "3"], model=broken, questions=TypedQuestions([asks(TYPED), None, None])
+    )
+
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + ASKING_TYPED
+        + "\n#2  failed — RuntimeError: the runtime gave up\n"
+        + observation_block(3, TEXTS[2])
+        + "\n2 Observations, median inference 1.000 s, 1 failed\n"
+    )
+
+
+def test_composing_a_question_is_not_a_fault_of_the_hardware_and_skips_no_cadence() -> None:
+    """Suspending a Watch to compose is not the machine falling behind (ADR-0010).
+
+    The Watch is re-anchored to the moment composing ended, so the resumed Observation is
+    on time: nothing spent composing is a skipped Cadence or a Stale Frame, no line reads as
+    late, and the summary counts no skip. The one thing composing adds to the report is the
+    echo of the question it changed to.
+    """
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), None, None]))
+
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [PROMPT, TYPED, TYPED]
+    assert "late" not in result.out
+    assert "skipped" not in result.out
+    assert result.out.endswith("\n3 Observations, median inference 1.000 s\n")
+
+
+def test_checks_for_an_interrupt_once_per_observation_rather_than_between_them() -> None:
+    """Once an Observation, and after it has been shown: one look at the keyboard per Cadence
+    and not one more. A Watch that looked inside the wait would let a question take effect
+    from a Frame taken before it was composed — which is the one thing this is placed to
+    rule out.
+    """
+    result = run(["--count", "3"])
+
+    assert result.questions.checks == 3
+
+
+def test_stops_reading_the_keyboard_when_the_watch_ends() -> None:
+    result = run(["--count", "3"])
+
+    assert result.code == 0
+    assert result.questions.stopped
+
+
+def test_stops_reading_the_keyboard_when_there_was_never_a_watch_to_steer() -> None:
+    """The run-up is where a Watch fails, and a reader left on a keyboard nobody is
+    watching the output of is exactly what the Watch's take-down order exists to prevent.
+    """
+    result = run(["--count", "1"], feeds={})
+
+    assert result.code == 1
+    assert result.questions.stopped
+    assert result.model.unloads == 1
+
+
+def test_stops_reading_the_keyboard_after_an_interruption_too() -> None:
+    """Ctrl+C is how a Watch ordinarily ends, so it is the ending this has to survive."""
+    result = run(["--count", "3"], sleep=FakeSleep(interrupts_on=1))
+
+    assert result.code == 0
+    assert result.questions.stopped
+    assert result.feed.closed
+    assert result.model.unloads == 1
+
+
+def test_a_watch_nobody_types_at_runs_exactly_as_it_did_before() -> None:
+    """The port is not a behaviour: a Watch given a keyboard nobody touches is the Watch
+    that had no keyboard at all.
+    """
+    result = run(["--count", "3"])
+
+    assert result.out == (
+        HEADER
+        + observation_block(1, TEXTS[0])
+        + observation_block(2, TEXTS[1])
+        + observation_block(3, TEXTS[2])
+        + "\n3 Observations, median inference 1.000 s\n"
+    )
+    assert [workload.prompt for workload in result.model.observed] == [PROMPT] * 3
+
+
+@pytest.mark.parametrize("question", ["", "   ", "\t\n"])
+def test_refuses_an_empty_scene_question_before_foundry_local_is_started(question: str) -> None:
+    """Refused as the other commands refuse it, and ahead of the camera as well as the
+    model: a Watch that took the mistake to the hardware would settle a Feed and load
+    several gigabytes of weights before saying the question was never there."""
+    result = run(["--count", "1", "--ask", question])
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.err == (
+        "error: --ask was given no question — pass one in quotes"
+        ' (--ask "is anyone looking at the camera?"), or leave --ask off to have the'
+        " Frame described\n"
+    )
+    assert result.cameras.opened == []
+    assert not result.model.loaded
+    assert result.model.observed == []
 
 
 def test_fixes_the_generation_limits_on_every_workload_it_sends() -> None:
@@ -1045,3 +1345,29 @@ def test_a_variant_that_will_not_load_still_ends_the_process_before_the_watch() 
 def test_debug_restores_the_traceback() -> None:
     with pytest.raises(Exception, match="cannot run over"):
         run(["--image", "desk.jpg", "--debug"])
+
+
+def test_reads_no_keyboard_where_stdin_is_not_a_terminal() -> None:
+    """A pipe, CI, output redirected to a file: nobody is typing, and lines arriving on
+    ``stdin`` are a script rather than an Operator. No reader is started — this is the one
+    test that gives the command no ``Questions`` of its own — and the Watch runs on what
+    ``--ask`` gave it (ADR-0010).
+    """
+    out, err = io.StringIO(), io.StringIO()
+    model = FakeVisionModel(make_identity(), [make_observation(text) for text in TEXTS])
+
+    code = watch_main(
+        ["--count", "3", "--ask", STANDING],
+        open_feed=FakeCameras({0: watching_feed(len(TEXTS))}),
+        make_reader=FakeReaders(),
+        foundry=FakeFoundry.resolving_everything_to(model),
+        clock=FakeClock(readings(len(TEXTS))),
+        sleep=FakeSleep(),
+        stdin=io.StringIO(f"{TYPED}\n"),
+        out=out,
+        err=err,
+    )
+
+    assert code == 0
+    assert "Asking:" not in out.getvalue()
+    assert [workload.prompt for workload in model.observed] == [STANDING] * 3

@@ -64,6 +64,7 @@ from vision.inference import (
     Observation,
     Timings,
     Workload,
+    require_a_scene_question,
 )
 from vision.record import Now, Recorded, benchmarks_directory, hardware_profile, record
 from vision.reporting import (
@@ -86,6 +87,7 @@ from vision.watch import (
     CADENCE,
     Announce,
     Produced,
+    Questions,
     Watch,
     WatchStart,
     keep_watch,
@@ -117,6 +119,10 @@ def main(
 
     owned: list[Callable[[], None]] = []
     try:
+        # Asked before Foundry Local is started, as a Watch asks its own invariants; the
+        # normalised question it hands back is what the model is asked, so --ask and a typed
+        # line stand for one question and not two.
+        question = require_a_scene_question(args.ask)
         default_camera, keep_in = _source(args, open_feed, frames_dir)
         if camera is None:
             camera = default_camera
@@ -128,6 +134,7 @@ def main(
             foundry=foundry,
             clock=clock,
             model_name=args.model,
+            question=question,
             out=out,
             keep_in=keep_in,
         )
@@ -163,6 +170,10 @@ def benchmark_main(
     try:
         refuse_a_live_camera(args.camera)
         require_a_benchmark_run(args.repetitions)
+        # Asked here for the reason ``observe`` asks it before its own model load, with one
+        # more behind it: a Benchmark that took the mistake to the hardware would download
+        # and load every Variant before saying anything.
+        question = require_a_scene_question(args.ask)
         if camera is None:
             camera = _benchmark_source(args.image)
         foundry = _resolve_foundry(foundry, owned)
@@ -170,7 +181,9 @@ def benchmark_main(
 
         # Read once, and reuse these exact bytes: re-reading the file per repetition would
         # re-encode it, and a Workload is the Frame's bytes rather than its resolution.
-        workload = Workload(prompt=PROMPT, frame=camera.capture())
+        # The Scene Question joins them here and nowhere else, so one question stands over
+        # the whole sitting; what that costs and what it buys is in ``_add_ask``.
+        workload = Workload(prompt=question, frame=camera.capture())
         benchmark = measure(
             foundry=foundry,
             clock=clock,
@@ -212,6 +225,8 @@ def watch_main(
     foundry: FoundryLocal | None = None,
     clock: Clock | None = None,
     sleep: Sleep | None = None,
+    questions: Questions | None = None,
+    stdin: TextIO | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
     frames_dir: Path | None = None,
@@ -231,6 +246,13 @@ def watch_main(
     Everything else in the run-up ends the process as it does in ``observe`` — a name that
     names no model, a task that is not ``vision-language-chat``, a Variant that will not
     load. There is nothing to degrade to.
+
+    Where the Operator's questions are read from is a port like the rest: the keyboard
+    where ``stdin`` is a terminal, and nobody where it is not — a Watch in a pipe or in CI
+    runs on what ``--ask`` gave it for as long as it lasts (ADR-0009). It is stopped
+    whichever way the run ended — the Watch itself, a Variant that would not load, an
+    interruption in the run-up — because there is nothing left for a question to steer in
+    any of them.
 
     The summary is printed after the camera has been released and the model unloaded, so
     that the last thing an Operator reads is not written while the machine is still held.
@@ -255,6 +277,11 @@ def watch_main(
         refuse_an_image_file(args.image)
         require_a_cadence(args.every)
         require_an_observation(args.count)
+        # Asked here with the other invariants of a Watch, and for the sharper version of
+        # the reason ``observe`` asks it early: a Watch that took the mistake to the
+        # hardware would settle a camera and load the model before saying the question
+        # the whole run was to stand on was never there.
+        question = require_a_scene_question(args.ask)
         foundry = _resolve_foundry(foundry, owned)
         clock = _resolve_clock(clock)
         sleep = _resolve_sleep(sleep)
@@ -270,6 +297,12 @@ def watch_main(
         # in: the reader comes off the Feed and the camera is released, then the model is
         # taken off the hardware, and only then is Foundry Local itself closed.
         with ExitStack() as lifetime:
+            # Registered before anything is brought up, so that the paths this stack exists
+            # for — a Variant that will not load, a camera that is not there, Ctrl+C during
+            # either — take the reader of the Operator's keystrokes down with them rather
+            # than leaving one reading a keyboard nobody is watching the output of.
+            questions = _resolve_questions(questions, stdin, out)
+            lifetime.callback(questions.stop)
             ready = bring_up(model, clock=clock, out=out)
             lifetime.callback(ready.model.unload)
             # Timed here rather than inside the held Feed, because what an Operator waits
@@ -282,6 +315,7 @@ def watch_main(
                 model=ready.identity,
                 provenance=provenance,
                 cadence=args.every,
+                question=question,
                 providers=providers,
                 load=ready.load,
                 settling=settling,
@@ -297,6 +331,7 @@ def watch_main(
                 sleep=sleep,
                 keep_in=frames_dir if args.keep_frames else None,
                 announce=_announcing(out),
+                questions=questions,
             )
     except KeyboardInterrupt:
         # Caught rather than raised, and then asked which interruption it was: the Watch
@@ -449,6 +484,7 @@ def _observe_parser() -> argparse.ArgumentParser:
         help="take the Frame from this image file instead of from a camera",
     )
     _add_camera(source)
+    _add_ask(parser)
     _add_pinned_variant(parser)
     _add_keep_frames(parser)
     _add_debug(parser)
@@ -501,6 +537,13 @@ def _benchmark_parser() -> argparse.ArgumentParser:
             " reports about this machine, which tells two machines apart and no more"
         ),
     )
+    _add_ask(
+        parser,
+        what_it_means=(
+            " The question is the Workload, so two Benchmarks asked different questions"
+            " measured different amounts of generation and are not comparable."
+        ),
+    )
     _add_variants(parser)
     _add_debug(parser)
     return parser
@@ -536,6 +579,13 @@ def _watch_parser() -> argparse.ArgumentParser:
         ),
     )
     _add_camera(parser)
+    _add_ask(
+        parser,
+        what_it_means=(
+            " Stands from the first Observation onward, so a rehearsed demo starts on the"
+            " question it is about rather than on the plain description."
+        ),
+    )
     # Offered only to be refused; see ``refuse_an_image_file`` for what it is told.
     parser.add_argument(
         "--image",
@@ -590,6 +640,37 @@ def _add_camera(container: argparse._ActionsContainer) -> None:
         default=0,
         metavar="N",
         help="index of the camera to open the Feed on (default: 0)",
+    )
+
+
+def _add_ask(parser: argparse.ArgumentParser, *, what_it_means: str = "") -> None:
+    """The Scene Question, which is the prompt — so the fixed prompt is its default.
+
+    Written as a default rather than as a branch on ``None`` because there is no third
+    state: a command either sends the question it was given or sends the one it has always
+    sent, and a Workload carries a prompt either way. Leaving the flag off therefore
+    reaches the model as exactly the bytes it reached it as before this flag existed,
+    which is what keeps a command already on a slide working — and, for ``benchmark``,
+    what keeps a new record comparable with the ones already in ``docs/benchmarks/``.
+
+    Shared by the commands that carry a Scene Question, because the question means the
+    same thing to each of them. ``what_it_means`` is what asking one means for *that*
+    command, where it means more than the one Frame in front of it: a Benchmark measures
+    the generation the question asks for, so two Benchmarks asked different questions
+    measured different work and are not comparable — which an Operator should be able to
+    read where the flag is offered, as they can read the divergence note where the
+    latencies are; and a Watch keeps the question standing over every Cadence it reaches
+    rather than answering it once.
+    """
+    parser.add_argument(
+        "--ask",
+        metavar="QUESTION",
+        default=PROMPT,
+        help=(
+            "ask this about the Frame instead of having it described"
+            ' (--ask "is anyone looking at the camera?") — answered from that one Frame'
+            f" alone, so there are no follow-ups.{what_it_means} Default: describe the Frame"
+        ),
     )
 
 
@@ -672,6 +753,23 @@ def _resolve_foundry(foundry: FoundryLocal | None, owned: list[Callable[[], None
     return real
 
 
+def _resolve_questions(questions: Questions | None, stdin: TextIO | None, out: TextIO) -> Questions:
+    """The keyboard a Watch is steered from, unless a caller handed one in.
+
+    ``stdin`` rather than a caller's stream is the default for the reason the real clock
+    and the real sleep are: this is where the machine the command runs on is named, and a
+    test names its own. The keyboard is given the Watch's own ``out`` so the prompt it draws
+    and the keystrokes it echoes land in the same stream the Observations do. Imported here,
+    beside the resolving, as the rest of them are.
+    """
+    if questions is not None:
+        return questions
+
+    from vision.keyboard import read_the_keyboard
+
+    return read_the_keyboard(stdin if stdin is not None else sys.stdin, out)
+
+
 def _resolve_clock(clock: Clock | None) -> Clock:
     if clock is not None:
         return clock
@@ -743,6 +841,7 @@ def _observe(
     foundry: FoundryLocal,
     clock: Clock,
     model_name: str,
+    question: str,
     out: TextIO,
     keep_in: Path | None,
 ) -> tuple[Workload, Observation, Path | None]:
@@ -758,7 +857,7 @@ def _observe(
     # Kept before inference runs: a Frame worth explaining is worth keeping even when the
     # Observation that would have prompted the question never arrives.
     saved = save_frame(frame, keep_in) if keep_in is not None else None
-    workload = Workload(prompt=PROMPT, frame=frame)
+    workload = Workload(prompt=question, frame=frame)
     raw, inference = timed(clock, lambda: ready.model.observe(workload))
 
     observation = Observation(

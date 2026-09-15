@@ -69,6 +69,13 @@ ONE_VARIANT_READINGS = (*PROVIDER_READINGS, *GPU_READINGS)
 COMPLETION_TOKENS = (30, 24, 22, 26, 28)
 """One per Benchmark Run, all different: a rate read off the wrong run is then visible."""
 
+CUPS = "how many cups are on that desk?"
+"""A Scene Question with a short answer — a different Workload from the fixed prompt.
+
+Up here with the other shared fixtures rather than beside the tests that ask it, because
+the tests for what a Benchmark leaves on disk ask the same question of the same sitting.
+"""
+
 HEADER = (
     "Frame        640x360 jpeg, fit to 640x480, from docs/fixtures/reference-frame.jpg\n"
     "Prompt       Describe what you see in this image in two or three sentences.\n"
@@ -506,6 +513,76 @@ def test_reads_the_frame_once_and_sends_those_exact_bytes_to_every_benchmark_run
     assert all(workload.max_output_tokens == 128 for workload in observed)
 
 
+def test_puts_the_scene_question_on_every_benchmark_run_of_every_variant() -> None:
+    """One Workload for the whole sitting: the question that varies between Benchmarks is
+    the one thing that must not vary inside one — and it varies nothing else about it, so
+    the Frame and the limits are asserted here rather than in a test of their own."""
+    result = run(["--ask", CUPS])
+
+    assert result.code == 0
+    observed = [*result.gpu.observed, *result.cpu.observed]
+    assert len(observed) == 10
+    assert all(workload.prompt == CUPS for workload in observed)
+    assert len({id(workload.frame) for workload in observed}) == 1
+    assert all(workload.max_output_tokens == 128 for workload in observed)
+    assert all(workload.temperature == 0.0 for workload in observed)
+
+
+def test_normalises_the_surrounding_whitespace_of_a_scene_question() -> None:
+    """``--ask "cups "`` and ``--ask "cups"`` are one question, so their records stay
+    comparable: the surrounding whitespace is stripped before it reaches the Workload, the
+    same way a typed line is stripped in a Watch."""
+    result = run(["--ask", f"  {CUPS}\t"])
+
+    assert result.code == 0
+    observed = [*result.gpu.observed, *result.cpu.observed]
+    assert observed
+    assert all(workload.prompt == CUPS for workload in observed)
+
+
+def test_reports_the_scene_question_above_the_variant_blocks() -> None:
+    """Above the blocks, where the Workload is: a reader months later has to be able to
+    tell whether two Benchmarks were measuring the same question at all.
+
+    Asserted against the whole report rather than one line, because the claim is that the
+    Prompt row is the only thing a Scene Question moves.
+    """
+    result = run(["--ask", CUPS])
+    asked = HEADER.replace(f"Prompt       {PROMPT}\n", f"Prompt       {CUPS}\n")
+
+    assert asked != HEADER
+    assert result.out == f"{asked}\n{GPU_BLOCK}\n{CPU_BLOCK}" + result.recorded
+
+
+def test_a_benchmark_with_no_scene_question_measures_the_prompt_it_always_has() -> None:
+    """So that the records already committed to the repository do not become orphans."""
+    result = run()
+
+    assert result.out.startswith(HEADER)
+    observed = [*result.gpu.observed, *result.cpu.observed]
+    assert all(workload.prompt == PROMPT for workload in observed)
+
+
+@pytest.mark.parametrize("question", ["", "   ", "\t\n"])
+def test_refuses_an_empty_scene_question_before_anything_is_downloaded(question: str) -> None:
+    """Refused as ``observe`` refuses it, and for the same reason — with two Variants'
+    worth of weights behind the mistake instead of one."""
+    gpu = FakeVisionModel(make_identity(), [make_observation()], is_cached=False)
+    result = run(["--ask", question], gpu=gpu)
+
+    assert result.code == 1
+    assert result.out == ""
+    assert result.gpu.downloads == 0
+    assert result.gpu.observed == []
+    assert result.camera.captures == 0
+    assert "load" not in result.events
+    assert result.err == (
+        "error: --ask was given no question — pass one in quotes"
+        ' (--ask "is anyone looking at the camera?"), or leave --ask off to have the'
+        " Frame described\n"
+    )
+
+
 def test_registers_the_execution_providers_once_for_the_whole_benchmark() -> None:
     """Machine set-up, paid once per process — not once per Variant and not once per run."""
     result = run()
@@ -758,6 +835,25 @@ def test_says_how_many_benchmark_runs_the_output_limit_cut_short_under_the_varia
     )
     assert note in result.out
     assert result.out.index(note) < result.out.index("qwen3-vl-2b-instruct-generic-cpu:2")
+
+
+def test_a_scene_question_whose_answer_hits_the_output_limit_gets_the_same_note() -> None:
+    """The limits do not move for a Scene Question, so an answer cut short is cut short in
+    the way the report already has words for."""
+    truncated = FakeVisionModel(
+        make_identity(),
+        [
+            make_observation(completion_tokens=128, finish_reason=FinishReason.TRUNCATED)
+            for _ in range(5)
+        ],
+    )
+    result = run(["--ask", "describe every object on the desk, one per line"], gpu=truncated)
+
+    assert result.code == 0
+    assert (
+        "(5 of 5 Benchmark Runs hit the 128-token output limit,"
+        " so the limit decided how much text they generated)\n"
+    ) in result.out
 
 
 def test_shows_no_progress_bar_when_the_output_is_not_a_terminal() -> None:

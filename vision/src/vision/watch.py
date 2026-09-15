@@ -118,7 +118,7 @@ class QuestionChanged:
     an empty line stopped asking, and what the Watch does then is not something they wrote
     down. Told apart here, where the line was read, so that whoever writes the change down
     is not left comparing a prompt against a constant to work out which of the two happened
-    (ADR-0009).
+    (ADR-0010).
     """
 
     question: str | None
@@ -155,7 +155,7 @@ class ReachedCadence:
     """The Scene Question this Cadence is the first to ask, where it just changed.
 
     Nothing on every other Cadence, which is nearly all of them: the question stands until
-    the Operator replaces it (ADR-0009), so this is news exactly once per change and a
+    the Operator replaces it (ADR-0010), so this is news exactly once per change and a
     value repeated on every line would be furniture. It travels on the Cadence rather than
     being announced the moment it was typed so that the report has one writer and the echo
     cannot race the answers it belongs above.
@@ -232,11 +232,11 @@ class WatchStart:
 
     Part of the start rather than of the loop because it is what the Watch was *asked for*,
     as the Cadence is: chosen before the first Frame was taken, and read by the loop rather
-    than owned by it. Not that it is settled for ever — ADR-0009 has an Operator replace
-    the question while the Watch runs, and the last question wins. This is the one the
-    Watch starts on, and it is not somewhere the Watch returns to: a line typed at it
-    replaces this, and an empty line typed at it goes to the plain description rather than
-    back here (see ``_standing_question``).
+    than owned by it. Not that it is settled for ever — ADR-0010 has an Operator compose a
+    new question at the running Watch, which replaces this. This is the one the Watch starts
+    on, and it is not somewhere the Watch returns to: a question composed at it replaces
+    this, and an empty line composed at it goes to the plain description rather than back
+    here (see ``_standing_question``).
 
     Not reported in the header, which is the costs and the Cadence: an Operator who typed
     the question is looking at it already, and one who typed none is reading the prompt
@@ -344,27 +344,65 @@ Operator reading a column whose numbering skips for no reason they can see.
 """
 
 
-class Questions(Protocol):
-    """Whatever the Operator is typing at a running Watch, read one line at a time.
+@dataclass(frozen=True)
+class Composed:
+    """A Scene Question the Operator finished typing at a suspended Watch.
 
-    Shaped like the Feed's reader (``capture.Reader``) because it is the same problem: what
-    is being read arrives on its own schedule and the Watch reads it on the grid, so this
-    answers with what is there *now* and never waits for more. A Watch that blocked on a
-    line would stop being a Watch the moment nobody typed.
-
-    **The last question wins**, and that rule is this port's rather than the loop's
-    (ADR-0009): whatever arrived since the last poll collapses to the most recent line and
-    the rest is discarded here, so the loop never sees a queue and cannot grow one. What an
-    empty line *means* is not this port's — it answers with the raw text, and the Watch
-    reads it (see ``_standing_question``).
+    The line as it was typed, Enter pressed and the newline gone. What it *means* — a new
+    question, or an empty line back to the plain description — is not this value's to say
+    but the Watch's (see ``_standing_question``): this only carries the text off the
+    keyboard, exactly as ``capture.Present`` carries a Frame without judging it.
     """
 
-    def pending(self) -> str | None:
-        """The most recent line typed since the last poll, or nothing where none was."""
+    text: str
+
+
+@dataclass(frozen=True)
+class Abandoned:
+    """The Operator pressed Escape: what was composed is thrown away and nothing changes.
+
+    Told apart from a ``Composed`` empty line because they are opposite intentions. An
+    empty line is a deliberate return to the plain description; Escape is *leave what was
+    standing alone*. A Watch that treated the two the same would hand an Operator who
+    thought better of retyping their question the default they were trying to keep off.
+    """
+
+
+Resolution = Composed | Abandoned
+"""How the Operator ended composing a Scene Question at a suspended Watch.
+
+Two shapes because composing ends two ways — a line submitted or the whole of it abandoned
+— and only one of them carries a sentence. Named once because the keyboard produces it and
+the Watch reads it, and a union respelled at each end grows a third member in only one.
+"""
+
+
+class Questions(Protocol):
+    """The Operator's keyboard at a running Watch: an interrupt, and then a composition.
+
+    Steering a Watch is two acts (ADR-0010). Pressing Space **interrupts** — it asks the
+    Watch to suspend, so a question can be typed without racing the Observations scrolling
+    past, which turned out to be the thing that made the earlier design unusable in a room.
+    **Composing** then reads the line, and the Watch produces nothing until it is done.
+    Both are the keyboard's; what a composed line *means* stays the Watch's (see
+    ``_standing_question``).
+
+    ``interrupted`` never waits: the Watch asks it once an Observation and a Watch that
+    blocked on the keyboard would stop being a Watch the moment nobody typed. ``compose``
+    does wait — it is the suspension — and is only ever called just after ``interrupted``
+    answered ``True``.
+    """
+
+    def interrupted(self) -> bool:
+        """Whether Space was pressed to compose a question since the last time this was asked."""
+        ...
+
+    def compose(self) -> Resolution:
+        """Read the question the Operator types, blocking until Enter or Escape ends it."""
         ...
 
     def stop(self) -> None:
-        """Stop reading. Whatever the lines are read from is the caller's to close."""
+        """Stop reading. Whatever the keys are read from is the caller's to close."""
         ...
 
 
@@ -372,17 +410,22 @@ class NoQuestions:
     """A Watch nobody can steer: whatever it started on stands until it ends.
 
     What a Watch runs on wherever there is no terminal to read the Operator's keystrokes
-    from: a pipe, CI, output redirected to a file (ADR-0009). Reading a real keyboard is
-    ``keyboard.TypedLines``, and which of the two a command gets is decided once, in
+    from: a pipe, CI, output redirected to a file (ADR-0010). Reading a real keyboard is
+    ``keyboard.RawKeyboard``, and which of the two a command gets is decided once, in
     ``keyboard.read_the_keyboard``.
 
     It lives here rather than beside that reader because it is the port's own answer to
     having nobody at it, so the loop is written against a port and never against a
-    ``None`` — a Watch handed no keyboard at all is still a Watch.
+    ``None`` — a Watch handed no keyboard at all is still a Watch. It is never interrupted,
+    so it never composes; ``compose`` is total rather than raising only so that this is
+    honestly a ``Questions`` and not a shape the loop must special-case.
     """
 
-    def pending(self) -> str | None:
-        return None
+    def interrupted(self) -> bool:
+        return False
+
+    def compose(self) -> Resolution:
+        return Abandoned()
 
     def stop(self) -> None:
         return None
@@ -462,12 +505,15 @@ def keep_watch(
     so that the whole command is drivable to its summary in a test with no signals and no
     wall-clock time; a Watch with no count runs until it is interrupted.
 
-    The Scene Question is read on the grid — once per Cadence, after the wait and before
-    the Frame is taken — so a question always applies from a Frame taken after it was
-    typed, and one typed while an inference is running does not reach back into it. It then
-    stands until it is replaced (ADR-0009): the Watch is steered rather than interrupted,
-    and nothing about a question is ever counted against the machine, so no skipped Cadence
-    and no Stale Frame is ever attributable to somebody having typed.
+    A question is composed at a Watch that has stopped for it (ADR-0010). Pressing Space
+    interrupts, which is asked once each Observation has been shown — so the Observation in
+    flight is finished and printed rather than reached back into, and a question is composed
+    against a Watch whose current state the Operator can see. Composing suspends the Watch:
+    it produces nothing meanwhile, and what the composed line means becomes the question
+    standing from the next Cadence on. The suspension is not the machine falling behind, so
+    the grid is re-anchored to the moment composing ended and nothing about a question is
+    ever counted against the machine — no skipped Cadence and no Stale Frame is ever
+    attributable to somebody having typed.
 
     The instant an Observation was taken at is tracked apart from how many Cadences the
     Watch has reached, because on a machine short of the Cadence the two come apart: that
@@ -478,8 +524,10 @@ def keep_watch(
     observations: list[WatchedObservation] = []
     failures: list[FailedInference] = []
     question = start.question
+    changed: QuestionChanged | None = None
     began = clock()
     instant, skipped, skipped_in_total, cadences = 0, 0, 0, 0
+    resumed = False
     died = False
     try:
         while count is None or cadences < count:
@@ -487,7 +535,7 @@ def keep_watch(
             # for and nothing can have been skipped to reach it. Every later one is due on
             # the grid rather than a Cadence after the last — and where the grid has moved
             # on past the next instant, on the first one that has not arrived yet.
-            if cadences:
+            if cadences and not resumed:
                 instant, skipped = _wait_for_the_next_instant(
                     instant + 1,
                     began=began,
@@ -499,13 +547,16 @@ def keep_watch(
                 # Observation that follows them has been produced: a Watch that ended
                 # part-way through that inference still passed them.
                 skipped_in_total += skipped
+            elif resumed:
+                # The Watch was suspended while a question was composed, which is not the
+                # machine falling behind. The grid is re-anchored to now — the clock read
+                # once, exactly as a wait reads it once — so the resumed Observation is due
+                # at once as the first one was, and nothing the Operator spent typing is
+                # counted as a skipped Cadence or a Stale Frame (ADR-0010).
+                began = clock()
+                instant, skipped = 0, 0
+                resumed = False
             cadences += 1
-            # Read here, between the wait and the Frame, which is what makes a question
-            # take effect from the next Cadence rather than from the middle of one. Read on
-            # the first Cadence too: there is no wait before it, but a Watch that only
-            # started listening at its second Observation would silently drop a question
-            # typed while the camera was still settling.
-            question, changed = _standing_question(question, typed=questions.pending())
             present = feed.present()
             frame = present.frame(provenance=start.provenance)
             # A Feed with nothing left to give is the end of the Watch, and it is decided
@@ -524,11 +575,23 @@ def keep_watch(
                 clock=clock,
                 keep_in=keep_in,
             )
+            # The change has been carried onto the Observation that is the first to answer
+            # the new question; it is news once and must not ride the Observations after it.
+            changed = None
             if isinstance(produced, FailedInference):
                 failures.append(produced)
             else:
                 observations.append(produced)
             announce(produced)
+            # Asked once the Observation has been shown, so the one in flight when Space was
+            # pressed is finished and printed first, and a question is composed against a
+            # Watch the Operator can see the current state of. Where the Watch was
+            # interrupted it suspends here: compose blocks, no Observation is produced
+            # meanwhile, and what the composed line means becomes the question standing from
+            # the next Cadence — echoed once, above the first Observation to answer it.
+            if questions.interrupted():
+                question, changed = _standing_question(question, questions.compose())
+                resumed = True
     except KeyboardInterrupt:
         pass
 
@@ -589,27 +652,28 @@ def _first_instant_from(due: int, *, now: float, began: float, cadence: float) -
     return max(due, ceil((now - began) / cadence - GRID_TOLERANCE))
 
 
-def _standing_question(standing: str, *, typed: str | None) -> tuple[str, QuestionChanged | None]:
-    """What the Watch asks from this Cadence on, and the change worth saying out loud.
+def _standing_question(standing: str, resolution: Resolution) -> tuple[str, QuestionChanged | None]:
+    """What the Watch asks from the next Cadence on, and the change worth saying out loud.
 
-    The meaning of the line is decided here rather than in the port, because the port reads
-    keystrokes and this is where a Watch's prompt is: an empty or whitespace-only line is a
-    return to the plain description, not a question that asks nothing. ``--ask ""`` is
+    A composition that was abandoned changes nothing: the Operator pressed Escape, and the
+    question standing before they interrupted goes on standing, unechoed. A line that was
+    submitted has its meaning decided here rather than in the keyboard, because the keyboard
+    reads keystrokes and this is where a Watch's prompt is: an empty or whitespace-only line
+    is a return to the plain description, not a question that asks nothing. ``--ask ""`` is
     refused on the command line for the opposite reason — there, a question was meant and
     the shell ate it, and there is nothing to go back to.
 
-    Which of the two happened is settled here as well, where the line was read, rather than
-    left for the report to deduce from the prompt: an Operator who typed a question gets
-    their own words back, and one who stopped asking is not quoted a sentence they never
-    wrote.
+    Which of the two a submitted line was is settled here as well, rather than left for the
+    report to deduce from the prompt: an Operator who typed a question gets their own words
+    back, and one who stopped asking is not quoted a sentence they never wrote.
 
     Retyping the question already standing is not a change and is not echoed. The echo says
     what the Watch is now asking, and an Operator handed the same sentence twice would
     start looking for the difference between them.
     """
-    if typed is None:
+    if isinstance(resolution, Abandoned):
         return standing, None
-    asked = typed.strip()
+    asked = resolution.text.strip()
     prompt = asked or PROMPT
     if prompt == standing:
         return standing, None

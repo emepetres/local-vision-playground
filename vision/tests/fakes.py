@@ -34,7 +34,7 @@ from vision.inference import (
     Workload,
 )
 from vision.startup import Sleep
-from vision.watch import Questions
+from vision.watch import Abandoned, Composed, Questions, Resolution
 
 
 class FakeCamera:
@@ -209,32 +209,49 @@ class FakeSleep:
 
 
 class TypedQuestions:
-    """The Operator's keyboard as a schedule: what was typed before each poll, in order.
+    """The Operator's keyboard as a schedule of compositions, one slot per Observation.
 
     A schedule rather than a thread, for the reason the hand-turned reader is one: a Watch
     is driven here by turning its loop, and a test that had to race a real ``stdin`` reader
-    would be asserting on timing rather than on the rule. One entry per Cadence — ``()``
-    for a Cadence nobody typed at, one line for a question, several for the lines typed
-    between two Cadences of which only the last survives, which is the collapsing rule the
-    port owns (ADR-0009) and therefore has to be in the fake too.
+    would be asserting on timing rather than on the rule. One entry per Observation the
+    Watch shows — ``None`` for one the Operator did not interrupt, or a ``Resolution`` (a
+    ``Composed`` line, or an ``Abandoned``) for one they pressed Space at and composed a
+    question at. The Watch asks ``interrupted`` once each Observation has been shown, and
+    where the slot holds a ``Resolution`` it then asks ``compose`` and is handed it.
 
-    Polls past the end of the schedule answer with nothing, so a test only says as much of
-    the keyboard as it is about. ``stopped`` is how a test pins that the reader was taken
-    down when the Watch ended.
+    Checks past the end of the schedule answer as an Observation nobody interrupted, so a
+    test only says as much of the keyboard as it is about. ``stopped`` is how a test pins
+    that the reader was taken down when the Watch ended.
     """
 
-    def __init__(self, typed: Sequence[Sequence[str]] = ()) -> None:
-        self._typed = tuple(tuple(lines) for lines in typed)
-        self.polls = 0
+    def __init__(self, presses: Sequence[Resolution | None] = ()) -> None:
+        self._presses = tuple(presses)
+        self.checks = 0
+        self._pending: Resolution | None = None
         self.stopped = False
 
-    def pending(self) -> str | None:
-        lines = self._typed[self.polls] if self.polls < len(self._typed) else ()
-        self.polls += 1
-        return lines[-1] if lines else None
+    def interrupted(self) -> bool:
+        press = self._presses[self.checks] if self.checks < len(self._presses) else None
+        self.checks += 1
+        self._pending = press
+        return press is not None
+
+    def compose(self) -> Resolution:
+        assert self._pending is not None, "compose() was asked for without an interrupt"
+        return self._pending
 
     def stop(self) -> None:
         self.stopped = True
+
+
+def asks(question: str) -> Composed:
+    """A slot in a ``TypedQuestions`` schedule: the Operator composed this question."""
+    return Composed(question)
+
+
+def abandons() -> Abandoned:
+    """A slot in a ``TypedQuestions`` schedule: the Operator pressed Escape and kept what stood."""
+    return Abandoned()
 
 
 class FakeVisionModel:

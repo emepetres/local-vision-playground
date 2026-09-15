@@ -58,9 +58,12 @@ from no earlier Frame and no earlier answer. There is no follow-up: *and what co
 is not a question this project can answer, because nothing the model was told a moment ago is
 still there to be referred back to.
 
-A Scene Question outlives the Observation that answers it. Asked of a [[Watch]], it is what
-that Watch asks from its next [[Cadence]] onward, until the Operator replaces it — so asking
-one is not an interruption but a change of what the Watch is for.
+A Scene Question outlives the Observation that answers it. Once it stands over a [[Watch]] it
+is what that Watch asks from its next [[Cadence]] onward, until the Operator replaces it — a
+*standing* question steers the Watch rather than interrupting it. *Composing* one is the other
+half and does interrupt: the Operator suspends the Watch to compose the question, and the Watch
+produces nothing until the question is composed or the composing is abandoned. One act seen at
+two moments — the composing stops the Watch, the question that results steers it.
 _Avoid_: prompt, query, ask
 
 ### Watching
@@ -72,7 +75,8 @@ not relate them to one another. Noticing that something changed between two of t
 [[Trigger]], not a Watch — every Observation a Watch produces stands on its own Frame, as
 any Observation does. Every Observation a Watch produces answers the [[Scene Question]]
 standing when its Frame was taken — the plain description, until an Operator asks for
-something else.
+something else. It runs continuously except where the Operator suspends it to compose a
+[[Scene Question]], which is the one thing that stops it short of the Operator ending it.
 _Avoid_: loop, monitor, stream, session, live mode
 
 **Cadence**:
@@ -89,7 +93,10 @@ abandoned on the way and the [[Stale Frame]]s discarded to observe the present. 
 rather than two numbers, because one skip forward incurred both. A Shortfall belongs to the
 moment it happened and is reported there, on the [[Observation]] it was paid for — averaging
 it over a [[Watch]] would take away the half an [[Operator]] can act on. A Cadence reached on
-time has no Shortfall, and says nothing about either count.
+time has no Shortfall, and says nothing about either count. Nor does a Cadence the Operator
+suspended the Watch across to compose a [[Scene Question]]: the machine did not fall short,
+the Operator chose to stop, and when the Watch resumes it starts its grid afresh so that the
+time spent composing is never a skipped Cadence.
 _Avoid_: lag, delay, drift, overrun, backlog
 
 ### Runtime

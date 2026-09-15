@@ -1,5 +1,15 @@
 # A Scene Question changes what a Watch asks, it does not interrupt it
 
+> **Superseded by [ADR-0010](./0010-composing-a-scene-question-suspends-the-watch.md).**
+> This decision held that a question is accepted while the Watch runs and never stops it.
+> In front of a room that proved unusable: the Observations scroll too fast to type a
+> question against, so the question that was meant never gets composed. ADR-0010 keeps the
+> half that worked — a *standing* question steers the Watch without interrupting it, echoed
+> once and never counted against the machine — and reverses the half that did not: *composing*
+> a question now suspends the Watch until the line is done. The reasoning below is kept for
+> why the non-interrupting design was chosen, and read against ADR-0010 for why it was not
+> enough.
+
 A Watch produces Observations over a live Feed on a fixed grid of Cadences, and an Operator
 watching one will want to ask it something without stopping it — that is the whole of item 4
 seen from the live camera. The obvious answer is to treat the question as an event: take a

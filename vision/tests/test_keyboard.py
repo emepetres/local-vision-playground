@@ -1,127 +1,198 @@
-"""The keyboard a running Watch is steered from: one reader, turned by hand.
+"""The keyboard a running Watch is steered from: the rule pinned, the terminal left out.
 
-The reader's loop is one call — ``read_once`` — and the thread is nothing but a loop over
-it, which is the same seam the Feed's draining reader is split at (``capture.DrainingReader``)
-and for the same reason: every rule a Watch is steered by is then pinned by turning the
-loop by hand, with no thread and no wall-clock waiting. Only the choice of reader is tested
-through the factory that starts one, and even there the thread is never what is asserted on.
+Reading the real keyboard a key at a time is tied to a terminal, a platform and a daemon,
+and those are the untested boundary here (ADR-0010). What is pinned is the rule around them:
+``compose_a_question`` — what a sequence of keys composes to — is a pure function driven with
+a scripted reader and a screen that only records, no terminal and no thread. The choice of
+reader is tested through the factory that starts one, with the raw terminal stubbed so no
+console is touched; the one test that exercises the daemon drives it through an injected
+reader and asserts on the composition it hands back, never on timing.
 """
 
 from __future__ import annotations
 
 import io
+import queue
+from collections.abc import Callable
 
-from vision.keyboard import TypedLines, read_the_keyboard
-from vision.watch import NoQuestions
+import pytest
 
-QUESTION = "is anyone looking at the camera?"
-REPLACEMENT = "how many people are there?"
+from vision.keyboard import (
+    RawKeyboard,
+    _normalise,
+    _utf8_continuation_bytes,
+    compose_a_question,
+    read_the_keyboard,
+)
+from vision.watch import Abandoned, Composed, NoQuestions
 
-
-def typed(*lines: str) -> io.StringIO:
-    """A keyboard nobody is at any more: the lines that were typed, and then the end."""
-    return io.StringIO("".join(f"{line}\n" for line in lines))
-
-
-def test_a_line_typed_is_the_question_pending_at_the_next_poll() -> None:
-    reader = TypedLines(typed(QUESTION))
-
-    assert reader.read_once()
-    assert reader.pending() == QUESTION
+ENTER, ESCAPE, BACKSPACE = "\n", "\x1b", "\x08"
 
 
-def test_a_question_answered_once_is_not_answered_again() -> None:
-    """The poll takes the line: a Watch asked twice between two lines is asked about the
-    keyboard, not about the question already standing, and a question that came back would
-    be re-echoed as though the Operator had typed it a second time."""
-    reader = TypedLines(typed(QUESTION))
-    reader.read_once()
-
-    assert reader.pending() == QUESTION
-    assert reader.pending() is None
+def keys(*sequence: str) -> Callable[[], str | None]:
+    """A ``read_key`` over a fixed run of keys, then the end of the keyboard."""
+    reader = iter(sequence)
+    return lambda: next(reader, None)
 
 
-def test_the_last_line_typed_between_two_polls_is_the_one_that_survives() -> None:
-    """The collapsing rule is the port's rather than the loop's (ADR-0009): whatever else
-    was typed is discarded here, so the Watch never sees a queue and cannot grow one."""
-    reader = TypedLines(typed(QUESTION, REPLACEMENT))
-    reader.read_once()
-    reader.read_once()
+class Screen:
+    """An ``Echo`` that records what it was asked to draw rather than drawing it."""
 
-    assert reader.pending() == REPLACEMENT
-    assert reader.pending() is None
+    def __init__(self) -> None:
+        self.drawn: list[str] = []
 
+    def __call__(self, text: str) -> None:
+        self.drawn.append(text)
 
-def test_an_empty_line_is_a_line_and_not_the_absence_of_one() -> None:
-    """Pressing Enter on an empty line is how an Operator stops asking, so it has to reach
-    the Watch as something typed. What it then means is the Watch's (``_standing_question``)."""
-    reader = TypedLines(typed(""))
-    reader.read_once()
-
-    assert reader.pending() == ""
+    @property
+    def text(self) -> str:
+        return "".join(self.drawn)
 
 
-def test_a_line_carries_none_of_the_newline_it_arrived_with() -> None:
-    """Including the one a terminal on Windows sends, which would otherwise travel into the
-    prompt and be echoed back at the Operator as part of their own question."""
-    reader = TypedLines(io.StringIO(f"{QUESTION}\r\n"))
-    reader.read_once()
+def test_a_line_typed_and_entered_is_the_composed_question() -> None:
+    screen = Screen()
 
-    assert reader.pending() == QUESTION
+    resolution = compose_a_question(keys("h", "i", ENTER), screen)
 
-
-def test_stops_reading_at_the_end_of_the_keyboard() -> None:
-    """A stream that has ended answers every read with nothing, so a loop that went on
-    turning would spin on it for as long as the Watch ran."""
-    reader = TypedLines(typed(QUESTION))
-    reader.read_once()
-
-    assert not reader.read_once()
+    assert resolution == Composed("hi")
+    assert screen.text == "hi"
 
 
-def test_a_stopped_reader_neither_reads_again_nor_answers_with_what_it_held() -> None:
-    """Stopping is the Watch being over, and there is nothing left for a question to steer."""
-    reader = TypedLines(typed(QUESTION, REPLACEMENT))
-    reader.read_once()
-    reader.stop()
+def test_escape_abandons_whatever_was_composed() -> None:
+    """Escape is a different intention from an empty line: leave the standing question be."""
+    resolution = compose_a_question(keys("h", "i", ESCAPE), Screen())
 
-    assert not reader.read_once()
-    assert reader.pending() is None
+    assert resolution == Abandoned()
 
 
-def test_stopping_a_reader_nothing_ever_turned_is_not_an_error() -> None:
-    """Which is the path the run-up fails on: the Watch's take-down stops the reader
-    whether or not a thread was ever put on it."""
-    TypedLines(typed(QUESTION)).stop()
+def test_an_empty_line_composes_an_empty_question() -> None:
+    """Empty is composed as empty; that it *means* the way back is the Watch's to decide."""
+    assert compose_a_question(keys(ENTER), Screen()) == Composed("")
+
+
+def test_backspace_rubs_out_the_last_character_typed_and_the_one_on_screen() -> None:
+    screen = Screen()
+
+    resolution = compose_a_question(keys("h", "o", BACKSPACE, "i", ENTER), screen)
+
+    assert resolution == Composed("hi")
+    assert screen.text == "ho\b \bi"
+
+
+def test_backspace_on_an_empty_line_does_nothing() -> None:
+    screen = Screen()
+
+    resolution = compose_a_question(keys(BACKSPACE, "h", "i", ENTER), screen)
+
+    assert resolution == Composed("hi")
+    assert screen.text == "hi"
+
+
+def test_the_end_of_the_keyboard_submits_what_was_typed_rather_than_abandoning_it() -> None:
+    """A ``stdin`` that closed mid-compose asked what had been typed — the forgiving reading,
+    and the one an empty line turns into a return to describing anyway."""
+    assert compose_a_question(keys("h", "i"), Screen()) == Composed("hi")
+
+
+def test_a_key_with_nothing_to_do_about_it_is_dropped() -> None:
+    """An arrow or function key arrives as the empty string once normalised; it neither joins
+    the line nor moves the cursor, so reaching for one does not corrupt the question."""
+    screen = Screen()
+
+    resolution = compose_a_question(keys("h", "", "i", ENTER), screen)
+
+    assert resolution == Composed("hi")
+    assert screen.text == "hi"
+
+
+@pytest.mark.parametrize(
+    ("raw", "normalised"),
+    [("\r", "\n"), ("\n", "\n"), ("\x7f", "\x08"), ("\x08", "\x08"), ("\x1b", "\x1b"), ("a", "a")],
+)
+def test_normalises_each_key_to_the_one_spelling_the_editor_knows(
+    raw: str, normalised: str
+) -> None:
+    assert _normalise(raw) == normalised
+
+
+@pytest.mark.parametrize(
+    ("lead", "following"), [(0x41, 0), (0xC3, 1), (0xE2, 2), (0xF0, 3), (0x80, 0), (0xFF, 0)]
+)
+def test_counts_the_utf8_continuation_bytes_a_leading_byte_announces(
+    lead: int, following: int
+) -> None:
+    assert _utf8_continuation_bytes(lead) == following
 
 
 def test_there_is_no_keyboard_where_there_is_no_terminal() -> None:
-    """A pipe, CI, output redirected to a file: no reader is started at all and the Watch
-    runs on whatever ``--ask`` gave it (ADR-0009)."""
-    reader = read_the_keyboard(typed(QUESTION))
+    """A pipe, CI, output redirected to a file: no reader is started and the Watch runs on
+    whatever ``--ask`` gave it (ADR-0010)."""
+    reader = read_the_keyboard(io.StringIO("a question\n"), io.StringIO())
 
     assert isinstance(reader, NoQuestions)
-    assert reader.pending() is None
+    assert reader.interrupted() is False
 
 
 def test_there_is_no_keyboard_where_there_is_no_stdin() -> None:
     """A process launched with no console at all — ``pythonw``, a detached or GUI-launched
     run — has no ``stdin`` to ask ``isatty`` of, which is still nobody typing and must
     degrade to ``NoQuestions`` rather than raising on ``None.isatty()``."""
-    reader = read_the_keyboard(None)
+    reader = read_the_keyboard(None, io.StringIO())
 
     assert isinstance(reader, NoQuestions)
-    assert reader.pending() is None
+    assert reader.interrupted() is False
 
 
-def test_a_terminal_is_read() -> None:
-    lines = _Terminal(f"{QUESTION}\n")
-    reader = read_the_keyboard(lines)
+def test_a_watch_nobody_can_steer_is_never_interrupted_and_composes_nothing() -> None:
+    steerless = NoQuestions()
+
+    assert steerless.interrupted() is False
+    assert steerless.compose() == Abandoned()
+    steerless.stop()
+
+
+def test_a_terminal_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stream that says it is a terminal gets a real reader, with the raw terminal stubbed
+    so the test touches no console: the daemon parks on a reader that never returns a key."""
+    parked: queue.Queue[str | None] = queue.Queue()
+
+    def stub_raw_reader(lines: object) -> tuple[Callable[[], str | None], Callable[[], None]]:
+        return parked.get, lambda: None
+
+    monkeypatch.setattr("vision.keyboard._raw_reader", stub_raw_reader)
+    reader = read_the_keyboard(_Terminal("x"), io.StringIO())
 
     try:
-        assert isinstance(reader, TypedLines)
+        assert isinstance(reader, RawKeyboard)
     finally:
         reader.stop()
+        parked.put(None)
+
+
+def test_a_space_press_interrupts_and_the_composed_line_is_handed_back() -> None:
+    """The daemon exercised end to end through an injected reader: a Space press interrupts,
+    ``compose`` suspends and reads the line, and the composed question is handed back. Driven
+    through a blocking queue rather than wall-clock waits, so it asserts on the composition
+    and not on timing."""
+    typed: queue.Queue[str | None] = queue.Queue()
+    screen = io.StringIO()
+    keyboard = RawKeyboard(typed.get, screen, restore=lambda: None)
+    keyboard.start()
+
+    try:
+        for key in (" ", "h", "i", ENTER):
+            typed.put(key)
+        resolution = keyboard.compose()
+
+        assert resolution == Composed("hi")
+        assert keyboard.interrupted() is False
+        drawn = screen.getvalue()
+        assert "⏸" in drawn
+        assert "ask> " in drawn
+        assert "hi" in drawn
+    finally:
+        keyboard.stop()
+        typed.put(None)
 
 
 class _Terminal(io.StringIO):

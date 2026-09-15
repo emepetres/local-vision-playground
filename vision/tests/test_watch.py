@@ -26,6 +26,8 @@ from tests.fakes import (
     FakeVisionModel,
     HandTurnedReaders,
     TypedQuestions,
+    abandons,
+    asks,
     colour_of,
     make_identity,
     make_images,
@@ -710,10 +712,7 @@ def test_persists_nothing_it_produced_on_a_standing_question(benchmarks: Path) -
 
 
 TYPED = "how many people are in the room?"
-"""A Scene Question typed at a Watch that is already running."""
-
-REPLACEMENT = "what colour is the mug?"
-"""The question that replaces it before a Cadence reached either, so last-wins is nameable."""
+"""A Scene Question composed at a Watch that is already running."""
 
 ASKING_TYPED = f"\nAsking: {TYPED}\n"
 """The echo a changed question is announced by, above the first Observation to answer it."""
@@ -722,34 +721,30 @@ ASKING_PLAINLY = "\nAsking: for a plain description\n"
 """The echo of the way back: the default prompt named rather than quoted at an audience."""
 
 
-def test_a_question_typed_mid_watch_applies_from_the_next_observation_and_then_stands() -> None:
+def test_a_question_composed_mid_watch_applies_from_the_next_observation_and_then_stands() -> None:
     """The Observation in flight is not reached back into, and the next is not a one-off.
 
-    Typed before the second Cadence, so the first Observation is the plain description the
-    Watch started on and every Observation from the second onwards answers the question —
-    which is the whole demonstration: the same question asked again as the scene moves.
+    Composed at the first Observation, so it is the plain description the Watch started on
+    and every Observation from the second onwards answers the question — which is the whole
+    demonstration: the same question asked again as the scene moves (ADR-0010).
     """
-    result = run(["--count", "3"], questions=TypedQuestions([(), (TYPED,), ()]))
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), None, None]))
 
     assert result.code == 0
     assert [workload.prompt for workload in result.model.observed] == [PROMPT, TYPED, TYPED]
 
 
-def test_a_question_replaced_before_the_next_cadence_is_never_sent_to_the_model() -> None:
-    """The last question wins, and the one it replaced is discarded unanswered (ADR-0009).
-
-    Not queued to be answered a tick later: an answer to a question the Operator has
-    already retyped is the same lie as an answer about a moment they have already left.
-    """
-    result = run(["--count", "3"], questions=TypedQuestions([(), (TYPED, REPLACEMENT), ()]))
+def test_an_abandoned_composition_leaves_the_standing_question_untouched() -> None:
+    """Escape is *keep what stood*: the Watch was suspended and resumed, and what it asks is
+    exactly what it asked before — no new question, and no echo of one (ADR-0010)."""
+    result = run(
+        ["--count", "3", "--ask", STANDING],
+        questions=TypedQuestions([abandons(), None, None]),
+    )
 
     assert result.code == 0
-    assert [workload.prompt for workload in result.model.observed] == [
-        PROMPT,
-        REPLACEMENT,
-        REPLACEMENT,
-    ]
-    assert TYPED not in result.out
+    assert [workload.prompt for workload in result.model.observed] == [STANDING] * 3
+    assert "Asking:" not in result.out
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t"])
@@ -759,7 +754,10 @@ def test_an_empty_line_goes_back_to_the_plain_description(blank: str) -> None:
     ``--ask ""`` is refused for the opposite reason: there a question was meant and the
     shell ate it, and there is nothing standing to go back from.
     """
-    result = run(["--count", "3", "--ask", STANDING], questions=TypedQuestions([(), (blank,), ()]))
+    result = run(
+        ["--count", "3", "--ask", STANDING],
+        questions=TypedQuestions([asks(blank), None, None]),
+    )
 
     assert result.code == 0
     assert [workload.prompt for workload in result.model.observed] == [STANDING, PROMPT, PROMPT]
@@ -772,7 +770,7 @@ def test_echoes_each_change_once_above_the_first_answer_to_it_and_never_again() 
     above the first Observation that answers the question, and not repeated over the ones
     that follow it — a Watch that echoed on every line would bury the answers changing.
     """
-    result = run(["--count", "3"], questions=TypedQuestions([(), (TYPED,), ()]))
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), None, None]))
 
     assert result.out == (
         HEADER
@@ -786,12 +784,12 @@ def test_echoes_each_change_once_above_the_first_answer_to_it_and_never_again() 
 
 def test_echoes_the_return_to_plain_description_as_a_change_of_its_own() -> None:
     """A recording of the talk should show every time the Watch changed what it asked."""
-    result = run(["--count", "3"], questions=TypedQuestions([(TYPED,), (), ("",)]))
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), asks(""), None]))
 
     assert result.out == (
         HEADER
-        + ASKING_TYPED
         + observation_block(1, TEXTS[0])
+        + ASKING_TYPED
         + observation_block(2, TEXTS[1])
         + ASKING_PLAINLY
         + observation_block(3, TEXTS[2])
@@ -800,12 +798,16 @@ def test_echoes_the_return_to_plain_description_as_a_change_of_its_own() -> None
 
 
 def test_retyping_the_question_already_standing_is_not_a_change_and_is_not_echoed() -> None:
-    """An Operator handed the same sentence twice goes looking for the difference."""
-    result = run(["--count", "3"], questions=TypedQuestions([(TYPED,), (TYPED,), (TYPED,)]))
+    """An Operator handed the same sentence twice goes looking for the difference.
+
+    Composed once so it stands, then composed again unchanged: the second time is not a
+    change, so the question is not echoed a second time and the answers go on unbroken.
+    """
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), asks(TYPED), None]))
 
     assert result.code == 0
     assert result.out.count(ASKING_TYPED) == 1
-    assert [workload.prompt for workload in result.model.observed] == [TYPED] * 3
+    assert [workload.prompt for workload in result.model.observed] == [PROMPT, TYPED, TYPED]
 
 
 def test_echoes_a_change_that_took_effect_at_a_cadence_whose_inference_then_failed() -> None:
@@ -821,7 +823,9 @@ def test_echoes_a_change_that_took_effect_at_a_cadence_whose_inference_then_fail
             make_observation(TEXTS[2]),
         ],
     )
-    result = run(["--count", "3"], model=broken, questions=TypedQuestions([(), (TYPED,), ()]))
+    result = run(
+        ["--count", "3"], model=broken, questions=TypedQuestions([asks(TYPED), None, None])
+    )
 
     assert result.out == (
         HEADER
@@ -833,33 +837,32 @@ def test_echoes_a_change_that_took_effect_at_a_cadence_whose_inference_then_fail
     )
 
 
-def test_typing_is_not_a_fault_of_the_hardware_and_moves_no_count_in_the_summary() -> None:
-    """A skipped Cadence means one thing: this machine could not keep up (ADR-0006).
+def test_composing_a_question_is_not_a_fault_of_the_hardware_and_skips_no_cadence() -> None:
+    """Suspending a Watch to compose is not the machine falling behind (ADR-0010).
 
-    Driven through the Watch that overran its Cadence by two instants, because that is the
-    only place the counts are anything but zero. The echo is the only thing a question adds
-    to the report — take it back out and the two runs are the same run, the shortfall, the
-    line it is said on and the summary included.
+    The Watch is re-anchored to the moment composing ended, so the resumed Observation is
+    on time: nothing spent composing is a skipped Cadence or a Stale Frame, no line reads as
+    late, and the summary counts no skip. The one thing composing adds to the report is the
+    echo of the question it changed to.
     """
-    typed = overrun(["--count", "3"], questions=TypedQuestions([(), (TYPED,), ()]))
-    quiet = overrun(["--count", "3"])
+    result = run(["--count", "3"], questions=TypedQuestions([asks(TYPED), None, None]))
 
-    assert typed.code == quiet.code == 0
-    assert [workload.prompt for workload in typed.model.observed] == [PROMPT, TYPED, TYPED]
-    assert typed.out.replace(ASKING_TYPED, "", 1) == quiet.out
-    assert typed.out.endswith("\n3 Observations, median inference 1.000 s, 2 Cadences skipped\n")
+    assert result.code == 0
+    assert [workload.prompt for workload in result.model.observed] == [PROMPT, TYPED, TYPED]
+    assert "late" not in result.out
+    assert "skipped" not in result.out
+    assert result.out.endswith("\n3 Observations, median inference 1.000 s\n")
 
 
-def test_reads_the_keyboard_once_per_cadence_rather_than_between_them() -> None:
-    """Once per Observation, on the grid: one poll per Cadence and not one more.
-
-    A Watch that polled inside the wait, or twice around an inference, would let a question
-    take effect from a Frame taken before it was typed — which is the one thing reading on
-    the grid is placed to rule out.
+def test_checks_for_an_interrupt_once_per_observation_rather_than_between_them() -> None:
+    """Once an Observation, and after it has been shown: one look at the keyboard per Cadence
+    and not one more. A Watch that looked inside the wait would let a question take effect
+    from a Frame taken before it was composed — which is the one thing this is placed to
+    rule out.
     """
     result = run(["--count", "3"])
 
-    assert result.questions.polls == 3
+    assert result.questions.checks == 3
 
 
 def test_stops_reading_the_keyboard_when_the_watch_ends() -> None:
@@ -1348,7 +1351,7 @@ def test_reads_no_keyboard_where_stdin_is_not_a_terminal() -> None:
     """A pipe, CI, output redirected to a file: nobody is typing, and lines arriving on
     ``stdin`` are a script rather than an Operator. No reader is started — this is the one
     test that gives the command no ``Questions`` of its own — and the Watch runs on what
-    ``--ask`` gave it (ADR-0009).
+    ``--ask`` gave it (ADR-0010).
     """
     out, err = io.StringIO(), io.StringIO()
     model = FakeVisionModel(make_identity(), [make_observation(text) for text in TEXTS])

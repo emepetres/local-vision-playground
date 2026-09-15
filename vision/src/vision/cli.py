@@ -301,7 +301,7 @@ def watch_main(
             # for — a Variant that will not load, a camera that is not there, Ctrl+C during
             # either — take the reader of the Operator's keystrokes down with them rather
             # than leaving one reading a keyboard nobody is watching the output of.
-            questions = _resolve_questions(questions, stdin)
+            questions = _resolve_questions(questions, stdin, out)
             lifetime.callback(questions.stop)
             ready = bring_up(model, clock=clock, out=out)
             lifetime.callback(ready.model.unload)
@@ -753,19 +753,21 @@ def _resolve_foundry(foundry: FoundryLocal | None, owned: list[Callable[[], None
     return real
 
 
-def _resolve_questions(questions: Questions | None, stdin: TextIO | None) -> Questions:
+def _resolve_questions(questions: Questions | None, stdin: TextIO | None, out: TextIO) -> Questions:
     """The keyboard a Watch is steered from, unless a caller handed one in.
 
     ``stdin`` rather than a caller's stream is the default for the reason the real clock
     and the real sleep are: this is where the machine the command runs on is named, and a
-    test names its own. Imported here, beside the resolving, as the rest of them are.
+    test names its own. The keyboard is given the Watch's own ``out`` so the prompt it draws
+    and the keystrokes it echoes land in the same stream the Observations do. Imported here,
+    beside the resolving, as the rest of them are.
     """
     if questions is not None:
         return questions
 
     from vision.keyboard import read_the_keyboard
 
-    return read_the_keyboard(stdin if stdin is not None else sys.stdin)
+    return read_the_keyboard(stdin if stdin is not None else sys.stdin, out)
 
 
 def _resolve_clock(clock: Clock | None) -> Clock:

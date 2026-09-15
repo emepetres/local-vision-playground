@@ -119,8 +119,10 @@ def main(
 
     owned: list[Callable[[], None]] = []
     try:
-        # Asked before Foundry Local is started, as a Watch asks its own invariants.
-        require_a_scene_question(args.ask)
+        # Asked before Foundry Local is started, as a Watch asks its own invariants; the
+        # normalised question it hands back is what the model is asked, so --ask and a typed
+        # line stand for one question and not two.
+        question = require_a_scene_question(args.ask)
         default_camera, keep_in = _source(args, open_feed, frames_dir)
         if camera is None:
             camera = default_camera
@@ -132,7 +134,7 @@ def main(
             foundry=foundry,
             clock=clock,
             model_name=args.model,
-            question=args.ask,
+            question=question,
             out=out,
             keep_in=keep_in,
         )
@@ -171,7 +173,7 @@ def benchmark_main(
         # Asked here for the reason ``observe`` asks it before its own model load, with one
         # more behind it: a Benchmark that took the mistake to the hardware would download
         # and load every Variant before saying anything.
-        require_a_scene_question(args.ask)
+        question = require_a_scene_question(args.ask)
         if camera is None:
             camera = _benchmark_source(args.image)
         foundry = _resolve_foundry(foundry, owned)
@@ -181,7 +183,7 @@ def benchmark_main(
         # re-encode it, and a Workload is the Frame's bytes rather than its resolution.
         # The Scene Question joins them here and nowhere else, so one question stands over
         # the whole sitting; what that costs and what it buys is in ``_add_ask``.
-        workload = Workload(prompt=args.ask, frame=camera.capture())
+        workload = Workload(prompt=question, frame=camera.capture())
         benchmark = measure(
             foundry=foundry,
             clock=clock,
@@ -279,7 +281,7 @@ def watch_main(
         # the reason ``observe`` asks it early: a Watch that took the mistake to the
         # hardware would settle a camera and load the model before saying the question
         # the whole run was to stand on was never there.
-        require_a_scene_question(args.ask)
+        question = require_a_scene_question(args.ask)
         foundry = _resolve_foundry(foundry, owned)
         clock = _resolve_clock(clock)
         sleep = _resolve_sleep(sleep)
@@ -313,7 +315,7 @@ def watch_main(
                 model=ready.identity,
                 provenance=provenance,
                 cadence=args.every,
-                question=args.ask,
+                question=question,
                 providers=providers,
                 load=ready.load,
                 settling=settling,

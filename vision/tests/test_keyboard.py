@@ -104,6 +104,16 @@ def test_there_is_no_keyboard_where_there_is_no_terminal() -> None:
     assert reader.pending() is None
 
 
+def test_there_is_no_keyboard_where_there_is_no_stdin() -> None:
+    """A process launched with no console at all — ``pythonw``, a detached or GUI-launched
+    run — has no ``stdin`` to ask ``isatty`` of, which is still nobody typing and must
+    degrade to ``NoQuestions`` rather than raising on ``None.isatty()``."""
+    reader = read_the_keyboard(None)
+
+    assert isinstance(reader, NoQuestions)
+    assert reader.pending() is None
+
+
 def test_a_terminal_is_read() -> None:
     lines = _Terminal(f"{QUESTION}\n")
     reader = read_the_keyboard(lines)

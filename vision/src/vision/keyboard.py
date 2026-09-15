@@ -95,7 +95,7 @@ class TypedLines:
             self._typed = None
 
 
-def read_the_keyboard(lines: TextIO) -> Questions:
+def read_the_keyboard(lines: TextIO | None) -> Questions:
     """A reader on the Operator's keyboard where there is one, and no reader where there is not.
 
     ``stdin`` that is not a terminal — a pipe, CI, a Watch whose output was redirected to a
@@ -103,8 +103,13 @@ def read_the_keyboard(lines: TextIO) -> Questions:
     Operator. So no reader is started at all and the Watch runs on whatever ``--ask`` gave
     it, in the same spirit as the progress bars taking themselves off when the output is
     not a terminal (ADR-0009).
+
+    ``None`` is the same fact one step further along: a process launched without a console
+    at all (``pythonw`` on Windows, a detached or GUI-launched run) has no ``stdin`` object
+    to ask ``isatty`` of. That is still nobody typing, so it degrades to ``NoQuestions``
+    rather than raising — a Watch with no keyboard runs, it just cannot be steered.
     """
-    if not lines.isatty():
+    if lines is None or not lines.isatty():
         return NoQuestions()
     reader = TypedLines(lines)
     reader.start()

@@ -528,6 +528,18 @@ def test_puts_the_scene_question_on_every_benchmark_run_of_every_variant() -> No
     assert all(workload.temperature == 0.0 for workload in observed)
 
 
+def test_normalises_the_surrounding_whitespace_of_a_scene_question() -> None:
+    """``--ask "cups "`` and ``--ask "cups"`` are one question, so their records stay
+    comparable: the surrounding whitespace is stripped before it reaches the Workload, the
+    same way a typed line is stripped in a Watch."""
+    result = run(["--ask", f"  {CUPS}\t"])
+
+    assert result.code == 0
+    observed = [*result.gpu.observed, *result.cpu.observed]
+    assert observed
+    assert all(workload.prompt == CUPS for workload in observed)
+
+
 def test_reports_the_scene_question_above_the_variant_blocks() -> None:
     """Above the blocks, where the Workload is: a reader months later has to be able to
     tell whether two Benchmarks were measuring the same question at all.

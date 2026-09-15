@@ -213,8 +213,8 @@ class FoundryLocal(Protocol):
         ...
 
 
-def require_a_scene_question(question: str) -> None:
-    """Refuse a Scene Question that asks nothing, before a model is touched.
+def require_a_scene_question(question: str) -> str:
+    """Refuse a Scene Question that asks nothing, and return the one that was asked.
 
     ``--ask ""`` is a shell-quoting mistake rather than an intention — an Operator who
     wanted the Frame described would have left the flag off — and a Workload built from it
@@ -222,12 +222,20 @@ def require_a_scene_question(question: str) -> None:
     A silent answer to a question nobody asked is the worst thing this could do in front of
     an audience, so it is said out loud instead.
 
+    The question is returned with its surrounding whitespace removed, and that is the value
+    the commands go on to use: it is the same normalisation a typed line gets in the Watch
+    (``watch._standing_question``), so ``--ask "cups "`` and a keystroke of ``cups`` stand
+    for one question and not two. For ``benchmark`` that is what keeps two operators' runs
+    of the same question comparable (docs/benchmarks/); for ``watch`` it keeps retyping the
+    standing question from being read as a change.
+
     It lives here, beside the prompt it stands in for, because it is a fact about a Scene
     Question rather than about the flag that carries one — which is also why it is asked
     before Foundry Local is started, as the other commands ask their own invariants.
     """
-    if question.strip():
-        return
+    asked = question.strip()
+    if asked:
+        return asked
     raise VisionError(
         "--ask was given no question — pass one in quotes"
         ' (--ask "is anyone looking at the camera?"), or leave --ask off to have the'

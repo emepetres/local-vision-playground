@@ -101,33 +101,70 @@ _Avoid_: lag, delay, drift, overrun, backlog
 
 ### Runtime
 
+**Runtime**:
+What loads a model onto the machine and runs it on an [[Execution Provider]]. This project
+uses two: [[Foundry Local]] and [[OpenVINO GenAI]]. A Runtime is not an implementation
+detail of a [[Variant]] — it is the reason naming the hardware is no longer enough: the
+same Execution Provider reached through two Runtimes is two different measurements, which
+is why a [[Hardware Profile]] names one.
+_Avoid_: engine, framework, backend, provider
+
 **Foundry Local**:
-Microsoft's on-device model runtime, which serves models from the local machine over a local endpoint.
+Microsoft's on-device model runtime, which serves models from the local machine over a
+local endpoint. The Runtime *with a catalogue*: it publishes [[Variant]]s, and given an
+[[Alias]] it chooses the [[Execution Provider]] for you.
 _Avoid_: Local Foundry, the runtime, the service
 
+**OpenVINO GenAI**:
+Intel's on-device inference runtime, and the second [[Runtime]] this project uses. It has
+no catalogue: it runs a model already on disk, on the [[Execution Provider]] it is told to
+use, and never chooses one. It is here because Foundry Local's catalogue on the demo
+machine publishes no vision build beyond CPU — the NPU and the Arc iGPU are reachable only
+through it.
+_Avoid_: OpenVINO, OV, the Intel runtime
+
 **Execution Provider**:
-The hardware backend the model is dispatched to — NPU, GPU or CPU. Which one is chosen is what a Benchmark Run is measuring.
+The hardware backend the model is dispatched to — NPU, GPU or CPU. The term is this
+project's own rather than any one [[Runtime]]'s: Foundry Local carries it inside a Variant
+id, OpenVINO GenAI receives it as the device it is told to run on. Which one is used is
+what a Benchmark Run is measuring.
 _Avoid_: accelerator, device, backend, target
+
+The avoided words belong to one Runtime or another. "Device" in particular is OpenVINO's
+own word for this, which is exactly why it is not ours.
 
 **Alias**:
 The name of a model without a hardware or a version attached — `qwen3-vl-2b-instruct`.
 Naming one leaves the choice of Execution Provider to Foundry Local, which is why an
-Alias alone cannot name a Hardware Profile.
+Alias alone cannot name a Hardware Profile. An Alias is a [[Foundry Local]] concept only:
+the second [[Runtime]] has no catalogue to ask and never chooses hardware for you.
 _Avoid_: model name, model id, family
 
 **Variant**:
-One build of a model for one Execution Provider, version suffix included —
-`qwen3-vl-2b-instruct-generic-cpu:2`. Naming a Variant instead of an Alias is the only
-lever there is over which hardware the work runs on; nothing selects an Execution
-Provider directly.
+One build of a model for one Execution Provider, belonging to exactly one [[Runtime]].
+Naming a Variant instead of an Alias is the only lever there is over which hardware the
+work runs on; nothing selects an Execution Provider directly.
 
-A Variant is *identified* by its **Variant id**, which carries the version, and *named* by
-its **Variant name**, which does not — `qwen3-vl-2b-instruct-generic-cpu`. The name is the
-Variant across every version of it, so naming one leaves the version to the catalogue,
-exactly as an Alias leaves the Execution Provider to Foundry Local. That is what lets a
-Variant be named in source without a version being written there with it — and it is why
-the id that was actually resolved is always reported.
+What identifies a Variant is whatever its Runtime can say about it. [[Foundry Local]]
+publishes them, so one of its Variants is *identified* by its **Variant id**, which carries
+the version — `qwen3-vl-2b-instruct-generic-cpu:2` — and *named* by its **Variant name**,
+which does not — `qwen3-vl-2b-instruct-generic-cpu`. The name is the Variant across every
+version of it, so naming one leaves the version to the catalogue, exactly as an Alias
+leaves the Execution Provider to Foundry Local. That is what lets a Variant be named in
+source without a version being written there with it — and it is why the id that was
+actually resolved is always reported.
+
+A Variant we built ourselves has no catalogue behind it and therefore no id to resolve. It
+is identified by its [[Provenance]] instead.
 _Avoid_: build, flavour, SKU, model version
+
+**Provenance**:
+What a [[Variant]] no catalogue published is identified by: the weights it came from, the
+recipe it was exported with, and the [[Execution Provider]] it was exported for. It is the
+half of a Variant's identity that a Variant id hands over for free — so a [[Foundry Local]]
+Variant satisfies it by naming its id, and one of ours has to state it. A path on disk is
+not an identity, and a Benchmark is persisted to be read months later.
+_Avoid_: source, origin, lineage, recipe
 
 **Local-First**:
 The constraint that every stage — capture, understanding and action — runs on the Operator's machine, with no request leaving it. It is the reason the project exists, not an optimisation applied to it.
@@ -178,11 +215,15 @@ one number; a Benchmark is what is worth keeping.
 _Avoid_: run, suite, comparison, benchmark run
 
 **Hardware Profile**:
-The machine-and-Execution-Provider combination a Benchmark Run is attributed to. Foundry
-Local names the Execution Provider; the machine is whatever the Operator declares it to be,
-so a Hardware Profile is only as trustworthy as what they wrote down. Two Benchmark Runs are
-only comparable when named against their Hardware Profiles — and only then if their
-Workloads match.
+The machine, [[Runtime]] and [[Execution Provider]] combination a Benchmark Run is
+attributed to. The Runtime is part of it rather than bookkeeping around it: a Hardware
+Profile exists to authorise a comparison, and two Benchmark Runs on the same CPU through
+different Runtimes are not the same measurement — they are the calibration between the two
+Runtimes, which is the one pair a Benchmark most needs to keep apart. The Runtime names the
+Execution Provider; the machine is whatever the Operator declares it to be, so a Hardware
+Profile is only as trustworthy as what they wrote down. Two Benchmark Runs are only
+comparable when named against their Hardware Profiles — and only then if their Workloads
+match.
 _Avoid_: rig, environment, setup, config
 
 ### Action

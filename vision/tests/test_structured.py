@@ -37,6 +37,21 @@ def test_reads_the_array_out_of_surrounding_prose() -> None:
     assert parse_objects_present(reply) == ObjectsPresent((PresentObject("chair", 3),))
 
 
+def test_a_stray_bracket_in_prose_after_a_closed_array_does_not_defeat_it() -> None:
+    """Decoding stops at the closed array, so a later '[' or a ':]' does not drag into the span."""
+    reply = '[{"name": "cup", "count": 1}] (that is all I can see) [end] :]'
+
+    assert parse_objects_present(reply) == ObjectsPresent((PresentObject("cup", 1),))
+
+
+def test_a_non_conforming_element_salvages_the_objects_that_closed_before_it() -> None:
+    """A complete array with a bad element in the middle keeps the objects before it, like the
+    truncated path, rather than throwing the whole list away."""
+    reply = '[{"name": "cup", "count": 2}, "lamp", {"name": "book", "count": 1}]'
+
+    assert parse_objects_present(reply) == ObjectsPresent((PresentObject("cup", 2),))
+
+
 def test_prose_with_no_array_is_a_no_shape() -> None:
     shape = parse_objects_present("I can see a desk with a laptop and a mug on it.")
 

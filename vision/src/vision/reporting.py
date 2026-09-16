@@ -136,8 +136,11 @@ def render_structured_observation(
     # array and go on generating until the output limit stops it. An Operator shown a list
     # with no note reads it as complete — and a Benchmark that mixed a truncated list with a
     # full one would compare shapes it cannot vouch for (ADR-0011). A NoShape already carries
-    # its own reason, the limit included, so the note is only owed where a list is shown.
-    if isinstance(observation.shape, ObjectsPresent) and observation.truncated:
+    # its own reason, the limit included, so the note is only owed where a list is shown — and
+    # an empty list is "nothing present", which the note would flatly contradict, so it is
+    # owed only where objects were actually listed.
+    shape = observation.shape
+    if isinstance(shape, ObjectsPresent) and shape.objects and observation.truncated:
         limit = _output_limit(workload.max_output_tokens)
         lines += ["", f"(truncated: the list may be incomplete — the Observation hit {limit})"]
     return "\n".join(lines) + "\n"
@@ -330,14 +333,17 @@ def _structured_clauses(observed: WatchedStructuredObservation) -> list[str]:
 
     Truncation is noted only where a list was actually shown: a parseable list can still have
     been cut short — the model closes the array and generates on until the limit stops it — and
-    an Operator shown one with no note reads it as complete. A "no shape" outcome already
-    carries the limit in its own reason where truncation left nothing to salvage, so noting it
-    again on the line would say the same thing twice (see ``_shape_lines`` and ADR-0011).
+    an Operator shown one with no note reads it as complete. An empty list is "nothing present",
+    which the note would contradict, so it is owed only where objects were listed. A "no shape"
+    outcome already carries the limit in its own reason where truncation left nothing to
+    salvage, so noting it again on the line would say the same thing twice (see ``_shape_lines``
+    and ADR-0011).
     """
     limit = _output_limit(observed.max_output_tokens)
+    shape = observed.shape
     truncation = (
         f"truncated — the list may be incomplete, it hit {limit}"
-        if isinstance(observed.shape, ObjectsPresent) and observed.truncated
+        if isinstance(shape, ObjectsPresent) and shape.objects and observed.truncated
         else None
     )
     return _cadence_clauses(observed, truncation)

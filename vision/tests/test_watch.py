@@ -1554,6 +1554,24 @@ def test_structured_notes_on_the_line_a_list_cut_short_by_the_output_limit() -> 
     )
 
 
+def test_structured_does_not_note_an_empty_list_cut_short() -> None:
+    """"Nothing present" under truncation stays that: the "may be incomplete" note would
+    contradict it, so an empty list carries no truncation clause."""
+    model = FakeVisionModel(
+        make_identity(),
+        [],
+        structured=[make_structured_observation(ObjectsPresent(()), FinishReason.TRUNCATED)],
+    )
+    result = run(["--count", "1", "--structured"], model=model, observations=1)
+
+    assert result.code == 0
+    assert result.out == (
+        HEADER
+        + structured_block(1, "nothing present")
+        + "\n1 Observation, median inference 1.000 s\n"
+    )
+
+
 def test_structured_overrides_ask_and_sends_the_fixed_shape() -> None:
     """Passing both --structured and --ask uses the fixed shape, not the question."""
     result = run(

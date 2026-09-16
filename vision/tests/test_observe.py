@@ -557,6 +557,20 @@ def test_structured_notes_a_list_cut_short_by_the_output_limit() -> None:
     )
 
 
+def test_structured_does_not_flag_an_empty_list_as_maybe_incomplete() -> None:
+    """"Nothing present" under truncation still means nothing present — the "may be incomplete"
+    note would contradict it, so it is not shown for an empty list."""
+    model = FakeVisionModel(
+        make_identity(),
+        [],
+        structured=[make_structured_observation(ObjectsPresent(()), FinishReason.TRUNCATED)],
+    )
+    result = run(["--image", "a.jpg", "--structured"], model=model)
+
+    assert result.code == 0
+    assert result.out == f"{REPORT}\nnothing present\n"
+
+
 def test_structured_overrides_ask_and_sends_the_fixed_shape() -> None:
     """Passing both --structured and --ask uses the fixed shape, not the question."""
     model = FakeVisionModel(

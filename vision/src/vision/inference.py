@@ -611,36 +611,42 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
     The fall-back the spike behind issue #30 landed on: `qwen3-vl-2b-instruct` never honours
     a forced tool call but answers a JSON-in-prompt request in the exact ``{name, count}``
     shape, wrapped in a markdown code fence and sometimes truncated mid-array when the output
-    limit stops generation. So the fence is stripped, the array is taken from the first ``[``
-    to the last ``]``, and anything that then fails to parse or to validate is a ``NoShape``
-    carrying its reason rather than an exception (ADR-0011).
+    limit stops generation. So the fence is stripped, the first complete JSON array is decoded
+    from the opening ``[`` — anything the model runs on with past the closing ``]`` is ignored
+    rather than dragging a stray bracket into the span and defeating the parse (a trailing
+    ``:]`` or a second ``[end]`` used to discard a well-formed answer) — and anything that then
+    fails to parse or to validate is a ``NoShape`` carrying its reason rather than an exception
+    (ADR-0011).
 
-    A **truncated** array is repaired rather than discarded: the objects that finished before
-    the output limit cut in are real, so they are salvaged one at a time and only the
-    incomplete tail is dropped (the repair the spike named). What comes back is the recovered
-    list — the caller's ``finish_reason`` still says it was truncated, which is what has the
-    report note it may be short — and a truncation that cut in before even the first object
-    closed leaves nothing to salvage and names the limit instead.
+    A **mostly-valid** array is repaired rather than discarded, whether the output limit cut it
+    off or a single element simply did not match: the objects that closed before the first bad
+    one are real, so they are salvaged and only the tail is dropped (the repair the spike
+    named), and the two paths agree on it rather than one salvaging while the other throws the
+    lot away. What comes back is the recovered list — the caller's ``finish_reason`` still says
+    whether it was truncated, which is what has the report note it may be short. Nothing
+    salvageable is a ``NoShape``: the limit named where truncation left an empty prefix, the
+    ``{name, count}`` shape named where a complete reply's every element missed it.
     """
     cut_off = "the model's list of objects was cut off by the output limit before it closed"
 
     start = text.find("[")
-    end = text.rfind("]")
-    if start == -1 or end <= start:
-        # No closed array. Under truncation the array may have opened and been cut off with
-        # complete objects already in it, so salvage those before giving up on a shape.
+    if start == -1:
+        # No array opened at all, so there is nothing to read and nothing to salvage; both the
+        # truncated and the complete case say what is wrong rather than raise.
         if truncated:
-            return _salvage(text, start, cut_off)
+            return NoShape(cut_off)
         return NoShape(
             "the model answered in prose instead of the list of objects the shape asks for"
         )
 
     try:
-        parsed = json.loads(text[start : end + 1])
+        # From the opening ``[`` only, so prose trailing the closed array — or a stray ``]`` in
+        # it — is left out of the span rather than pulled in by a last-``]`` search.
+        parsed, _ = json.JSONDecoder().raw_decode(text, start)
     except json.JSONDecodeError:
-        # A ``]`` inside a string value can leave brackets on both sides of a reply the
-        # output limit cut off mid-array, so a decode failure under truncation salvages the
-        # complete objects rather than reading as ordinary malformed JSON.
+        # The array did not decode whole: the output limit cut it off mid-element, or a ``]``
+        # inside a string value left brackets that will not parse. Under truncation salvage the
+        # complete objects at its front; otherwise it is ordinary malformed JSON.
         if truncated:
             return _salvage(text, start, cut_off)
         return NoShape("the model's reply was not the well-formed JSON the shape asks for")
@@ -652,9 +658,19 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
     for element in parsed:
         present = _present_object(element)
         if present is None:
-            return NoShape("the model's reply did not match the expected {name, count} shape")
+            break
         objects.append(present)
-    return ObjectsPresent(tuple(objects))
+    else:
+        return ObjectsPresent(tuple(objects))
+
+    # A non-conforming element stopped the read. The objects that closed before it are real and
+    # are shown — the same salvage the truncated path makes — and only when none closed is there
+    # no shape: the limit's doing under truncation, a reply that never matched it otherwise.
+    if objects:
+        return ObjectsPresent(tuple(objects))
+    if truncated:
+        return NoShape(cut_off)
+    return NoShape("the model's reply did not match the expected {name, count} shape")
 
 
 def _salvage(text: str, start: int, cut_off: str) -> Shape:

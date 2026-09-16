@@ -180,8 +180,10 @@ def benchmark_main(
         require_a_benchmark_run(args.repetitions)
         # Asked here for the reason ``observe`` asks it before its own model load, with one
         # more behind it: a Benchmark that took the mistake to the hardware would download
-        # and load every Variant before saying anything.
-        question = require_a_scene_question(args.ask)
+        # and load every Variant before saying anything. Not asked at all in structured
+        # mode: the request is the fixed shape, so --structured overrides --ask and an empty
+        # --ask beside it is not the mistake it is on its own — the same rule ``observe`` keeps.
+        prompt = STRUCTURED_PROMPT if args.structured else require_a_scene_question(args.ask)
         if camera is None:
             camera = _benchmark_source(args.image)
         foundry = _resolve_foundry(foundry, owned)
@@ -189,9 +191,11 @@ def benchmark_main(
 
         # Read once, and reuse these exact bytes: re-reading the file per repetition would
         # re-encode it, and a Workload is the Frame's bytes rather than its resolution.
-        # The Scene Question joins them here and nowhere else, so one question stands over
-        # the whole sitting; what that costs and what it buys is in ``_add_ask``.
-        workload = Workload(prompt=question, frame=camera.capture())
+        # The prompt joins them here and nowhere else, so one Workload stands over the whole
+        # sitting; what that costs and what it buys is in ``_add_ask``. The fixed shape is a
+        # prompt like any other, which is what keeps two structured runs comparable only when
+        # they share it, as they must share the Frame and the limits (ADR-0011).
+        workload = Workload(prompt=prompt, frame=camera.capture())
         benchmark = measure(
             foundry=foundry,
             clock=clock,
@@ -199,6 +203,7 @@ def benchmark_main(
             workload=workload,
             repetitions=args.repetitions,
             out=out,
+            structured=args.structured,
         )
     except Exception as error:
         return _fail(error, debug=args.debug, err=err)
@@ -573,6 +578,7 @@ def _benchmark_parser() -> argparse.ArgumentParser:
             " measured different amounts of generation and are not comparable."
         ),
     )
+    _add_structured(parser)
     _add_variants(parser)
     _add_debug(parser)
     return parser

@@ -20,9 +20,11 @@ from datetime import datetime
 from pathlib import Path
 
 from vision.benchmark import (
+    AnyBenchmarkRun,
     Benchmark,
     MeasuredVariant,
     Spread,
+    StructuredBenchmarkRun,
     TokenDivergence,
     UnmeasuredVariant,
 )
@@ -795,13 +797,40 @@ def _markdown_observations(benchmark: Benchmark) -> list[str]:
 
     Whether the CPU says the same thing as the GPU is the more interesting question once
     the latency gap turns out to be eightfold, and a table of seconds cannot be asked it.
+
+    What "said" means depends on which shape the sitting asked for: a prose Variant is quoted
+    as a block, and a structured one is shown as the list of objects it reported — the same
+    data the JSON beside this file carries, laid out for a person (ADR-0008, ADR-0011). Both
+    are read from the cold Benchmark Run, the one the reports already single out.
     """
     if not benchmark.measured:
         return []
     lines = ["## What each Variant saw"]
     for variant in benchmark.measured:
-        lines += ["", f"**{variant.model.variant}**", "", *_quoted(variant.observation)]
+        lines += ["", f"**{variant.model.variant}**", "", *_seen(variant.first)]
     return lines
+
+
+def _seen(run: AnyBenchmarkRun) -> list[str]:
+    """The cold Benchmark Run's answer as Markdown — its prose, or the shape it came to."""
+    if isinstance(run, StructuredBenchmarkRun):
+        return _objects_seen(run.shape)
+    return _quoted(run.text)
+
+
+def _objects_seen(shape: ObjectsPresent | NoShape) -> list[str]:
+    """A Structured Observation's shape as a Markdown list, or the reason there is none.
+
+    The objects as data rather than a paragraph, so the Markdown shows the same list the JSON
+    records — an empty list says "nothing present" in words rather than as a blank a reader
+    has to read as either an answer or a failure, and a ``NoShape`` says so as its reason: an
+    ordinary "no shape" outcome, never a silent degrade to prose (ADR-0011).
+    """
+    if isinstance(shape, NoShape):
+        return [f"_No shape — {shape.reason}._"]
+    if not shape.objects:
+        return ["_Nothing present._"]
+    return [f"- {present.count} × {present.name}" for present in shape.objects]
 
 
 def _quoted(text: str) -> list[str]:

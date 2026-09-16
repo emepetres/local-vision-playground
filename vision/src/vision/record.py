@@ -32,8 +32,14 @@ from itertools import count
 from pathlib import Path
 from typing import Any
 
-from vision.benchmark import Benchmark, MeasuredVariant, UnmeasuredVariant
-from vision.inference import Workload
+from vision.benchmark import (
+    AnyBenchmarkRun,
+    Benchmark,
+    MeasuredVariant,
+    StructuredBenchmarkRun,
+    UnmeasuredVariant,
+)
+from vision.inference import NoShape, Shape, Workload
 from vision.reporting import render_benchmark_markdown
 
 SCHEMA_VERSION = 1
@@ -155,7 +161,9 @@ def as_record(benchmark: Benchmark, *, profile: str, at: datetime) -> dict[str, 
         # The list is in the order the Variants were measured in, and each one carries the
         # turn it took as well — so a record read back through a tool that sorts the rows
         # has not thereby lost what the order was.
-        "variants": [_variant(variant) for variant in benchmark.variants],
+        "variants": [
+            _variant(variant, structured=benchmark.structured) for variant in benchmark.variants
+        ],
         "token_divergence": _divergence(benchmark),
     }
 
@@ -183,13 +191,16 @@ def _workload(workload: Workload) -> dict[str, Any]:
     }
 
 
-def _variant(variant: MeasuredVariant | UnmeasuredVariant) -> dict[str, Any]:
+def _variant(variant: MeasuredVariant | UnmeasuredVariant, *, structured: bool) -> dict[str, Any]:
     """One Variant as it is written down, whether or not it ever got onto the hardware.
 
     Both kinds are written in the same shape, with the same keys present either way: a
     reader that had to discover which kind of Variant it was holding before it could read
     any field would make an Unmeasured Variant an exception again, in a record whose whole
-    point is that it is not one (ADR-0007).
+    point is that it is not one (ADR-0007). ``structured`` fixes that shape for the whole
+    sitting: a prose Variant carries its ``observation`` and a structured one carries its
+    ``objects`` (and the reason there was no shape), so every Variant in one record — the
+    Unmeasured ones included — carries the answer keys of the kind of Benchmark it belongs to.
     """
     identity = variant.model
     recorded: dict[str, Any] = {
@@ -202,7 +213,7 @@ def _variant(variant: MeasuredVariant | UnmeasuredVariant) -> dict[str, Any]:
         "reason": None,
         "load": None,
         "runs": [],
-        "observation": None,
+        **_empty_answer(structured),
     }
     if isinstance(variant, UnmeasuredVariant):
         recorded["reason"] = variant.reason
@@ -217,8 +228,44 @@ def _variant(variant: MeasuredVariant | UnmeasuredVariant) -> dict[str, Any]:
         }
         for run in variant.runs
     ]
-    recorded["observation"] = variant.observation
+    recorded.update(_answer(variant.first))
     return recorded
+
+
+def _empty_answer(structured: bool) -> dict[str, Any]:
+    """The answer keys a Variant with nothing to say carries, in this sitting's shape.
+
+    The keys are the same whether the Variant was measured or not, so that a reader never has
+    to know which kind it is holding to read them (ADR-0007). Which keys they are is the
+    sitting's, not the Variant's: a structured Benchmark's rows carry ``objects`` where a
+    prose Benchmark's carry ``observation``.
+    """
+    if structured:
+        return {"objects": None, "no_shape": None}
+    return {"observation": None}
+
+
+def _answer(run: AnyBenchmarkRun) -> dict[str, Any]:
+    """What the cold Benchmark Run said, as the machine-readable answer for its kind.
+
+    Prose is one string. A Structured Observation is the list of objects as data — not a
+    quoted paragraph — so that a later tool reads the objects rather than parsing them back
+    out of prose; a "no shape" run carries no objects and the reason it had none instead
+    (ADR-0008, ADR-0011).
+    """
+    if isinstance(run, StructuredBenchmarkRun):
+        return _shape(run.shape)
+    return {"observation": run.text}
+
+
+def _shape(shape: Shape) -> dict[str, Any]:
+    """A Structured Observation's shape as record fields: the objects, or the "no shape" reason."""
+    if isinstance(shape, NoShape):
+        return {"objects": None, "no_shape": shape.reason}
+    return {
+        "objects": [{"name": present.name, "count": present.count} for present in shape.objects],
+        "no_shape": None,
+    }
 
 
 def _divergence(benchmark: Benchmark) -> dict[str, Any] | None:

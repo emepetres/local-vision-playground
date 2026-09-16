@@ -24,12 +24,24 @@ from tests.fakes import (
     make_frame,
     make_identity,
     make_observation,
+    make_structured_observation,
 )
 from vision.benchmark import Benchmark, BenchmarkRun, MeasuredVariant
 from vision.capture import REFERENCE_FRAME
 from vision.cli import benchmark_main
 from vision.errors import VisionError
-from vision.inference import DEFAULT_VARIANTS, PROMPT, FinishReason, ModelIdentity, Workload
+from vision.inference import (
+    DEFAULT_VARIANTS,
+    PROMPT,
+    STRUCTURED_PROMPT,
+    FinishReason,
+    ModelIdentity,
+    NoShape,
+    ObjectsPresent,
+    PresentObject,
+    Shape,
+    Workload,
+)
 from vision.record import benchmarks_directory
 
 GPU_VARIANT, CPU_VARIANT = DEFAULT_VARIANTS
@@ -158,6 +170,74 @@ def make_cpu(
         CPU_IDENTITY,
         [make_observation(completion_tokens=count) for count in tokens],
         events=events,
+    )
+
+
+GPU_OBJECTS = (PresentObject("cup", 2), PresentObject("laptop", 1))
+"""The shape the GPU Variant reports for the fixed-shape Workload, when a test wants a known one."""
+
+CPU_OBJECTS = (PresentObject("cup", 2), PresentObject("book", 3))
+"""The CPU Variant's shape — different objects from the GPU's, so a test can tell them apart."""
+
+
+def _structured(
+    identity: ModelIdentity,
+    shapes: tuple[Shape, ...],
+    tokens: tuple[int, ...],
+    *,
+    events: list[str] | None = None,
+) -> FakeVisionModel:
+    """A model that answers the fixed-shape Workload with a prepared shape per repetition."""
+    return FakeVisionModel(
+        identity,
+        [],
+        structured=[
+            make_structured_observation(shape, completion_tokens=count)
+            for shape, count in zip(shapes, tokens, strict=True)
+        ],
+        events=events,
+    )
+
+
+def make_structured_gpu(
+    shapes: tuple[Shape, ...] | None = None,
+    tokens: tuple[int, ...] = COMPLETION_TOKENS,
+    *,
+    events: list[str] | None = None,
+) -> FakeVisionModel:
+    """The GPU Variant answering the fixed shape, one prepared shape per Benchmark Run."""
+    shapes = shapes if shapes is not None else tuple(ObjectsPresent(GPU_OBJECTS) for _ in tokens)
+    return _structured(make_identity(), shapes, tokens, events=events)
+
+
+def make_structured_cpu(
+    shapes: tuple[Shape, ...] | None = None,
+    tokens: tuple[int, ...] = COMPLETION_TOKENS,
+    *,
+    events: list[str] | None = None,
+) -> FakeVisionModel:
+    shapes = shapes if shapes is not None else tuple(ObjectsPresent(CPU_OBJECTS) for _ in tokens)
+    return _structured(CPU_IDENTITY, shapes, tokens, events=events)
+
+
+def run_structured(
+    argv: list[str] | None = None,
+    *,
+    gpu: FakeVisionModel | None = None,
+    cpu: FakeVisionModel | None = None,
+    readings: tuple[float, ...] = READINGS,
+) -> Run:
+    """A ``--structured`` sitting: both default Variants answer the fixed shape.
+
+    The clock is read exactly as the prose path reads it — one timed inference per run — so
+    the same readings drive it, and the numeric tables come out identical to prose's with the
+    fixed-shape prompt in the header instead of the description.
+    """
+    return run(
+        ["--structured", *(argv or [])],
+        gpu=gpu if gpu is not None else make_structured_gpu(),
+        cpu=cpu if cpu is not None else make_structured_cpu(),
+        readings=readings,
     )
 
 
@@ -977,6 +1057,100 @@ def test_renders_a_benchmark_that_no_clock_and_no_model_ever_touched() -> None:
     from vision.reporting import render_benchmark
 
     assert render_benchmark(_benchmark_of(COMPLETION_TOKENS, COMPLETION_TOKENS)) == REPORT
+
+
+STRUCTURED_HEADER = HEADER.replace(
+    f"Prompt       {PROMPT}\n", f"Prompt       {STRUCTURED_PROMPT}\n"
+)
+"""The prose header with the fixed-shape request in the Prompt row — the one thing that moves."""
+
+STRUCTURED_REPORT = f"{STRUCTURED_HEADER}\n{GPU_BLOCK}\n{CPU_BLOCK}"
+"""The same numeric tables prose renders: the terminal shows numbers, not the objects (ADR-0008)."""
+
+
+def test_structured_measures_the_fixed_shape_against_each_variant() -> None:
+    """--structured crosses the model port through observe_structured, not observe, and does
+    it for every repetition of every Variant."""
+    result = run_structured()
+
+    assert result.code == 0
+    assert result.err == ""
+    assert len(result.gpu.observed_structured) == 5
+    assert len(result.cpu.observed_structured) == 5
+    assert result.gpu.observed == []
+    assert result.cpu.observed == []
+    assert result.events == [
+        "resolve",
+        "resolve",
+        "register",
+        "load",
+        *["observe_structured"] * 5,
+        "unload",
+        "load",
+        *["observe_structured"] * 5,
+        "unload",
+    ]
+
+
+def test_structured_sends_the_fixed_shape_prompt_to_every_benchmark_run() -> None:
+    """The fixed shape is the Workload's prompt, one shape for the whole sitting: two
+    structured runs are comparable only when they share it, as they share the Frame."""
+    result = run_structured()
+
+    observed = [*result.gpu.observed_structured, *result.cpu.observed_structured]
+    assert len(observed) == 10
+    assert all(workload.prompt == STRUCTURED_PROMPT for workload in observed)
+    assert len({id(workload.frame) for workload in observed}) == 1
+    assert all(workload.max_output_tokens == 128 for workload in observed)
+
+
+def test_structured_overrides_ask_and_sends_the_fixed_shape() -> None:
+    """Passing both --structured and --ask measures the fixed shape, not the question."""
+    result = run_structured(["--ask", CUPS])
+
+    assert result.code == 0
+    observed = [*result.gpu.observed_structured, *result.cpu.observed_structured]
+    assert observed
+    assert all(workload.prompt == STRUCTURED_PROMPT for workload in observed)
+
+
+def test_structured_does_not_refuse_an_empty_ask_beside_it() -> None:
+    """--ask "" is a mistake on its own, but --structured ignores --ask entirely."""
+    result = run_structured(["--ask", ""])
+
+    assert result.code == 0
+    assert result.err == ""
+    assert len(result.gpu.observed_structured) == 5
+
+
+def test_structured_renders_the_same_numeric_tables_as_prose() -> None:
+    """The terminal shows numbers whichever shape was asked; only the Prompt row moves, and
+    the objects go to the persisted files rather than onto the screen (ADR-0008)."""
+    result = run_structured()
+
+    assert result.out == STRUCTURED_REPORT + result.recorded
+
+
+def test_structured_records_a_no_shape_run_without_raising_or_becoming_prose() -> None:
+    """A model that declines the fixed shape is a measured "no shape" run, not a failed one:
+    the Variant is measured its full five times and the sitting exits zero (ADR-0011)."""
+    declined = (NoShape("the model answered in prose"),) + tuple(
+        ObjectsPresent(GPU_OBJECTS) for _ in range(4)
+    )
+    gpu = make_structured_gpu(declined)
+    result = run_structured(gpu=gpu)
+
+    assert result.code == 0
+    assert result.err == ""
+    assert len(result.gpu.observed_structured) == 5
+    assert result.gpu.observed == []
+
+
+def test_structured_takes_five_benchmark_runs_per_variant_by_default() -> None:
+    result = run_structured()
+
+    assert len(result.gpu.observed_structured) == 5
+    assert len(result.cpu.observed_structured) == 5
 
 
 def _benchmark_of(gpu_tokens: tuple[int, ...], cpu_tokens: tuple[int, ...]) -> Benchmark:

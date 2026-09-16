@@ -52,7 +52,9 @@ from vision.watch import (
     QuestionChanged,
     Shortfall,
     Watch,
+    WatchedAnswer,
     WatchedObservation,
+    WatchedStructuredObservation,
     WatchStart,
 )
 
@@ -188,11 +190,12 @@ def render_watch_line(produced: Produced) -> str:
     first answer to it and this is the one place that knows where that is: an announcement
     written from anywhere else would race the series it is about (ADR-0009).
     """
-    body = (
-        render_watch_failure(produced)
-        if isinstance(produced, FailedInference)
-        else render_watch_observation(produced)
-    )
+    if isinstance(produced, FailedInference):
+        body = render_watch_failure(produced)
+    elif isinstance(produced, WatchedStructuredObservation):
+        body = render_watch_structured(produced)
+    else:
+        body = render_watch_observation(produced)
     return render_question_changed(produced.changed_question) + body
 
 
@@ -225,6 +228,20 @@ def render_watch_observation(observed: WatchedObservation) -> str:
     has been watching for a minute can still be counted.
     """
     return f"\n#{observed.order}  {', '.join(_observation_clauses(observed))}\n{observed.text}\n"
+
+
+def render_watch_structured(observed: WatchedStructuredObservation) -> str:
+    """One Structured Observation of a Watch: the same line of facts, then the objects present.
+
+    The sibling of ``render_watch_observation``: the ``#N`` line is the one a prose Observation
+    writes — the inference, and whatever else this Cadence is worth saying — and below it sits
+    the shape rather than the prose, laid out as the same aligned list of count and name the
+    single-shot ``observe --structured`` writes (CONTEXT.md, "Structured Observation"). A "no
+    shape" outcome renders as its reason on that line's terms, never a blank and never a
+    degrade to prose (ADR-0011).
+    """
+    body = "\n".join(_shape_lines(observed.shape))
+    return f"\n#{observed.order}  {', '.join(_structured_clauses(observed))}\n{body}\n"
 
 
 def render_question_changed(changed: QuestionChanged | None) -> str:
@@ -294,16 +311,50 @@ def _nothing_produced(watch: Watch) -> str:
 
 
 def _observation_clauses(observed: WatchedObservation) -> list[str]:
-    """What is worth saying about one Observation beyond the text it produced.
+    """What is worth saying about one prose Observation beyond the text it produced.
 
-    The inference always, and then only what actually happened: an Observation that hit the
-    output limit generated exactly that limit rather than what the model had to say, and a
-    Frame that was kept is worth nothing to an Operator who is not told where it went. A
-    line that carried empty clauses for the ordinary case would be a line nobody reads.
+    An Observation that hit the output limit generated exactly that limit rather than what the
+    model had to say, so the truncation is said outright — the whole of the text is the news
+    that it stopped short.
+    """
+    truncation = (
+        f"truncated — it hit {_output_limit(observed.max_output_tokens)}"
+        if observed.truncated
+        else None
+    )
+    return _cadence_clauses(observed, truncation)
+
+
+def _structured_clauses(observed: WatchedStructuredObservation) -> list[str]:
+    """What is worth saying about one Structured Observation beyond the shape it came to.
+
+    Truncation is noted only where a list was actually shown: a parseable list can still have
+    been cut short — the model closes the array and generates on until the limit stops it — and
+    an Operator shown one with no note reads it as complete. A "no shape" outcome already
+    carries the limit in its own reason where truncation left nothing to salvage, so noting it
+    again on the line would say the same thing twice (see ``_shape_lines`` and ADR-0011).
+    """
+    limit = _output_limit(observed.max_output_tokens)
+    truncation = (
+        f"truncated — the list may be incomplete, it hit {limit}"
+        if isinstance(observed.shape, ObjectsPresent) and observed.truncated
+        else None
+    )
+    return _cadence_clauses(observed, truncation)
+
+
+def _cadence_clauses(observed: WatchedAnswer, truncation: str | None) -> list[str]:
+    """The facts a line of an Observation shares between the shapes, with each one's truncation.
+
+    The inference always, then the truncation as its shape phrases it — different words for
+    prose and for a list, so each caller decides its own — and then only what actually
+    happened: a Cadence reached late says what it cost, and a Frame that was kept is worth
+    nothing to an Operator who is not told where it went. A line that carried empty clauses for
+    the ordinary case would be a line nobody reads.
     """
     clauses = [f"inference {format_seconds(observed.inference)}"]
-    if observed.truncated:
-        clauses.append(f"truncated — it hit {_output_limit(observed.max_output_tokens)}")
+    if truncation is not None:
+        clauses.append(truncation)
     if observed.shortfall.late:
         clauses.append(_lateness(observed.shortfall))
     if observed.saved is not None:

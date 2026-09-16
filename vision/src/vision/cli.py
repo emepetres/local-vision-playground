@@ -293,8 +293,12 @@ def watch_main(
         # Asked here with the other invariants of a Watch, and for the sharper version of
         # the reason ``observe`` asks it early: a Watch that took the mistake to the
         # hardware would settle a camera and load the model before saying the question
-        # the whole run was to stand on was never there.
-        question = require_a_scene_question(args.ask)
+        # the whole run was to stand on was never there. Not asked at all in structured
+        # mode: the request is the fixed shape, so --structured overrides --ask and an empty
+        # --ask beside it is not the mistake it is on its own — the same rule observe and
+        # benchmark keep. The Watch still reads a composed question while structured is on,
+        # but the fixed shape overrides it, so it steers nothing (issue #32).
+        question = STRUCTURED_PROMPT if args.structured else require_a_scene_question(args.ask)
         foundry = _resolve_foundry(foundry, owned)
         clock = _resolve_clock(clock)
         sleep = _resolve_sleep(sleep)
@@ -345,6 +349,7 @@ def watch_main(
                 keep_in=frames_dir if args.keep_frames else None,
                 announce=_announcing(out),
                 questions=questions,
+                structured=args.structured,
             )
     except KeyboardInterrupt:
         # Caught rather than raised, and then asked which interruption it was: the Watch
@@ -628,6 +633,7 @@ def _watch_parser() -> argparse.ArgumentParser:
         default=None,
         help="refused: a Watch observes a live Feed, and one file would never change",
     )
+    _add_structured(parser)
     _add_pinned_variant(parser)
     _add_keep_frames(parser)
     _add_debug(parser)

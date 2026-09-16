@@ -20,9 +20,11 @@ from datetime import datetime
 from pathlib import Path
 
 from vision.benchmark import (
+    AnyBenchmarkRun,
     Benchmark,
     MeasuredVariant,
     Spread,
+    StructuredBenchmarkRun,
     TokenDivergence,
     UnmeasuredVariant,
 )
@@ -35,14 +37,24 @@ from vision.formatting import (
     format_tokens,
     format_tokens_per_second,
 )
-from vision.inference import Observation, Workload
+from vision.inference import (
+    ModelIdentity,
+    NoShape,
+    ObjectsPresent,
+    Observation,
+    StructuredObservation,
+    Timings,
+    Workload,
+)
 from vision.watch import (
     FailedInference,
     Produced,
     QuestionChanged,
     Shortfall,
     Watch,
+    WatchedAnswer,
     WatchedObservation,
+    WatchedStructuredObservation,
     WatchStart,
 )
 
@@ -96,12 +108,58 @@ def render_observation(observation: Observation, workload: Workload, saved: Path
     The token limit is read off the Workload rather than off a constant: the number an
     Operator is shown is the one the Observation was actually generated under.
     """
-    lines = _labelled(_observation_rows(observation, workload.frame, saved), OBSERVE_LABEL_WIDTH)
+    rows = _observation_rows(observation.model, observation.timings, workload.frame, saved)
+    lines = _labelled(rows, OBSERVE_LABEL_WIDTH)
     lines += ["", observation.text]
     if observation.truncated:
         limit = _output_limit(workload.max_output_tokens)
         lines += ["", f"(truncated: the Observation hit {limit})"]
     return "\n".join(lines) + "\n"
+
+
+def render_structured_observation(
+    observation: StructuredObservation, workload: Workload, saved: Path | None
+) -> str:
+    """The ``observe --structured`` report: the objects present, under the same facts block.
+
+    The facts block is the prose Observation's, unchanged — Model, Frame, the set-up and the
+    latencies — because getting the Frame onto the hardware cost the same whichever shape was
+    asked of it, and an Operator moving between the two should read one shape (CONTEXT.md,
+    "Structured Observation"). What sits below it is the shape rather than prose: an aligned
+    list of the objects present, or, where the model did not return a well-formed one, the
+    reason there is no shape — never a silent degrade to prose (ADR-0011).
+    """
+    rows = _observation_rows(observation.model, observation.timings, workload.frame, saved)
+    lines = _labelled(rows, OBSERVE_LABEL_WIDTH)
+    lines += ["", *_shape_lines(observation.shape)]
+    # The list may have parsed cleanly and still have been cut short: the model can close the
+    # array and go on generating until the output limit stops it. An Operator shown a list
+    # with no note reads it as complete — and a Benchmark that mixed a truncated list with a
+    # full one would compare shapes it cannot vouch for (ADR-0011). A NoShape already carries
+    # its own reason, the limit included, so the note is only owed where a list is shown — and
+    # an empty list is "nothing present", which the note would flatly contradict, so it is
+    # owed only where objects were actually listed.
+    shape = observation.shape
+    if isinstance(shape, ObjectsPresent) and shape.objects and observation.truncated:
+        limit = _output_limit(workload.max_output_tokens)
+        lines += ["", f"(truncated: the list may be incomplete — the Observation hit {limit})"]
+    return "\n".join(lines) + "\n"
+
+
+def _shape_lines(shape: ObjectsPresent | NoShape) -> list[str]:
+    """The body of a Structured Observation: the objects present, or why there are none.
+
+    An empty list is a success and says so in words — "nothing present" — rather than as a
+    blank the Operator has to read as either an answer or a failure. A ``NoShape`` is that
+    failure, and it renders as its reason: an ordinary outcome carrying what went wrong, not
+    a blank and not a traceback.
+    """
+    if isinstance(shape, NoShape):
+        return [shape.reason]
+    if not shape.objects:
+        return ["nothing present"]
+    width = max(len(str(present.count)) for present in shape.objects)
+    return [f"{present.count:>{width}}  {present.name}" for present in shape.objects]
 
 
 def render_watch_header(start: WatchStart) -> str:
@@ -135,11 +193,12 @@ def render_watch_line(produced: Produced) -> str:
     first answer to it and this is the one place that knows where that is: an announcement
     written from anywhere else would race the series it is about (ADR-0009).
     """
-    body = (
-        render_watch_failure(produced)
-        if isinstance(produced, FailedInference)
-        else render_watch_observation(produced)
-    )
+    if isinstance(produced, FailedInference):
+        body = render_watch_failure(produced)
+    elif isinstance(produced, WatchedStructuredObservation):
+        body = render_watch_structured(produced)
+    else:
+        body = render_watch_observation(produced)
     return render_question_changed(produced.changed_question) + body
 
 
@@ -172,6 +231,20 @@ def render_watch_observation(observed: WatchedObservation) -> str:
     has been watching for a minute can still be counted.
     """
     return f"\n#{observed.order}  {', '.join(_observation_clauses(observed))}\n{observed.text}\n"
+
+
+def render_watch_structured(observed: WatchedStructuredObservation) -> str:
+    """One Structured Observation of a Watch: the same line of facts, then the objects present.
+
+    The sibling of ``render_watch_observation``: the ``#N`` line is the one a prose Observation
+    writes — the inference, and whatever else this Cadence is worth saying — and below it sits
+    the shape rather than the prose, laid out as the same aligned list of count and name the
+    single-shot ``observe --structured`` writes (CONTEXT.md, "Structured Observation"). A "no
+    shape" outcome renders as its reason on that line's terms, never a blank and never a
+    degrade to prose (ADR-0011).
+    """
+    body = "\n".join(_shape_lines(observed.shape))
+    return f"\n#{observed.order}  {', '.join(_structured_clauses(observed))}\n{body}\n"
 
 
 def render_question_changed(changed: QuestionChanged | None) -> str:
@@ -241,16 +314,53 @@ def _nothing_produced(watch: Watch) -> str:
 
 
 def _observation_clauses(observed: WatchedObservation) -> list[str]:
-    """What is worth saying about one Observation beyond the text it produced.
+    """What is worth saying about one prose Observation beyond the text it produced.
 
-    The inference always, and then only what actually happened: an Observation that hit the
-    output limit generated exactly that limit rather than what the model had to say, and a
-    Frame that was kept is worth nothing to an Operator who is not told where it went. A
-    line that carried empty clauses for the ordinary case would be a line nobody reads.
+    An Observation that hit the output limit generated exactly that limit rather than what the
+    model had to say, so the truncation is said outright — the whole of the text is the news
+    that it stopped short.
+    """
+    truncation = (
+        f"truncated — it hit {_output_limit(observed.max_output_tokens)}"
+        if observed.truncated
+        else None
+    )
+    return _cadence_clauses(observed, truncation)
+
+
+def _structured_clauses(observed: WatchedStructuredObservation) -> list[str]:
+    """What is worth saying about one Structured Observation beyond the shape it came to.
+
+    Truncation is noted only where a list was actually shown: a parseable list can still have
+    been cut short — the model closes the array and generates on until the limit stops it — and
+    an Operator shown one with no note reads it as complete. An empty list is "nothing present",
+    which the note would contradict, so it is owed only where objects were listed. A "no shape"
+    outcome already carries the limit in its own reason where truncation left nothing to
+    salvage, so noting it again on the line would say the same thing twice (see ``_shape_lines``
+    and ADR-0011).
+    """
+    limit = _output_limit(observed.max_output_tokens)
+    shape = observed.shape
+    truncation = (
+        f"truncated — the list may be incomplete, it hit {limit}"
+        if isinstance(shape, ObjectsPresent) and shape.objects and observed.truncated
+        else None
+    )
+    return _cadence_clauses(observed, truncation)
+
+
+def _cadence_clauses(observed: WatchedAnswer, truncation: str | None) -> list[str]:
+    """The facts a line of an Observation shares between the shapes, with each one's truncation.
+
+    The inference always, then the truncation as its shape phrases it — different words for
+    prose and for a list, so each caller decides its own — and then only what actually
+    happened: a Cadence reached late says what it cost, and a Frame that was kept is worth
+    nothing to an Operator who is not told where it went. A line that carried empty clauses for
+    the ordinary case would be a line nobody reads.
     """
     clauses = [f"inference {format_seconds(observed.inference)}"]
-    if observed.truncated:
-        clauses.append(f"truncated — it hit {_output_limit(observed.max_output_tokens)}")
+    if truncation is not None:
+        clauses.append(truncation)
     if observed.shortfall.late:
         clauses.append(_lateness(observed.shortfall))
     if observed.saved is not None:
@@ -437,11 +547,10 @@ def _ordinal(order: int) -> str:
 
 
 def _observation_rows(
-    observation: Observation, frame: Frame, saved: Path | None
+    model: ModelIdentity, timings: Timings, frame: Frame, saved: Path | None
 ) -> list[tuple[str, str]]:
-    timings = observation.timings
     rows = [
-        ("Model", format_model(observation.model)),
+        ("Model", format_model(model)),
         ("Frame", format_frame(frame)),
     ]
     if saved is not None:
@@ -745,13 +854,40 @@ def _markdown_observations(benchmark: Benchmark) -> list[str]:
 
     Whether the CPU says the same thing as the GPU is the more interesting question once
     the latency gap turns out to be eightfold, and a table of seconds cannot be asked it.
+
+    What "said" means depends on which shape the sitting asked for: a prose Variant is quoted
+    as a block, and a structured one is shown as the list of objects it reported — the same
+    data the JSON beside this file carries, laid out for a person (ADR-0008, ADR-0011). Both
+    are read from the cold Benchmark Run, the one the reports already single out.
     """
     if not benchmark.measured:
         return []
     lines = ["## What each Variant saw"]
     for variant in benchmark.measured:
-        lines += ["", f"**{variant.model.variant}**", "", *_quoted(variant.observation)]
+        lines += ["", f"**{variant.model.variant}**", "", *_seen(variant.first)]
     return lines
+
+
+def _seen(run: AnyBenchmarkRun) -> list[str]:
+    """The cold Benchmark Run's answer as Markdown — its prose, or the shape it came to."""
+    if isinstance(run, StructuredBenchmarkRun):
+        return _objects_seen(run.shape)
+    return _quoted(run.text)
+
+
+def _objects_seen(shape: ObjectsPresent | NoShape) -> list[str]:
+    """A Structured Observation's shape as a Markdown list, or the reason there is none.
+
+    The objects as data rather than a paragraph, so the Markdown shows the same list the JSON
+    records — an empty list says "nothing present" in words rather than as a blank a reader
+    has to read as either an answer or a failure, and a ``NoShape`` says so as its reason: an
+    ordinary "no shape" outcome, never a silent degrade to prose (ADR-0011).
+    """
+    if isinstance(shape, NoShape):
+        return [f"_No shape — {shape.reason}._"]
+    if not shape.objects:
+        return ["_Nothing present._"]
+    return [f"- {present.count} × {present.name}" for present in shape.objects]
 
 
 def _quoted(text: str) -> list[str]:

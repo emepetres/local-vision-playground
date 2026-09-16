@@ -60,8 +60,10 @@ from vision.inference import (
     DEFAULT_ALIAS,
     DEFAULT_VARIANTS,
     PROMPT,
+    STRUCTURED_PROMPT,
     FoundryLocal,
     Observation,
+    StructuredObservation,
     Timings,
     Workload,
     require_a_scene_question,
@@ -71,6 +73,7 @@ from vision.reporting import (
     render_benchmark,
     render_observation,
     render_recorded,
+    render_structured_observation,
     render_watch_header,
     render_watch_line,
     render_watch_summary,
@@ -121,8 +124,10 @@ def main(
     try:
         # Asked before Foundry Local is started, as a Watch asks its own invariants; the
         # normalised question it hands back is what the model is asked, so --ask and a typed
-        # line stand for one question and not two.
-        question = require_a_scene_question(args.ask)
+        # line stand for one question and not two. Not asked at all in structured mode: the
+        # request is the fixed shape, so --structured overrides --ask and an empty --ask
+        # beside it is not the mistake it is on its own.
+        question = None if args.structured else require_a_scene_question(args.ask)
         default_camera, keep_in = _source(args, open_feed, frames_dir)
         if camera is None:
             camera = default_camera
@@ -144,7 +149,10 @@ def main(
         for close in owned:
             close()
 
-    print(render_observation(observation, workload, saved), file=out, end="")
+    if isinstance(observation, StructuredObservation):
+        print(render_structured_observation(observation, workload, saved), file=out, end="")
+    else:
+        print(render_observation(observation, workload, saved), file=out, end="")
     return 0
 
 
@@ -172,8 +180,10 @@ def benchmark_main(
         require_a_benchmark_run(args.repetitions)
         # Asked here for the reason ``observe`` asks it before its own model load, with one
         # more behind it: a Benchmark that took the mistake to the hardware would download
-        # and load every Variant before saying anything.
-        question = require_a_scene_question(args.ask)
+        # and load every Variant before saying anything. Not asked at all in structured
+        # mode: the request is the fixed shape, so --structured overrides --ask and an empty
+        # --ask beside it is not the mistake it is on its own — the same rule ``observe`` keeps.
+        prompt = STRUCTURED_PROMPT if args.structured else require_a_scene_question(args.ask)
         if camera is None:
             camera = _benchmark_source(args.image)
         foundry = _resolve_foundry(foundry, owned)
@@ -181,9 +191,11 @@ def benchmark_main(
 
         # Read once, and reuse these exact bytes: re-reading the file per repetition would
         # re-encode it, and a Workload is the Frame's bytes rather than its resolution.
-        # The Scene Question joins them here and nowhere else, so one question stands over
-        # the whole sitting; what that costs and what it buys is in ``_add_ask``.
-        workload = Workload(prompt=question, frame=camera.capture())
+        # The prompt joins them here and nowhere else, so one Workload stands over the whole
+        # sitting; what that costs and what it buys is in ``_add_ask``. The fixed shape is a
+        # prompt like any other, which is what keeps two structured runs comparable only when
+        # they share it, as they must share the Frame and the limits (ADR-0011).
+        workload = Workload(prompt=prompt, frame=camera.capture())
         benchmark = measure(
             foundry=foundry,
             clock=clock,
@@ -191,6 +203,7 @@ def benchmark_main(
             workload=workload,
             repetitions=args.repetitions,
             out=out,
+            structured=args.structured,
         )
     except Exception as error:
         return _fail(error, debug=args.debug, err=err)
@@ -280,8 +293,12 @@ def watch_main(
         # Asked here with the other invariants of a Watch, and for the sharper version of
         # the reason ``observe`` asks it early: a Watch that took the mistake to the
         # hardware would settle a camera and load the model before saying the question
-        # the whole run was to stand on was never there.
-        question = require_a_scene_question(args.ask)
+        # the whole run was to stand on was never there. Not asked at all in structured
+        # mode: the request is the fixed shape, so --structured overrides --ask and an empty
+        # --ask beside it is not the mistake it is on its own — the same rule observe and
+        # benchmark keep. The Watch still reads a composed question while structured is on,
+        # but the fixed shape overrides it, so it steers nothing (issue #32).
+        question = STRUCTURED_PROMPT if args.structured else require_a_scene_question(args.ask)
         foundry = _resolve_foundry(foundry, owned)
         clock = _resolve_clock(clock)
         sleep = _resolve_sleep(sleep)
@@ -332,6 +349,7 @@ def watch_main(
                 keep_in=frames_dir if args.keep_frames else None,
                 announce=_announcing(out),
                 questions=questions,
+                structured=args.structured,
             )
     except KeyboardInterrupt:
         # Caught rather than raised, and then asked which interruption it was: the Watch
@@ -485,10 +503,31 @@ def _observe_parser() -> argparse.ArgumentParser:
     )
     _add_camera(source)
     _add_ask(parser)
+    _add_structured(parser)
     _add_pinned_variant(parser)
     _add_keep_frames(parser)
     _add_debug(parser)
     return parser
+
+
+def _add_structured(parser: argparse.ArgumentParser) -> None:
+    """Ask for the fixed shape instead of prose — the objects present, each with a count.
+
+    It overrides ``--ask`` rather than combining with it: a Structured Observation has no
+    free-text Scene Question, the request *is* the shape (CONTEXT.md, "Structured
+    Observation"). A model that does not answer in the shape is reported as a "no shape"
+    outcome rather than degraded to prose, so what comes back is always either the list or
+    the reason there is none (ADR-0011).
+    """
+    parser.add_argument(
+        "--structured",
+        action="store_true",
+        help=(
+            "list the objects present in the Frame — each a name and a count — instead of"
+            " describing it in prose. Overrides --ask: the request is the fixed shape, not a"
+            " question. Default: describe the Frame in prose"
+        ),
+    )
 
 
 def _benchmark_parser() -> argparse.ArgumentParser:
@@ -544,6 +583,7 @@ def _benchmark_parser() -> argparse.ArgumentParser:
             " measured different amounts of generation and are not comparable."
         ),
     )
+    _add_structured(parser)
     _add_variants(parser)
     _add_debug(parser)
     return parser
@@ -593,6 +633,7 @@ def _watch_parser() -> argparse.ArgumentParser:
         default=None,
         help="refused: a Watch observes a live Feed, and one file would never change",
     )
+    _add_structured(parser)
     _add_pinned_variant(parser)
     _add_keep_frames(parser)
     _add_debug(parser)
@@ -841,10 +882,10 @@ def _observe(
     foundry: FoundryLocal,
     clock: Clock,
     model_name: str,
-    question: str,
+    question: str | None,
     out: TextIO,
     keep_in: Path | None,
-) -> tuple[Workload, Observation, Path | None]:
+) -> tuple[Workload, Observation | StructuredObservation, Path | None]:
     # Accepted before the Execution Providers are registered, and so before anything at
     # all is downloaded: a first run fetches the providers too, and waiting for those to
     # be told the model was never a vision-language model is the failure the refusal
@@ -857,9 +898,26 @@ def _observe(
     # Kept before inference runs: a Frame worth explaining is worth keeping even when the
     # Observation that would have prompted the question never arrives.
     saved = save_frame(frame, keep_in) if keep_in is not None else None
+
+    # A structured request carries the fixed shape as its prompt rather than a Scene
+    # Question; ``question is None`` is how ``main`` signals it asked for one (--structured
+    # overrides --ask). The two paths cross the model port through sibling methods, so each
+    # returns its own shape and neither type's fields go optional (ADR-0011).
+    if question is None:
+        workload = Workload(prompt=STRUCTURED_PROMPT, frame=frame)
+        raw_structured, inference = timed(clock, lambda: ready.model.observe_structured(workload))
+        structured = StructuredObservation(
+            shape=raw_structured.shape,
+            model=ready.identity,
+            finish_reason=raw_structured.finish_reason,
+            timings=Timings(
+                providers=providers, load=ready.load, capture=capture, inference=inference
+            ),
+        )
+        return workload, structured, saved
+
     workload = Workload(prompt=question, frame=frame)
     raw, inference = timed(clock, lambda: ready.model.observe(workload))
-
     observation = Observation(
         text=raw.text,
         model=ready.identity,

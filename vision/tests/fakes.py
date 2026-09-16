@@ -29,7 +29,12 @@ from vision.inference import (
     FinishReason,
     FoundryLocal,
     ModelIdentity,
+    NoShape,
+    ObjectsPresent,
+    PresentObject,
     RawObservation,
+    RawStructuredObservation,
+    Shape,
     VisionModel,
     Workload,
 )
@@ -279,6 +284,7 @@ class FakeVisionModel:
         identity: ModelIdentity,
         observations: Sequence[RawObservation | Exception],
         *,
+        structured: Sequence[RawStructuredObservation | Exception] = (),
         is_cached: bool = True,
         download_progress: Sequence[float] = (),
         download_error: Exception | None = None,
@@ -289,6 +295,7 @@ class FakeVisionModel:
         self.identity = identity
         self.is_cached = is_cached
         self._observations = tuple(observations)
+        self._structured = tuple(structured)
         self._download_progress = tuple(download_progress)
         self._download_error = download_error
         self._load_error = load_error
@@ -296,6 +303,7 @@ class FakeVisionModel:
         self.downloads = 0
         self.unloads = 0
         self.observed: list[Workload] = []
+        self.observed_structured: list[Workload] = []
 
     def download(self, on_progress: Callable[[float], None]) -> None:
         self.events.append("download")
@@ -327,6 +335,19 @@ class FakeVisionModel:
         self.events.append("observe")
         self.observed.append(workload)
         answer = self._observations[index]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    def observe_structured(self, workload: Workload) -> RawStructuredObservation:
+        index = len(self.observed_structured)
+        if index >= len(self._structured):
+            raise AssertionError(
+                "the fake model was asked for more Structured Observations than the test prepared"
+            )
+        self.events.append("observe_structured")
+        self.observed_structured.append(workload)
+        answer = self._structured[index]
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -431,6 +452,32 @@ def make_observation(
     return RawObservation(
         text=text, finish_reason=finish_reason, completion_tokens=completion_tokens
     )
+
+
+PRESENT = (PresentObject("cup", 2), PresentObject("laptop", 1))
+"""The objects the fake model reports present when a test does not care which they are."""
+
+
+def make_structured_observation(
+    shape: Shape | None = None,
+    finish_reason: FinishReason = FinishReason.COMPLETE,
+    completion_tokens: int = 24,
+) -> RawStructuredObservation:
+    """A Structured Observation for a test that drives the ``--structured`` path.
+
+    Defaults to a non-empty list of objects present; a test after the empty-list or the
+    "no shape" outcome passes ``ObjectsPresent(())`` or a ``NoShape`` of its own.
+    """
+    if shape is None:
+        shape = ObjectsPresent(PRESENT)
+    return RawStructuredObservation(
+        shape=shape, finish_reason=finish_reason, completion_tokens=completion_tokens
+    )
+
+
+def no_shape(reason: str = "the model answered in prose") -> NoShape:
+    """A "no shape" outcome for a test that drives the model declining the fixed shape."""
+    return NoShape(reason)
 
 
 def make_images(colours: Sequence[tuple[int, int, int]]) -> list[Image.Image]:

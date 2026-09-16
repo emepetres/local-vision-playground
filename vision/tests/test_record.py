@@ -32,14 +32,17 @@ from tests.test_benchmark import (
     CPU_IDENTITY,
     CPU_VARIANT,
     CUPS,
+    GPU_OBJECTS,
     GPU_VARIANT,
     INVALID_GRAPH,
     READINGS,
     make_cpu,
     make_gpu,
+    make_structured_cpu,
+    make_structured_gpu,
 )
 from vision.cli import benchmark_main
-from vision.inference import PROMPT
+from vision.inference import PROMPT, STRUCTURED_PROMPT, NoShape, ObjectsPresent
 from vision.record import SCHEMA_VERSION, hardware_profile, this_machine
 
 PROFILE = "RTX 4090 + i7-13700KF"
@@ -548,3 +551,102 @@ def test_a_document_that_breaks_mid_write_leaves_neither_half_behind(
 
     assert code == 1
     assert list(benchmarks.iterdir()) == []
+
+
+def keep_structured(
+    benchmarks: Path,
+    argv: list[str] | None = None,
+    *,
+    gpu: FakeVisionModel | None = None,
+    cpu: FakeVisionModel | None = None,
+    readings: tuple[float, ...] = READINGS,
+) -> Kept:
+    """A ``--structured`` sitting, and the two files it left behind."""
+    return keep(
+        benchmarks,
+        ["--structured", *(argv or [])],
+        gpu=gpu if gpu is not None else make_structured_gpu(),
+        cpu=cpu if cpu is not None else make_structured_cpu(),
+        readings=readings,
+    )
+
+
+def test_a_structured_record_carries_the_object_list_as_machine_readable_data(
+    benchmarks: Path,
+) -> None:
+    """The objects are data, not a quoted paragraph, so a later tool reads them rather than
+    parsing them back out of prose (ADR-0008, ADR-0011)."""
+    kept = keep_structured(benchmarks)
+    gpu, cpu = kept.record["variants"]
+
+    assert kept.code == 0
+    assert gpu["objects"] == [{"name": "cup", "count": 2}, {"name": "laptop", "count": 1}]
+    assert gpu["no_shape"] is None
+    assert "observation" not in gpu
+    assert cpu["objects"] == [{"name": "cup", "count": 2}, {"name": "book", "count": 3}]
+
+
+def test_a_structured_markdown_shows_the_objects_as_a_list(benchmarks: Path) -> None:
+    """Both renderings come from the same Benchmark, so they cannot disagree: the Markdown
+    lays out the same objects the JSON records, as a list a person reads (ADR-0008)."""
+    document = keep_structured(benchmarks).document
+
+    assert "## What each Variant saw" in document
+    assert "**qwen3-vl-2b-instruct-cuda-gpu:2**\n\n- 2 × cup\n- 1 × laptop\n" in document
+    assert "**qwen3-vl-2b-instruct-generic-cpu:2**\n\n- 2 × cup\n- 3 × book\n" in document
+
+
+def test_a_structured_no_shape_run_is_recorded_and_shown_as_its_reason(
+    benchmarks: Path,
+) -> None:
+    """A model that declined the shape is a "no shape" run carrying its reason, never a
+    silent degrade to prose — in the JSON as null objects, in the Markdown as the reason."""
+    reason = "the model answered in prose instead of the list of objects the shape asks for"
+    declined = (NoShape(reason),) + tuple(ObjectsPresent(GPU_OBJECTS) for _ in range(4))
+    kept = keep_structured(benchmarks, gpu=make_structured_gpu(declined))
+    gpu, _ = kept.record["variants"]
+
+    assert kept.code == 0
+    assert gpu["objects"] is None
+    assert gpu["no_shape"] == reason
+    assert f"**qwen3-vl-2b-instruct-cuda-gpu:2**\n\n_No shape — {reason}._\n" in kept.document
+
+
+def test_a_structured_record_carries_the_fixed_shape_as_its_prompt(benchmarks: Path) -> None:
+    """The fixed shape is the Workload's prompt; two structured records are comparable only
+    when it matches, as they must match the Frame and the limits."""
+    kept = keep_structured(benchmarks)
+
+    assert kept.record["workload"]["prompt"] == STRUCTURED_PROMPT
+    assert f"- **Prompt** — {STRUCTURED_PROMPT}\n" in kept.document
+
+
+def test_an_unmeasured_variant_in_a_structured_sitting_carries_the_structured_answer_keys(
+    benchmarks: Path,
+) -> None:
+    """Every Variant in one record carries the answer keys of its kind of Benchmark, the
+    Unmeasured ones included, so a reader never has to know which kind it is holding (ADR-0007)."""
+    kept = keep_structured(
+        benchmarks,
+        gpu=FakeVisionModel(make_identity(), [], load_error=RuntimeError(INVALID_GRAPH)),
+        readings=(0.0, 0.5, 10.0, *READINGS[14:]),
+    )
+    gpu, cpu = kept.record["variants"]
+
+    assert kept.code == 0
+    assert gpu["loaded"] is False
+    assert gpu["objects"] is None
+    assert gpu["no_shape"] is None
+    assert "observation" not in gpu
+    assert cpu["loaded"] is True
+    assert cpu["objects"] == [{"name": "cup", "count": 2}, {"name": "book", "count": 3}]
+
+
+def test_a_prose_record_is_unchanged_by_the_structured_answer_keys(benchmarks: Path) -> None:
+    """A prose Benchmark carries its observation and no objects keys: the records already in
+    the repository keep the shape they had."""
+    gpu = keep(benchmarks).record["variants"][0]
+
+    assert gpu["observation"] == OBSERVED
+    assert "objects" not in gpu
+    assert "no_shape" not in gpu

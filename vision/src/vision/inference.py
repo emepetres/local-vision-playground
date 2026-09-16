@@ -11,6 +11,7 @@ leaves this module with its text already copied out — nothing native escapes.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -28,6 +29,22 @@ PROMPT = "Describe what you see in this image in two or three sentences."
 The length bound lives here; the token limit is a net. It is the default value of ``--ask``
 rather than *the* prompt: a command that is handed a Scene Question puts that on the
 Workload in the same one place, and nothing else about the request moves.
+"""
+
+STRUCTURED_PROMPT = (
+    "List every distinct object you can see in this image. Reply with ONLY a JSON array,"
+    ' where each element is an object {"name": <string>, "count": <integer >= 1>}.'
+    ' Example: [{"name": "cup", "count": 2}, {"name": "book", "count": 1}].'
+    " If the image is empty, reply with []."
+)
+"""The fixed shape a Structured Observation asks for, put in the prompt and parsed back.
+
+Not a Scene Question and not the Operator's to change: ``--structured`` sends *this*, which
+is why it overrides ``--ask``. ADR-0011 first reached the shape by a forced tool call; the
+spike behind issue #30 found `qwen3-vl-2b-instruct` never honours one and instead answers a
+JSON-in-prompt request exactly, so the shape is spelled out here — ``name`` and ``count``
+with a worked example, because the model defaults to an array of bare strings without it —
+and read back out of the reply (see ``parse_objects_present``).
 """
 
 # The generation limits a Workload takes when a caller does not say otherwise. They are
@@ -123,6 +140,69 @@ class RawObservation:
 
 
 @dataclass(frozen=True)
+class PresentObject:
+    """One object the model reports present in a Frame: what it is, and how many there are.
+
+    The count is a whole number of at least one — a Structured Observation lists what is
+    *present*, so an object with a count of zero is not present and has no row. A name and a
+    count together, because either alone is nothing an Operator can act on.
+    """
+
+    name: str
+    count: int
+
+
+@dataclass(frozen=True)
+class ObjectsPresent:
+    """The list of objects present in a Frame, already copied out of the native response.
+
+    The list is the shape the model was asked for, in the order it gave them. An **empty**
+    list is a valid success, not a failure: it is the model saying nothing is present, which
+    is a different fact from its declining to answer in the shape at all (see ``NoShape``).
+    """
+
+    objects: tuple[PresentObject, ...]
+
+
+@dataclass(frozen=True)
+class NoShape:
+    """The model did not return a well-formed list of objects, and why it did not.
+
+    An ordinary outcome, not a fall-back and not a crash (ADR-0011): the model answered in
+    prose, wrapped a truncated array it never closed, or returned something that does not
+    validate as a list of ``{name, count}``. It carries its reason as one line an Operator
+    reads, and it never silently degrades to a prose Observation — a Watch or a Benchmark
+    that quietly mixed shapes would report a comparison it cannot vouch for.
+    """
+
+    reason: str
+
+
+Shape = ObjectsPresent | NoShape
+"""What a Structured Observation came to: the objects present, or the reason there is no shape.
+
+One type with two cases rather than an ``ObjectsPresent`` whose fields go optional, so that
+the ``observe_structured`` port method has exactly one return type and neither case's fields
+have to become optional to carry the other.
+"""
+
+
+@dataclass(frozen=True)
+class RawStructuredObservation:
+    """A Structured Observation as it leaves the model, before the command wraps it.
+
+    The sibling of ``RawObservation``: where that carries the prose ``text``, this carries the
+    ``shape``. ``completion_tokens`` is measured over the arguments the model produced, which
+    is what a Benchmark compares (ADR-0011); ``finish_reason`` says whether the output limit,
+    rather than the model, decided where the shape ended.
+    """
+
+    shape: Shape
+    finish_reason: FinishReason
+    completion_tokens: int
+
+
+@dataclass(frozen=True)
 class Timings:
     """What one run cost, in seconds, in the order the costs are paid.
 
@@ -142,6 +222,28 @@ class Observation:
     """What the model reports about a Frame, and what reporting it cost."""
 
     text: str
+    model: ModelIdentity
+    finish_reason: FinishReason
+    timings: Timings
+
+    @property
+    def truncated(self) -> bool:
+        return self.finish_reason is FinishReason.TRUNCATED
+
+
+@dataclass(frozen=True)
+class StructuredObservation:
+    """A Structured Observation, and what reporting it cost.
+
+    The sibling of ``Observation`` — a fixed shape asked of a Frame rather than prose (see
+    CONTEXT.md, "Structured Observation"). It carries a ``shape`` where the prose Observation
+    carries ``text``; neither field is made optional to accommodate the other, which is what
+    makes them siblings rather than one overloaded type. The provenance and timings the
+    command wraps around it are the same, because getting the Frame onto the hardware cost the
+    same whichever shape was asked of it.
+    """
+
+    shape: Shape
     model: ModelIdentity
     finish_reason: FinishReason
     timings: Timings
@@ -181,6 +283,18 @@ class VisionModel(Protocol):
         what the model reports about *a* Frame — and it is also what makes N Benchmark
         Runs of one Workload N executions of the same work rather than a conversation
         that grows by one image and one answer each time.
+        """
+        ...
+
+    def observe_structured(self, workload: Workload) -> RawStructuredObservation:
+        """Answer this Workload as a fixed shape rather than as prose, from its Frame alone.
+
+        The sibling of ``observe``: a Structured Observation crosses the same port through
+        its own method so that each shape has exactly one return type. It answers with the
+        objects present, or with a ``NoShape`` carrying its reason — a model that declines the
+        shape is an ordinary outcome, not an exception to catch (ADR-0011). The Workload
+        carries the fixed-shape request as its prompt; there is no free-text Scene Question in
+        structured mode.
         """
         ...
 
@@ -446,6 +560,176 @@ class FoundryLocalModel:
             finish_reason=finish_reason,
             completion_tokens=completion_tokens,
         )
+
+    def observe_structured(self, workload: Workload) -> RawStructuredObservation:
+        from foundry_local_sdk import (
+            ImageItem,
+            MessageItem,
+            Request,
+            RequestOptions,
+            SearchOptions,
+            TextItem,
+        )
+
+        if self._session is None:
+            raise VisionError(f"{self._model.id} was asked for an Observation before it was loaded")
+
+        # Cleared before the request for the same reason the prose path clears it: a
+        # ChatSession accumulates turns, and a Structured Observation answers its own Frame
+        # alone (ADR-0004).
+        _forget_previous_turns(self._session)
+
+        frame = workload.frame
+        parts = [TextItem(workload.prompt), ImageItem(frame.codec, frame.data)]
+        message = MessageItem.user(parts)
+        options = RequestOptions(
+            search=SearchOptions(
+                temperature=workload.temperature,
+                max_output_tokens=workload.max_output_tokens,
+            )
+        )
+
+        with Request().add_item(message).set_options(options) as request:
+            with self._session.process_request(request) as response:
+                # Copied out inside the response's scope, exactly as the prose path copies
+                # its text: nothing native escapes (ADR-0004). The shape is parsed here, so
+                # that a reply that does not carry one becomes a NoShape rather than raising.
+                text = "".join(_text_of(item) for item in response)
+                finish_reason = _finish_reason(response)
+                completion_tokens = response.get_usage().completion_tokens
+
+        return RawStructuredObservation(
+            shape=parse_objects_present(text, truncated=finish_reason is FinishReason.TRUNCATED),
+            finish_reason=finish_reason,
+            completion_tokens=completion_tokens,
+        )
+
+
+def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
+    """Read the objects present out of a model's reply, or say why there is no shape.
+
+    The fall-back the spike behind issue #30 landed on: `qwen3-vl-2b-instruct` never honours
+    a forced tool call but answers a JSON-in-prompt request in the exact ``{name, count}``
+    shape, wrapped in a markdown code fence and sometimes truncated mid-array when the output
+    limit stops generation. So the fence is stripped, the first complete JSON array is decoded
+    from the opening ``[`` — anything the model runs on with past the closing ``]`` is ignored
+    rather than dragging a stray bracket into the span and defeating the parse (a trailing
+    ``:]`` or a second ``[end]`` used to discard a well-formed answer) — and anything that then
+    fails to parse or to validate is a ``NoShape`` carrying its reason rather than an exception
+    (ADR-0011).
+
+    A **mostly-valid** array is repaired rather than discarded, whether the output limit cut it
+    off or a single element simply did not match: the objects that closed before the first bad
+    one are real, so they are salvaged and only the tail is dropped (the repair the spike
+    named), and the two paths agree on it rather than one salvaging while the other throws the
+    lot away. What comes back is the recovered list — the caller's ``finish_reason`` still says
+    whether it was truncated, which is what has the report note it may be short. Nothing
+    salvageable is a ``NoShape``: the limit named where truncation left an empty prefix, the
+    ``{name, count}`` shape named where a complete reply's every element missed it.
+    """
+    cut_off = "the model's list of objects was cut off by the output limit before it closed"
+
+    start = text.find("[")
+    if start == -1:
+        # No array opened at all, so there is nothing to read and nothing to salvage; both the
+        # truncated and the complete case say what is wrong rather than raise.
+        if truncated:
+            return NoShape(cut_off)
+        return NoShape(
+            "the model answered in prose instead of the list of objects the shape asks for"
+        )
+
+    try:
+        # From the opening ``[`` only, so prose trailing the closed array — or a stray ``]`` in
+        # it — is left out of the span rather than pulled in by a last-``]`` search.
+        parsed, _ = json.JSONDecoder().raw_decode(text, start)
+    except json.JSONDecodeError:
+        # The array did not decode whole: the output limit cut it off mid-element, or a ``]``
+        # inside a string value left brackets that will not parse. Under truncation salvage the
+        # complete objects at its front; otherwise it is ordinary malformed JSON.
+        if truncated:
+            return _salvage(text, start, cut_off)
+        return NoShape("the model's reply was not the well-formed JSON the shape asks for")
+
+    if not isinstance(parsed, list):
+        return NoShape("the model did not return a list of objects")
+
+    objects: list[PresentObject] = []
+    for element in parsed:
+        present = _present_object(element)
+        if present is None:
+            break
+        objects.append(present)
+    else:
+        return ObjectsPresent(tuple(objects))
+
+    # A non-conforming element stopped the read. The objects that closed before it are real and
+    # are shown — the same salvage the truncated path makes — and only when none closed is there
+    # no shape: the limit's doing under truncation, a reply that never matched it otherwise.
+    if objects:
+        return ObjectsPresent(tuple(objects))
+    if truncated:
+        return NoShape(cut_off)
+    return NoShape("the model's reply did not match the expected {name, count} shape")
+
+
+def _salvage(text: str, start: int, cut_off: str) -> Shape:
+    """The objects a truncated array had finished before the output limit cut it off.
+
+    An array the limit stopped mid-object still carries the objects it closed before that,
+    and those are worth showing rather than throwing away with the incomplete tail (ADR-0011,
+    and the repair the #30 spike named). Nothing salvageable — the limit cut in before the
+    first object closed, or there was no array at all — names the limit instead.
+    """
+    if start == -1:
+        return NoShape(cut_off)
+    objects = _salvage_present(text[start + 1 :])
+    if objects:
+        return ObjectsPresent(tuple(objects))
+    return NoShape(cut_off)
+
+
+def _salvage_present(fragment: str) -> list[PresentObject]:
+    """Decode the complete ``{name, count}`` objects at the front of a truncated array.
+
+    One value at a time from just after the opening ``[``, skipping the commas and whitespace
+    between them, and stopping at the first thing that will not decode or does not match the
+    shape — which is the object the output limit cut off, or the missing closing ``]``.
+    """
+    decoder = json.JSONDecoder()
+    objects: list[PresentObject] = []
+    index = 0
+    while index < len(fragment):
+        while index < len(fragment) and fragment[index] in " \t\r\n,":
+            index += 1
+        if index >= len(fragment):
+            break
+        try:
+            value, index = decoder.raw_decode(fragment, index)
+        except json.JSONDecodeError:
+            break
+        present = _present_object(value)
+        if present is None:
+            break
+        objects.append(present)
+    return objects
+
+
+def _present_object(element: object) -> PresentObject | None:
+    """One element of the parsed array as a PresentObject, or ``None`` if it is not one.
+
+    A whole-number count of at least one is part of the shape, not a nicety: a bool is an
+    ``int`` in Python and is rejected here so that ``true`` cannot be read as a count of one.
+    """
+    if not isinstance(element, dict):
+        return None
+    name = element.get("name")
+    count = element.get("count")
+    if not isinstance(name, str) or not name:
+        return None
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        return None
+    return PresentObject(name=name, count=count)
 
 
 def _version_key(version: object) -> tuple[int, int, str]:

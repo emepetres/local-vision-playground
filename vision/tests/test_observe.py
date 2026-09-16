@@ -22,11 +22,12 @@ from tests.fakes import (
     make_frame,
     make_identity,
     make_observation,
+    make_structured_observation,
     settling_feed,
 )
 from vision.capture import SETTLING_FRAMES, WORKING_RESOLUTION
 from vision.cli import main
-from vision.inference import FinishReason
+from vision.inference import STRUCTURED_PROMPT, FinishReason, NoShape, ObjectsPresent, PresentObject
 
 SETUP_READINGS = (0.0, 0.5)
 """Registering the Execution Providers: 0.500 s."""
@@ -471,6 +472,139 @@ def test_debug_restores_the_traceback() -> None:
     model = FakeVisionModel(make_identity(task="chat"), [make_observation()])
     with pytest.raises(Exception, match="cannot see a Frame"):
         run(["--image", "a.jpg", "--debug"], model=model)
+
+
+def test_structured_lists_the_objects_present_under_the_unchanged_facts_block() -> None:
+    """--structured answers with the objects present, aligned, below the same facts block."""
+    model = FakeVisionModel(
+        make_identity(),
+        [],
+        structured=[
+            make_structured_observation(
+                ObjectsPresent((PresentObject("cup", 2), PresentObject("laptop", 1)))
+            )
+        ],
+    )
+    result = run(["--image", "docs/fixtures/reference-frame.jpg", "--structured"], model=model)
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.out == f"{REPORT}\n2  cup\n1  laptop\n"
+    assert result.model.observed == []
+
+
+def test_structured_right_aligns_the_counts_into_a_column() -> None:
+    """The list is aligned: a two-digit count does not push its name out of line."""
+    model = FakeVisionModel(
+        make_identity(),
+        [],
+        structured=[
+            make_structured_observation(
+                ObjectsPresent((PresentObject("book", 12), PresentObject("lamp", 1)))
+            )
+        ],
+    )
+    result = run(["--image", "a.jpg", "--structured"], model=model)
+
+    assert result.out == f"{REPORT}\n12  book\n 1  lamp\n"
+
+
+def test_structured_renders_an_empty_list_as_nothing_present() -> None:
+    """An empty list is a success, not an error — the model saying nothing is present."""
+    model = FakeVisionModel(
+        make_identity(), [], structured=[make_structured_observation(ObjectsPresent(()))]
+    )
+    result = run(["--image", "a.jpg", "--structured"], model=model)
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.out == f"{REPORT}\nnothing present\n"
+
+
+def test_structured_renders_a_no_shape_outcome_as_its_reason_without_raising() -> None:
+    """A model that returns no well-formed shape is an ordinary outcome, not a crash."""
+    reason = "the model answered in prose instead of the list of objects the shape asks for"
+    model = FakeVisionModel(
+        make_identity(), [], structured=[make_structured_observation(NoShape(reason))]
+    )
+    result = run(["--image", "a.jpg", "--structured"], model=model)
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.out == f"{REPORT}\n{reason}\n"
+
+
+def test_structured_notes_a_list_cut_short_by_the_output_limit() -> None:
+    """A parseable list can still be truncated; it is flagged, as the prose path flags one."""
+    model = FakeVisionModel(
+        make_identity(),
+        [],
+        structured=[
+            make_structured_observation(
+                ObjectsPresent((PresentObject("cup", 2),)), FinishReason.TRUNCATED
+            )
+        ],
+    )
+    result = run(["--image", "a.jpg", "--structured"], model=model)
+
+    assert result.code == 0
+    assert result.out == (
+        f"{REPORT}"
+        "\n"
+        "2  cup\n"
+        "\n"
+        "(truncated: the list may be incomplete — the Observation hit the 128-token output limit)\n"
+    )
+
+
+def test_structured_does_not_flag_an_empty_list_as_maybe_incomplete() -> None:
+    """"Nothing present" under truncation still means nothing present — the "may be incomplete"
+    note would contradict it, so it is not shown for an empty list."""
+    model = FakeVisionModel(
+        make_identity(),
+        [],
+        structured=[make_structured_observation(ObjectsPresent(()), FinishReason.TRUNCATED)],
+    )
+    result = run(["--image", "a.jpg", "--structured"], model=model)
+
+    assert result.code == 0
+    assert result.out == f"{REPORT}\nnothing present\n"
+
+
+def test_structured_overrides_ask_and_sends_the_fixed_shape() -> None:
+    """Passing both --structured and --ask uses the fixed shape, not the question."""
+    model = FakeVisionModel(
+        make_identity(), [make_observation()], structured=[make_structured_observation()]
+    )
+    result = run(
+        ["--image", "a.jpg", "--structured", "--ask", "how many cups are there?"], model=model
+    )
+
+    assert result.code == 0
+    assert result.model.observed == []
+    (workload,) = result.model.observed_structured
+    assert workload.prompt == STRUCTURED_PROMPT
+
+
+def test_structured_does_not_refuse_an_empty_ask_beside_it() -> None:
+    """--ask "" is a mistake on its own, but --structured ignores --ask entirely."""
+    model = FakeVisionModel(
+        make_identity(), [], structured=[make_structured_observation(ObjectsPresent(()))]
+    )
+    result = run(["--image", "a.jpg", "--structured", "--ask", ""], model=model)
+
+    assert result.code == 0
+    assert result.out == f"{REPORT}\nnothing present\n"
+
+
+def test_without_structured_the_prose_observation_is_unchanged() -> None:
+    """The flag is opt-in: leaving it off reaches the prose path exactly as before."""
+    model = FakeVisionModel(make_identity(), [make_observation()], structured=[])
+    result = run(["--image", "docs/fixtures/reference-frame.jpg"], model=model)
+
+    assert result.code == 0
+    assert result.out == f"{REPORT}\n{OBSERVATION}"
+    assert result.model.observed_structured == []
 
 
 @dataclass

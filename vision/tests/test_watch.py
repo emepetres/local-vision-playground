@@ -32,10 +32,21 @@ from tests.fakes import (
     make_identity,
     make_images,
     make_observation,
+    make_structured_observation,
 )
 from vision.capture import SETTLING_FRAMES
 from vision.cli import watch_main
-from vision.inference import PROMPT, FinishReason, RawObservation, Workload
+from vision.inference import (
+    PROMPT,
+    STRUCTURED_PROMPT,
+    FinishReason,
+    NoShape,
+    ObjectsPresent,
+    PresentObject,
+    RawObservation,
+    Shape,
+    Workload,
+)
 
 SETUP_READINGS = (0.0, 0.5)
 """Registering the Execution Providers: 0.500 s."""
@@ -1371,3 +1382,273 @@ def test_reads_no_keyboard_where_stdin_is_not_a_terminal() -> None:
     assert code == 0
     assert "Asking:" not in out.getvalue()
     assert [workload.prompt for workload in model.observed] == [STANDING] * 3
+
+
+DESK = ObjectsPresent((PresentObject("cup", 2), PresentObject("laptop", 1)))
+"""A Structured Observation's shape: the objects present on the desk, with their counts."""
+
+DESK_LINES = "2  cup\n1  laptop"
+"""How ``DESK`` is rendered under a Cadence's line — the aligned list of count and name."""
+
+HAND = ObjectsPresent((PresentObject("mug", 1),))
+"""A second shape, so a run of them can be told apart in the order they were produced."""
+
+HAND_LINES = "1  mug"
+
+
+def structured_model(*shapes: Shape | Exception) -> FakeVisionModel:
+    """A model that answers each structured Cadence with a prepared shape, or raises.
+
+    A ``Shape`` is what the model came to — the objects present, an empty list, or a "no
+    shape" — and an ``Exception`` is an inference that failed rather than one that produced
+    no shape: the two are different outcomes, and only the second is a ``FailedInference``.
+    """
+    return FakeVisionModel(
+        make_identity(),
+        [],
+        structured=[
+            shape if isinstance(shape, Exception) else make_structured_observation(shape)
+            for shape in shapes
+        ],
+    )
+
+
+def structured_block(order: int, body: str, extra: str = "") -> str:
+    """One structured Cadence: the ``#N`` line of facts, then the shape it came to."""
+    return f"\n#{order}  inference 1.000 s{extra}\n{body}\n"
+
+
+def test_structured_lists_the_objects_present_at_each_cadence() -> None:
+    """--structured answers each Cadence with the aligned list rather than prose."""
+    result = run(
+        ["--count", "2", "--structured"], model=structured_model(DESK, HAND), observations=2
+    )
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.out == (
+        HEADER
+        + structured_block(1, DESK_LINES)
+        + structured_block(2, HAND_LINES)
+        + "\n2 Observations, median inference 1.000 s\n"
+    )
+    # The fixed shape crosses the port through observe_structured, never observe.
+    assert result.model.observed == []
+    assert [workload.prompt for workload in result.model.observed_structured] == [
+        STRUCTURED_PROMPT
+    ] * 2
+
+
+def test_structured_reports_a_no_shape_cadence_with_its_reason_and_carries_on() -> None:
+    """A "no shape" Cadence is reported and the Watch goes on to the next, which succeeds."""
+    reason = "the model answered in prose instead of the list of objects the shape asks for"
+    result = run(
+        ["--count", "2", "--structured"],
+        model=structured_model(NoShape(reason), DESK),
+        observations=2,
+    )
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.out == (
+        HEADER
+        + structured_block(1, reason)
+        + structured_block(2, DESK_LINES)
+        + "\n2 Observations, median inference 1.000 s\n"
+    )
+
+
+def test_structured_renders_an_empty_list_as_nothing_present() -> None:
+    """An empty list is a success — the model saying nothing is present — not a "no shape"."""
+    result = run(
+        ["--count", "1", "--structured"],
+        model=structured_model(ObjectsPresent(())),
+        observations=1,
+    )
+
+    assert result.code == 0
+    assert result.out == (
+        HEADER
+        + structured_block(1, "nothing present")
+        + "\n1 Observation, median inference 1.000 s\n"
+    )
+
+
+def test_structured_carries_the_per_cadence_shortfall_exactly_as_prose_does() -> None:
+    """A late structured Cadence says what it skipped and discarded, on its own line.
+
+    Driven through the Watch that overran its Cadence by two instants — the one place the
+    counts are anything but zero — so switching the shape of the answer is shown to cost the
+    machine nothing of its honesty about falling behind (ADR-0006).
+    """
+    result = run(
+        ["--count", "3", "--structured"],
+        model=structured_model(DESK, HAND, DESK),
+        feeds={0: overrun_feed()},
+        clock=overrun_clock(),
+        readers=HandTurnedReaders(OVERRUN_READS),
+    )
+
+    assert result.code == 0
+    assert result.out == (
+        HEADER
+        + f"\n#1  inference {OVERRUN:.3f} s\n{DESK_LINES}\n"
+        + structured_block(
+            2,
+            HAND_LINES,
+            extra=(
+                ", late — skipped 2 Cadences and discarded 2 Stale Frames to observe the present"
+            ),
+        )
+        + structured_block(3, DESK_LINES)
+        + "\n3 Observations, median inference 1.000 s, 2 Cadences skipped\n"
+    )
+
+
+def test_a_structured_inference_that_raised_is_a_failure_the_watch_goes_on_past() -> None:
+    """An inference that actually raised is a ``FailedInference`` — distinct from a "no shape".
+
+    A "no shape" is a Structured Observation the model produced; this is one it never
+    produced, so it is one line the Watch carries on past, exactly as a failed prose
+    Observation is (ADR-0006).
+    """
+    result = run(
+        ["--count", "2", "--structured"],
+        model=structured_model(BROKEN, DESK),
+        clock=failing_readings(1, 0),
+        observations=2,
+    )
+
+    assert result.code == 0
+    assert result.err == ""
+    assert result.out == (
+        HEADER
+        + FAILED.format(order=1)
+        + structured_block(2, DESK_LINES)
+        + "\n1 Observation, median inference 1.000 s, 1 failed\n"
+    )
+
+
+def test_structured_notes_on_the_line_a_list_cut_short_by_the_output_limit() -> None:
+    """A parseable list can still be truncated; the line says so, as the prose line does."""
+    model = FakeVisionModel(
+        make_identity(),
+        [],
+        structured=[
+            make_structured_observation(
+                ObjectsPresent((PresentObject("cup", 2),)), FinishReason.TRUNCATED
+            )
+        ],
+    )
+    result = run(["--count", "1", "--structured"], model=model, observations=1)
+
+    assert result.code == 0
+    assert result.out == (
+        HEADER
+        + structured_block(
+            1,
+            "2  cup",
+            extra=", truncated — the list may be incomplete, it hit the 128-token output limit",
+        )
+        + "\n1 Observation, median inference 1.000 s\n"
+    )
+
+
+def test_structured_does_not_note_an_empty_list_cut_short() -> None:
+    """"Nothing present" under truncation stays that: the "may be incomplete" note would
+    contradict it, so an empty list carries no truncation clause."""
+    model = FakeVisionModel(
+        make_identity(),
+        [],
+        structured=[make_structured_observation(ObjectsPresent(()), FinishReason.TRUNCATED)],
+    )
+    result = run(["--count", "1", "--structured"], model=model, observations=1)
+
+    assert result.code == 0
+    assert result.out == (
+        HEADER
+        + structured_block(1, "nothing present")
+        + "\n1 Observation, median inference 1.000 s\n"
+    )
+
+
+def test_structured_overrides_ask_and_sends_the_fixed_shape() -> None:
+    """Passing both --structured and --ask uses the fixed shape, not the question."""
+    result = run(
+        ["--count", "1", "--structured", "--ask", STANDING],
+        model=structured_model(DESK),
+        observations=1,
+    )
+
+    assert result.code == 0
+    assert result.model.observed == []
+    (workload,) = result.model.observed_structured
+    assert workload.prompt == STRUCTURED_PROMPT
+
+
+def test_structured_does_not_refuse_an_empty_ask_beside_it() -> None:
+    """--ask "" is a mistake on its own, but --structured ignores --ask entirely."""
+    result = run(
+        ["--count", "1", "--structured", "--ask", ""],
+        model=structured_model(ObjectsPresent(())),
+        observations=1,
+    )
+
+    assert result.code == 0
+    assert result.err == ""
+    assert "nothing present" in result.out
+
+
+def test_structured_still_suspends_to_compose_but_the_shape_overrides_the_question() -> None:
+    """Composing suspends the Watch, but what is composed steers nothing while structured is on.
+
+    Space is pressed at the first Observation and a question is composed. The Watch still
+    suspends and re-anchors its grid across the composing — nothing is counted as a skip — but
+    the fixed shape overrides the question: every Cadence still asks for the shape, and there
+    is no echo of a question that changed nothing (issue #32).
+    """
+    result = run(
+        ["--count", "3", "--structured"],
+        model=structured_model(DESK, HAND, DESK),
+        questions=TypedQuestions([asks(TYPED), None, None]),
+        observations=3,
+    )
+
+    assert result.code == 0
+    # The composed question steered nothing: every Cadence asked for the fixed shape.
+    assert result.model.observed == []
+    assert [workload.prompt for workload in result.model.observed_structured] == [
+        STRUCTURED_PROMPT
+    ] * 3
+    # It was still read, and it changed neither the request nor the report.
+    assert result.questions.checks == 3
+    assert "Asking:" not in result.out
+    # Suspending to compose is not the machine falling behind: nothing reads as late or skipped.
+    assert "late" not in result.out
+    assert "skipped" not in result.out
+    assert result.out.endswith("\n3 Observations, median inference 1.000 s\n")
+
+
+def test_structured_keeps_the_observed_frames_when_asked(tmp_path: Path) -> None:
+    """--keep-frames works whichever shape is asked: an observed Frame is worth keeping."""
+    result = run(
+        ["--count", "2", "--structured", "--keep-frames"],
+        model=structured_model(DESK, HAND),
+        observations=2,
+        frames_dir=tmp_path,
+    )
+
+    assert result.code == 0
+    kept = list(tmp_path.glob("*.jpg"))
+    assert len(kept) == 2
+    observed = {workload.frame.data for workload in result.model.observed_structured}
+    assert {path.read_bytes() for path in kept} == observed
+    for path in kept:
+        assert f", saved {path}\n" in result.out
+
+
+def test_structured_persists_nothing_it_produced(benchmarks: Path) -> None:
+    """A structured Watch is no more a measurement than a prose one: nothing is written down."""
+    run(["--count", "2", "--structured"], model=structured_model(DESK, HAND), observations=2)
+
+    assert not benchmarks.exists()

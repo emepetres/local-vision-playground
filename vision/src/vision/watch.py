@@ -48,7 +48,15 @@ from typing import Protocol
 
 from vision.capture import Frame, HeldFeed, save_frame
 from vision.errors import VisionError, one_line
-from vision.inference import PROMPT, FinishReason, ModelIdentity, VisionModel, Workload
+from vision.inference import (
+    PROMPT,
+    STRUCTURED_PROMPT,
+    FinishReason,
+    ModelIdentity,
+    Shape,
+    VisionModel,
+    Workload,
+)
 from vision.startup import Clock, Sleep, timed
 
 CADENCE = 2.0
@@ -163,8 +171,15 @@ class ReachedCadence:
 
 
 @dataclass(frozen=True, kw_only=True)
-class WatchedObservation(ReachedCadence):
-    """One Observation a Watch produced, and what producing it cost.
+class WatchedAnswer(ReachedCadence):
+    """What every Observation a Watch produced cost and how it ended, whichever shape it took.
+
+    The half a prose Observation and a Structured one hold in common: the inference, which is
+    the only thing timed; the limit it ran under and how it ended; and the Frame kept where the
+    Operator asked. What sits on top of this is the answer itself — prose text, or the fixed
+    shape — and the two are siblings carrying that rather than one type whose answer field goes
+    optional to hold either (ADR-0011). They share this base because getting the Frame onto the
+    hardware and off the clock cost the same whichever shape was asked of it.
 
     Only the inference is timed. Registering the Execution Providers and loading the model
     were paid once before the first Observation, and taking the present off a held Feed is
@@ -177,7 +192,6 @@ class WatchedObservation(ReachedCadence):
     """
 
     inference: float
-    text: str
     finish_reason: FinishReason
     max_output_tokens: int
 
@@ -187,6 +201,29 @@ class WatchedObservation(ReachedCadence):
     @property
     def truncated(self) -> bool:
         return self.finish_reason is FinishReason.TRUNCATED
+
+
+@dataclass(frozen=True, kw_only=True)
+class WatchedObservation(WatchedAnswer):
+    """One prose Observation a Watch produced: what it cost, and what the model said."""
+
+    text: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class WatchedStructuredObservation(WatchedAnswer):
+    """One Structured Observation a Watch produced: what it cost, and the shape it came to.
+
+    The sibling of ``WatchedObservation`` under ``--structured`` (CONTEXT.md, "Structured
+    Observation"). It carries the ``shape`` the model returned — the objects present, or the
+    reason there was none — where the prose sibling carries ``text``. A "no shape" outcome is
+    one of these, not a ``FailedInference``: the model was asked and answered, it simply did
+    not answer in the shape, and that is an ordinary result the Watch reports and carries on
+    past rather than a fault it survives (ADR-0011). It is measured like any other Observation
+    — it took inference time and counts toward the rate the Watch sustained.
+    """
+
+    shape: Shape
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -210,6 +247,17 @@ class FailedInference(ReachedCadence):
     def reason(self) -> str:
         """The one line this failure is worth, in the shape every other failure is said in."""
         return one_line(self.error)
+
+
+WatchedAny = WatchedObservation | WatchedStructuredObservation
+"""An Observation a Watch produced, whichever shape it was asked for: prose, or the fixed list.
+
+Every Observation in one Watch is one kind or the other — ``--structured`` is one choice for
+the whole run, as it is for a Benchmark — so a Watch holds a run of one kind, not a mix. The
+union is what lets the rhythm, the summary and the numbers be written once over what the two
+share (the inference, the Shortfall, the turn) while the one place that renders the *answer*
+dispatches on which of them it is holding.
+"""
 
 
 @dataclass(frozen=True)
@@ -267,7 +315,7 @@ class Watch:
     whoever started the Watch and this is what is only known once it is over.
     """
 
-    observations: tuple[WatchedObservation, ...]
+    observations: tuple[WatchedAny, ...]
 
     failures: tuple[FailedInference, ...] = ()
     """The Cadences at which the model was asked and did not answer.
@@ -326,12 +374,13 @@ class Watch:
         return not self.observations
 
 
-Produced = WatchedObservation | FailedInference
+Produced = WatchedObservation | WatchedStructuredObservation | FailedInference
 """What one Cadence came to: the Observation it produced, or the inference that failed.
 
-Named once because four places speak of it — the port below, the rendering of a line, and
-the two ends of ``_observe`` — and a union respelled at each of them is a union that grows
-a fourth member in three of them.
+The Observation is prose or the fixed shape depending on what the Watch was asked for, and a
+Cadence that failed is neither whichever it was. Named once because four places speak of it —
+the port below, the rendering of a line, and the two ends of ``_observe`` — and a union
+respelled at each of them is a union that grows a member in three of them.
 """
 
 
@@ -482,6 +531,7 @@ def keep_watch(
     keep_in: Path | None,
     announce: Announce,
     questions: Questions,
+    structured: bool = False,
 ) -> Watch:
     """Produce Observations on the grid until the Operator stops it, or ``count`` is met.
 
@@ -520,8 +570,17 @@ def keep_watch(
     is what skipping *is*. A Watch that counted its way along the grid would have every
     Observation after an overrun be about an instant that had already gone by, which is the
     queuing ADR-0006 refuses, arrived at by arithmetic rather than by choice.
+
+    ``structured`` asks each Cadence for the fixed shape rather than prose (ADR-0011), the
+    same one choice for the whole run that a Benchmark makes. It changes what the model is
+    asked for and nothing else: the grid, the Shortfall a late Cadence carries, and the way a
+    failed inference is one line the Watch goes on past are all untouched. A "no shape" Cadence
+    is a Structured Observation that came to no shape — produced, reported, and gone on from —
+    not a failure. While it is on, composing a Scene Question still suspends the Watch but does
+    not change the request: the fixed shape overrides the question, so what is composed steers
+    nothing (issue #32). The shape of the answer and the steering of the Watch stay independent.
     """
-    observations: list[WatchedObservation] = []
+    observations: list[WatchedAny] = []
     failures: list[FailedInference] = []
     question = start.question
     changed: QuestionChanged | None = None
@@ -574,6 +633,7 @@ def keep_watch(
                 shortfall=Shortfall(skipped_cadences=skipped, stale_frames=present.stale_frames),
                 clock=clock,
                 keep_in=keep_in,
+                structured=structured,
             )
             # The change has been carried onto the Observation that is the first to answer
             # the new question; it is news once and must not ride the Observations after it.
@@ -589,8 +649,19 @@ def keep_watch(
             # interrupted it suspends here: compose blocks, no Observation is produced
             # meanwhile, and what the composed line means becomes the question standing from
             # the next Cadence — echoed once, above the first Observation to answer it.
+            #
+            # Under --structured the suspension still happens and the grid is still re-anchored
+            # across it — composing is not the machine falling behind whatever shape is asked —
+            # but the composed line steers nothing: the fixed shape overrides it, so it changes
+            # neither the request nor the report, and is not echoed (issue #32). The line is
+            # still read, so the keyboard behaves the same and the suspension is honest.
             if questions.interrupted():
-                question, changed = _standing_question(question, questions.compose())
+                if structured:
+                    # Read the line so the keyboard behaves the same and the suspension is
+                    # honest, then throw it away: the fixed shape overrides it (issue #32).
+                    questions.compose()
+                else:
+                    question, changed = _standing_question(question, questions.compose())
                 resumed = True
     except KeyboardInterrupt:
         pass
@@ -690,6 +761,7 @@ def _observe(
     shortfall: Shortfall,
     clock: Clock,
     keep_in: Path | None,
+    structured: bool,
 ) -> Produced:
     """Ask the model about one Frame, once, and come back with whichever way it went.
 
@@ -701,12 +773,19 @@ def _observe(
     audience. ``KeyboardInterrupt`` is not among them: it is not a fault of the inference
     but the Operator ending the Watch, and it passes through to whoever runs the grid.
 
-    The Workload is built fresh from this Frame and carries the Scene Question standing
-    over the Watch at this Cadence, which the loop has just read off the keyboard.
-    An Observation is what the model reports about *a* Frame, and a Watch that let a
-    conversation grow across its Observations would be describing its own history as much
-    as the room in front of the camera: the question is carried from one Cadence to the
-    next, never the answers.
+    The Workload is built fresh from this Frame. Under prose it carries the Scene Question
+    standing over the Watch at this Cadence, which the loop has just read off the keyboard;
+    under ``--structured`` it carries the fixed shape instead, and the standing question steers
+    nothing (ADR-0011, issue #32). Either way an Observation is what the model reports about
+    *a* Frame, and a Watch that let a conversation grow across its Observations would be
+    describing its own history as much as the room in front of the camera: the request is
+    carried from one Cadence to the next, never the answers.
+
+    A structured Cadence crosses the model port through ``observe_structured`` and comes back
+    as a ``WatchedStructuredObservation`` — the objects present, or a "no shape" carrying its
+    reason. A model that declines the shape is not caught here: it did not raise, it answered
+    without a shape, and that is an ordinary produced Observation rather than a failed
+    inference (ADR-0011). Only an inference that actually raised becomes a ``FailedInference``.
 
     Handed the Frame rather than the Feed, and deliberately: a Feed with nothing left to
     give is the end of the Watch and every fault in here is not, so the two are decided in
@@ -720,11 +799,28 @@ def _observe(
         # the question never arrives. Only the observed Frame is ever written — a Stale
         # Frame explains nothing, because nobody observed it.
         saved = save_frame(frame, keep_in) if keep_in is not None else None
-        workload = Workload(prompt=question, frame=frame)
-        raw, inference = timed(clock, lambda: model.observe(workload))
+        if structured:
+            structured_workload = Workload(prompt=STRUCTURED_PROMPT, frame=frame)
+            raw_structured, structured_inference = timed(
+                clock, lambda: model.observe_structured(structured_workload)
+            )
+        else:
+            workload = Workload(prompt=question, frame=frame)
+            raw, inference = timed(clock, lambda: model.observe(workload))
     except Exception as error:
         return FailedInference(
             order=order, error=error, shortfall=shortfall, changed_question=changed_question
+        )
+    if structured:
+        return WatchedStructuredObservation(
+            order=order,
+            inference=structured_inference,
+            shape=raw_structured.shape,
+            finish_reason=raw_structured.finish_reason,
+            max_output_tokens=structured_workload.max_output_tokens,
+            shortfall=shortfall,
+            saved=saved,
+            changed_question=changed_question,
         )
     return WatchedObservation(
         order=order,

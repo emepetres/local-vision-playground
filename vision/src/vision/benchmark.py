@@ -37,7 +37,14 @@ from tqdm import tqdm
 
 from vision.errors import VisionError
 from vision.formatting import format_seconds
-from vision.inference import FinishReason, FoundryLocal, ModelIdentity, VisionModel, Workload
+from vision.inference import (
+    FinishReason,
+    FoundryLocal,
+    ModelIdentity,
+    Shape,
+    VisionModel,
+    Workload,
+)
 from vision.startup import (
     Clock,
     accept_variant,
@@ -100,6 +107,58 @@ class BenchmarkRun:
 
 
 @dataclass(frozen=True)
+class StructuredBenchmarkRun:
+    """One measured execution of the structured Workload, and the shape it came to.
+
+    The sibling of ``BenchmarkRun``: where that carries the prose ``text``, this carries the
+    ``shape`` the model returned — the objects present, or the reason there was no shape
+    (ADR-0011). Neither field is made optional to accommodate the other, which is what makes
+    them siblings rather than one overloaded run type.
+
+    The numbers are the same numbers, measured the same way: ``completion_tokens`` is what
+    the model generated for the fixed-shape request rather than for prose, which is what makes
+    two structured latencies comparable, exactly as it does for prose. ADR-0011 reached the
+    fixed shape by a forced tool call and counts the tokens over its arguments; the adapter
+    since took the prompt-and-parse fall-back the ADR named (the model never honours the tool
+    call), so the tokens are the whole structured reply's — the accounting is unchanged. A
+    "no shape" run is a measured run like any other: it was observed, it generated tokens, and
+    the shape it came to is simply that there was none.
+    """
+
+    inference: float
+    completion_tokens: int
+    finish_reason: FinishReason
+    shape: Shape
+
+    @property
+    def truncated(self) -> bool:
+        return self.finish_reason is FinishReason.TRUNCATED
+
+    @property
+    def tokens_per_second(self) -> float:
+        """What the Variant generated per second — the latency read per unit of work.
+
+        The prose run's rate seen for the fixed shape: a run that generated twice as much
+        JSON is not twice as slow, and a run that took no measurable time reports zero rather
+        than dividing by it, for the reason the prose run does.
+        """
+        if self.inference <= 0.0:
+            return 0.0
+        return self.completion_tokens / self.inference
+
+
+AnyBenchmarkRun = BenchmarkRun | StructuredBenchmarkRun
+"""One Benchmark Run, whichever shape was asked of it: prose text or the fixed shape.
+
+Every Variant in one Benchmark is measured the same way, so a ``MeasuredVariant`` holds one
+kind or the other rather than a mix — the union is what lets the numeric machinery (the
+spreads, the truncation count, the Token Divergence) be written once over the fields the two
+share, while each place that renders the *answer* — the record and the Markdown — dispatches
+on which kind it is holding.
+"""
+
+
+@dataclass(frozen=True)
 class Spread:
     """The median, minimum and maximum of one quantity over several Benchmark Runs.
 
@@ -132,26 +191,22 @@ class MeasuredVariant:
     model: ModelIdentity
     order: int
     load: float
-    runs: tuple[BenchmarkRun, ...]
+    runs: tuple[AnyBenchmarkRun, ...]
 
     @property
-    def first(self) -> BenchmarkRun:
-        """The cold repetition, kept rather than dropped — it is the honest number."""
+    def first(self) -> AnyBenchmarkRun:
+        """The cold repetition, kept rather than dropped — it is the honest number.
+
+        What this Variant *said* is read from here — the cold Benchmark Run's prose or its
+        shape, one rather than all of them, because the repetitions answer the same Workload
+        and the first is the one both reports already single out. The kind of answer it is
+        depends on which shape the sitting asked of it, so the one place that renders it
+        dispatches on the run type; where the repetitions disagree, the Tokens spread says so.
+        """
         return self.runs[0]
 
     @property
-    def observation(self) -> str:
-        """What this Variant said about the Frame, taken from the cold Benchmark Run.
-
-        One rather than all of them: the repetitions answer the same Workload, so what is
-        worth keeping is what *this Variant* said, and the first is the one the report
-        already singles out. Where the repetitions disagree, the Tokens spread is what
-        says so.
-        """
-        return self.first.text
-
-    @property
-    def steady(self) -> tuple[BenchmarkRun, ...]:
+    def steady(self) -> tuple[AnyBenchmarkRun, ...]:
         """The repetitions after the first, which are what the statistics describe."""
         return self.runs[1:]
 
@@ -247,6 +302,17 @@ class Benchmark:
     providers: float
     repetitions: int
     variants: tuple[MeasuredVariant | UnmeasuredVariant, ...]
+    structured: bool = False
+    """Whether this sitting measured the fixed shape rather than prose (ADR-0011).
+
+    A discriminator, not a data field: it says which Workload discipline the whole sitting
+    ran under, so the record and the Markdown render each Variant's *answer* as a list of
+    objects rather than a paragraph — and so that an Unmeasured Variant, which has no run to
+    read the kind off, is written down in the same shape as the measured ones beside it. Two
+    structured runs are comparable only when they share the fixed shape as well as the Frame
+    and the limits; the shape is the prompt the Workload already carries, and this says a
+    reader is looking at that kind of Benchmark.
+    """
 
     @property
     def measured(self) -> tuple[MeasuredVariant, ...]:
@@ -338,6 +404,7 @@ def measure(
     workload: Workload,
     repetitions: int,
     out: TextIO,
+    structured: bool = False,
 ) -> Benchmark:
     """Measure each Variant against the same Workload, one on the hardware at a time.
 
@@ -350,6 +417,13 @@ def measure(
     catch. A Variant that will not load is neither: it is the machine's answer, and it
     arrives after the other Variants have already been paid for — so it comes back as an
     Unmeasured Variant rather than as an exception, and the sitting goes on.
+
+    ``structured`` chooses which shape is asked of every Variant — the fixed list of objects
+    or prose. It is one choice for the whole sitting because it is part of the Workload
+    discipline: two structured runs are comparable only when they share the fixed shape, the
+    same way they must share the Frame and the limits (ADR-0011). A model that declines the
+    shape is a "no shape" run, not a failed one — the Variant was measured, so it does not
+    raise and it does not become prose.
     """
     require_a_benchmark_run(repetitions)
     require_a_variant(variants)
@@ -364,12 +438,17 @@ def measure(
             workload=workload,
             repetitions=repetitions,
             out=out,
+            structured=structured,
         )
         for order, model in enumerate(models, start=1)
     )
 
     return Benchmark(
-        workload=workload, providers=providers, repetitions=repetitions, variants=measured
+        workload=workload,
+        providers=providers,
+        repetitions=repetitions,
+        variants=measured,
+        structured=structured,
     )
 
 
@@ -392,6 +471,7 @@ def _measure_one(
     workload: Workload,
     repetitions: int,
     out: TextIO,
+    structured: bool,
 ) -> MeasuredVariant | UnmeasuredVariant:
     """Bring one Variant up, run the Workload against it, and take it back off again.
 
@@ -419,7 +499,12 @@ def _measure_one(
 
     try:
         runs = _repeat(
-            ready.model, workload=workload, clock=clock, repetitions=repetitions, out=out
+            ready.model,
+            workload=workload,
+            clock=clock,
+            repetitions=repetitions,
+            out=out,
+            structured=structured,
         )
     except BaseException:
         # Take the model off the hardware, but never at the cost of the reason the
@@ -440,7 +525,8 @@ def _repeat(
     clock: Clock,
     repetitions: int,
     out: TextIO,
-) -> tuple[BenchmarkRun, ...]:
+    structured: bool,
+) -> tuple[AnyBenchmarkRun, ...]:
     """Take the repetitions, showing the numbers moving while an audience waits.
 
     A two-Variant Benchmark including a CPU Variant takes minutes, and a terminal that
@@ -448,8 +534,13 @@ def _repeat(
     when nothing is watching (``disable=None`` means "disable when this is not a TTY"),
     exactly as the download bar does, so output captured in a pipe or in CI is just the
     table.
+
+    ``structured`` picks which shape each repetition asks of the model. The bar reads the
+    same off either run — the last latency and the running median — because the progress an
+    Operator watches is the clock, not the shape.
     """
-    runs: list[BenchmarkRun] = []
+    run_once = _run_structured if structured else _run
+    runs: list[AnyBenchmarkRun] = []
     with tqdm(
         total=repetitions,
         desc=f"Measuring {model.identity.variant}",
@@ -461,7 +552,7 @@ def _repeat(
         disable=None,
     ) as bar:
         for _ in range(repetitions):
-            runs.append(_run(model, workload, clock))
+            runs.append(run_once(model, workload, clock))
             bar.set_postfix_str(_so_far(runs), refresh=False)
             bar.update(1)
         drawn = not bar.disable
@@ -474,7 +565,7 @@ def _repeat(
     return tuple(runs)
 
 
-def _so_far(runs: Sequence[BenchmarkRun]) -> str:
+def _so_far(runs: Sequence[AnyBenchmarkRun]) -> str:
     """The last latency and the running median, so the numbers are visibly moving.
 
     The median is taken over the repetitions after the first, which is what the table's
@@ -495,4 +586,21 @@ def _run(model: VisionModel, workload: Workload, clock: Clock) -> BenchmarkRun:
         completion_tokens=raw.completion_tokens,
         finish_reason=raw.finish_reason,
         text=raw.text,
+    )
+
+
+def _run_structured(model: VisionModel, workload: Workload, clock: Clock) -> StructuredBenchmarkRun:
+    """One structured Benchmark Run: ask for the fixed shape, and keep what it came to.
+
+    The sibling of ``_run``, crossing the model port through ``observe_structured`` so the
+    tokens are counted over the fixed-shape request. Only the inference is inside the clock,
+    exactly as for prose; a model that declined the shape returns a ``NoShape`` here rather
+    than raising, so a "no shape" run is timed and measured like any other (ADR-0011).
+    """
+    raw, inference = timed(clock, lambda: model.observe_structured(workload))
+    return StructuredBenchmarkRun(
+        inference=inference,
+        completion_tokens=raw.completion_tokens,
+        finish_reason=raw.finish_reason,
+        shape=raw.shape,
     )

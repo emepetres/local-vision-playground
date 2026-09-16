@@ -192,9 +192,12 @@ _Avoid_: result, entry, row, per-variant benchmark
 
 **Unmeasured Variant**:
 A [[Variant]] that never got onto the hardware within a Benchmark, and the reason it did
-not. It is part of the Benchmark, not an error that ended one: a published Variant that
-will not load on this machine is exactly the sort of thing an Operator runs a Benchmark to
-find out, and the other Variants' numbers are worth more than the traceback. A Benchmark
+not. It covers a Variant that would not *load* or would not *run*, not one that would not
+*export*: a Variant that never exported is not one a Benchmark can name, so that failure
+belongs to the conversion that produced it, not to the Benchmark. It is part of the
+Benchmark, not an error that ended one: a published Variant that will not load on this
+machine is exactly the sort of thing an Operator runs a Benchmark to find out, and the
+other Variants' numbers are worth more than the traceback. A Benchmark
 that measured nothing at all is still a failure — a Benchmark of only Unmeasured Variants
 has no result to report.
 _Avoid_: failed variant, error, skipped variant, crash
@@ -223,7 +226,10 @@ Runtimes, which is the one pair a Benchmark most needs to keep apart. The Runtim
 Execution Provider; the machine is whatever the Operator declares it to be, so a Hardware
 Profile is only as trustworthy as what they wrote down. Two Benchmark Runs are only
 comparable when named against their Hardware Profiles — and only then if their Workloads
-match.
+match. A Hardware Profile authorises a comparison; it does not identify a Benchmark Run —
+that is the [[Measured Variant]]'s work. A Benchmark is one sitting on one machine, so the
+machine is constant across it and only the Runtime and Execution Provider vary from Run to
+Run; comparing across machines is comparing two Benchmarks.
 _Avoid_: rig, environment, setup, config
 
 ### Action

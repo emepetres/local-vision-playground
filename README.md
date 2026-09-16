@@ -727,7 +727,7 @@ mirrored here.
       in effect until it is replaced, so that a skipped Cadence goes on meaning *this
       machine could not keep up* and nothing else
       ([ADR-0009](./docs/adr/0009-a-scene-question-changes-what-a-watch-asks.md)).
-- [ ] **5. Structured Observations.** Ask the model for a fixed shape — the list of
+- [x] **5. Structured Observations.** Ask the model for a fixed shape — the list of
       objects present in a Frame — instead of prose.
 - [ ] **6. Triggers.** Fire when a condition over Observations holds: an object appears,
       a scene changes.

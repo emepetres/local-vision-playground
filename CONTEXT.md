@@ -164,7 +164,12 @@ recipe it was exported with, and the [[Execution Provider]] it was exported for.
 half of a Variant's identity that a Variant id hands over for free — so a [[Foundry Local]]
 Variant satisfies it by naming its id, and one of ours has to state it. A path on disk is
 not an identity, and a Benchmark is persisted to be read months later.
-_Avoid_: source, origin, lineage, recipe
+
+The *recipe* is one named part of a Provenance — the export command and its arguments, and
+the field of that name the conversion step writes into `provenance.json` — not another word
+for the whole: calling the whole "the recipe" would lose the weights and the Execution
+Provider standing beside it, which is why only the part carries the name.
+_Avoid_: source, origin, lineage
 
 **Local-First**:
 The constraint that every stage — capture, understanding and action — runs on the Operator's machine, with no request leaving it. It is the reason the project exists, not an optimisation applied to it.

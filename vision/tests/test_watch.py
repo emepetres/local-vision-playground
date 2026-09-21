@@ -47,6 +47,7 @@ from vision.inference import (
     Shape,
     Workload,
 )
+from vision.router import Router
 
 SETUP_READINGS = (0.0, 0.5)
 """Registering the Execution Providers: 0.500 s."""
@@ -173,7 +174,7 @@ def run(
         argv,
         open_feed=cameras,
         make_reader=readers,
-        foundry=FakeFoundry.resolving_everything_to(model),
+        router=Router(FakeFoundry.resolving_everything_to(model)),
         clock=clock if clock is not None else FakeClock(readings(observations)),
         sleep=sleep,
         questions=questions,
@@ -1371,7 +1372,7 @@ def test_reads_no_keyboard_where_stdin_is_not_a_terminal() -> None:
         ["--count", "3", "--ask", STANDING],
         open_feed=FakeCameras({0: watching_feed(len(TEXTS))}),
         make_reader=FakeReaders(),
-        foundry=FakeFoundry.resolving_everything_to(model),
+        router=Router(FakeFoundry.resolving_everything_to(model)),
         clock=FakeClock(readings(len(TEXTS))),
         sleep=FakeSleep(),
         stdin=io.StringIO(f"{TYPED}\n"),

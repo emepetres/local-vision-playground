@@ -100,8 +100,14 @@ class ModelIdentity:
     device_type: str | None
 
     @property
-    def runtime(self) -> str | None:
-        """The pair as one phrase, which is how a report names what a Variant ran on."""
+    def ran_on(self) -> str | None:
+        """The pair as one phrase, which is how a report names what a Variant ran on.
+
+        The device and Execution Provider a Variant was dispatched to, not the domain
+        Runtime that loaded it (CONTEXT.md, "Runtime"): the two read alike in a report but
+        are different facts, so this carries the display phrase under a name that leaves
+        ``Runtime`` free for the port a command resolves through.
+        """
         if self.execution_provider is None:
             return None
         if self.device_type is None:
@@ -308,8 +314,30 @@ class VisionModel(Protocol):
         ...
 
 
-class FoundryLocal(Protocol):
-    """The port onto Foundry Local."""
+class Runtime(Protocol):
+    """The common resolution port over the project's Runtimes: it resolves, nothing more.
+
+    A Runtime is what loads a model onto the machine and runs it on an Execution Provider
+    (CONTEXT.md, "Runtime"). This project has two — Foundry Local and OpenVINO GenAI — and
+    what they share, and all a command holds a router over them for, is turning a name into
+    a model. ``register_execution_providers`` is deliberately *not* here: it is Foundry
+    Local's alone, because Foundry Local picks the Execution Provider and nothing selects
+    one explicitly, while the second Runtime is told its device and has nothing to register
+    (ADR-0013). The Runtime that lacks the method is the one that proves the boundary.
+    """
+
+    def resolve(self, name: str) -> VisionModel:
+        """Resolve a name this Runtime claims into a model, before it is on the machine."""
+        ...
+
+
+class FoundryLocal(Runtime, Protocol):
+    """The port onto Foundry Local: a Runtime that also registers the Execution Providers.
+
+    It answers the common ``resolve`` and, unlike the other Runtime, owns
+    ``register_execution_providers`` — the one member that does not lift onto the shared
+    ``Runtime`` port (ADR-0013).
+    """
 
     def register_execution_providers(self, announce: Callable[[str], None]) -> None:
         """Make this machine's Execution Providers available, reporting what is worth saying.
@@ -320,10 +348,6 @@ class FoundryLocal(Protocol):
         providers, and nothing may be downloaded before the model is known to be one that
         can see a Frame.
         """
-        ...
-
-    def resolve(self, name: str) -> VisionModel:
-        """Resolve an alias (Foundry picks the hardware) or a variant id (pins it)."""
         ...
 
 

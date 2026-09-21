@@ -61,7 +61,6 @@ from vision.inference import (
     DEFAULT_VARIANTS,
     PROMPT,
     STRUCTURED_PROMPT,
-    FoundryLocal,
     Observation,
     StructuredObservation,
     Timings,
@@ -78,6 +77,7 @@ from vision.reporting import (
     render_watch_line,
     render_watch_summary,
 )
+from vision.router import Router
 from vision.startup import (
     Clock,
     Sleep,
@@ -105,7 +105,7 @@ def main(
     *,
     camera: Camera | None = None,
     open_feed: OpenFeed | None = None,
-    foundry: FoundryLocal | None = None,
+    router: Router | None = None,
     clock: Clock | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
@@ -131,12 +131,12 @@ def main(
         default_camera, keep_in = _source(args, open_feed, frames_dir)
         if camera is None:
             camera = default_camera
-        foundry = _resolve_foundry(foundry, owned)
+        router = _resolve_router(router, owned)
         clock = _resolve_clock(clock)
 
         workload, observation, saved = _observe(
             camera=camera,
-            foundry=foundry,
+            router=router,
             clock=clock,
             model_name=args.model,
             question=question,
@@ -160,7 +160,7 @@ def benchmark_main(
     argv: Sequence[str] | None = None,
     *,
     camera: Camera | None = None,
-    foundry: FoundryLocal | None = None,
+    router: Router | None = None,
     clock: Clock | None = None,
     now: Now | None = None,
     out: TextIO | None = None,
@@ -186,7 +186,7 @@ def benchmark_main(
         prompt = STRUCTURED_PROMPT if args.structured else require_a_scene_question(args.ask)
         if camera is None:
             camera = _benchmark_source(args.image)
-        foundry = _resolve_foundry(foundry, owned)
+        router = _resolve_router(router, owned)
         clock = _resolve_clock(clock)
 
         # Read once, and reuse these exact bytes: re-reading the file per repetition would
@@ -197,7 +197,7 @@ def benchmark_main(
         # they share it, as they must share the Frame and the limits (ADR-0011).
         workload = Workload(prompt=prompt, frame=camera.capture())
         benchmark = measure(
-            foundry=foundry,
+            router=router,
             clock=clock,
             variants=variants,
             workload=workload,
@@ -235,7 +235,7 @@ def watch_main(
     *,
     open_feed: OpenFeed | None = None,
     make_reader: MakeReader | None = None,
-    foundry: FoundryLocal | None = None,
+    router: Router | None = None,
     clock: Clock | None = None,
     sleep: Sleep | None = None,
     questions: Questions | None = None,
@@ -299,12 +299,12 @@ def watch_main(
         # benchmark keep. The Watch still reads a composed question while structured is on,
         # but the fixed shape overrides it, so it steers nothing (issue #32).
         question = STRUCTURED_PROMPT if args.structured else require_a_scene_question(args.ask)
-        foundry = _resolve_foundry(foundry, owned)
+        router = _resolve_router(router, owned)
         clock = _resolve_clock(clock)
         sleep = _resolve_sleep(sleep)
 
-        model = accept_variant(foundry, args.model)
-        providers = register_execution_providers(foundry, clock=clock, out=out)
+        model = accept_variant(router, args.model)
+        providers = register_execution_providers(router, clock=clock, out=out)
         # Named before the Feed is opened because both endings are about it: the camera
         # that was never there, and the one that stopped answering half way through.
         provenance = camera_provenance(args.camera)
@@ -782,16 +782,21 @@ def _streams(out: TextIO | None, err: TextIO | None) -> tuple[TextIO, TextIO]:
     return (out if out is not None else sys.stdout, err if err is not None else sys.stderr)
 
 
-def _resolve_foundry(foundry: FoundryLocal | None, owned: list[Callable[[], None]]) -> FoundryLocal:
-    """The real Foundry Local when none was injected, with its close registered."""
-    if foundry is not None:
-        return foundry
+def _resolve_router(router: Router | None, owned: list[Callable[[], None]]) -> Router:
+    """The real router over the real Foundry Local when none was injected.
+
+    A command holds a router over the Runtimes, not a bare Foundry Local (ADR-0013). When
+    nothing is injected it is a router over the one real Runtime there is here, whose close
+    is registered so the manager is torn down with the rest.
+    """
+    if router is not None:
+        return router
 
     from vision.inference import InProcessFoundryLocal
 
     real = InProcessFoundryLocal()
     owned.append(real.close)
-    return real
+    return Router(real)
 
 
 def _resolve_questions(questions: Questions | None, stdin: TextIO | None, out: TextIO) -> Questions:
@@ -879,7 +884,7 @@ def _source(
 def _observe(
     *,
     camera: Camera,
-    foundry: FoundryLocal,
+    router: Router,
     clock: Clock,
     model_name: str,
     question: str | None,
@@ -890,8 +895,8 @@ def _observe(
     # all is downloaded: a first run fetches the providers too, and waiting for those to
     # be told the model was never a vision-language model is the failure the refusal
     # exists to prevent.
-    model = accept_variant(foundry, model_name)
-    providers = register_execution_providers(foundry, clock=clock, out=out)
+    model = accept_variant(router, model_name)
+    providers = register_execution_providers(router, clock=clock, out=out)
     ready = bring_up(model, clock=clock, out=out)
 
     frame, capture = timed(clock, camera.capture)

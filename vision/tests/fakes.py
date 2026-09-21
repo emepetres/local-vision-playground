@@ -34,6 +34,7 @@ from vision.inference import (
     PresentObject,
     RawObservation,
     RawStructuredObservation,
+    Runtime,
     Shape,
     VisionModel,
     Workload,
@@ -533,3 +534,7 @@ _sleep: Sleep = FakeSleep()
 _questions: Questions = TypedQuestions()
 _model: VisionModel = FakeVisionModel(make_identity(), [make_observation()])
 _foundry: FoundryLocal = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})
+# Foundry Local is a Runtime too — it satisfies the common resolution port as well as its
+# own. The seam a test reads the boundary off is the Runtime that has no
+# register_execution_providers; that one arrives with the second Runtime (ADR-0013).
+_runtime: Runtime = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})

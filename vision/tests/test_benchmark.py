@@ -43,6 +43,7 @@ from vision.inference import (
     Workload,
 )
 from vision.record import benchmarks_directory
+from vision.router import Router
 
 GPU_VARIANT, CPU_VARIANT = DEFAULT_VARIANTS
 """The two Variants a Benchmark measures when the Operator names none."""
@@ -268,7 +269,7 @@ def run(
     code = benchmark_main(
         argv if argv is not None else [],
         camera=camera,
-        foundry=foundry,
+        router=Router(foundry),
         clock=FakeClock(readings),
         out=out,
         err=err,
@@ -513,9 +514,11 @@ def test_measures_the_reference_frame_by_default() -> None:
     out, err = io.StringIO(), io.StringIO()
     code = benchmark_main(
         [],
-        foundry=FakeFoundry(
-            {GPU_VARIANT: make_gpu(events=events), CPU_VARIANT: make_cpu(events=events)},
-            events=events,
+        router=Router(
+            FakeFoundry(
+                {GPU_VARIANT: make_gpu(events=events), CPU_VARIANT: make_cpu(events=events)},
+                events=events,
+            )
         ),
         clock=FakeClock(READINGS),
         out=out,
@@ -538,7 +541,7 @@ def test_says_the_reference_frame_only_exists_in_a_source_checkout(
 
     code = benchmark_main(
         [],
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
         clock=FakeClock(READINGS),
         out=out,
         err=err,
@@ -951,7 +954,7 @@ def test_shows_one_progress_bar_per_variant_on_a_terminal() -> None:
     code = benchmark_main(
         [],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
         clock=FakeClock(READINGS),
         out=out,
         err=io.StringIO(),
@@ -969,7 +972,7 @@ def test_the_progress_bar_carries_the_last_latency_and_the_running_median() -> N
     code = benchmark_main(
         ["--variant", GPU_VARIANT],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu()})),
         clock=FakeClock(ONE_VARIANT_READINGS),
         out=out,
         err=io.StringIO(),
@@ -985,7 +988,7 @@ def test_the_progress_bar_says_a_lone_repetition_is_cold_rather_than_calling_it_
     code = benchmark_main(
         ["--variant", GPU_VARIANT, "--repetitions", "1"],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(COMPLETION_TOKENS[:1])}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(COMPLETION_TOKENS[:1])})),
         clock=FakeClock((*PROVIDER_READINGS, *GPU_READINGS[:4])),
         out=out,
         err=io.StringIO(),
@@ -1011,7 +1014,7 @@ def test_pins_an_exact_variant_id_and_reports_the_one_that_answered() -> None:
     code = benchmark_main(
         ["--variant", "qwen3-vl-2b-instruct-generic-cpu:2"],
         camera=FakeCamera([make_frame()]),
-        foundry=foundry,
+        router=Router(foundry),
         clock=FakeClock(ONE_VARIANT_READINGS),
         out=out,
         err=err,

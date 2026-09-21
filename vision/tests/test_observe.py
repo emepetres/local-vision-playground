@@ -28,6 +28,7 @@ from tests.fakes import (
 from vision.capture import SETTLING_FRAMES, WORKING_RESOLUTION
 from vision.cli import main
 from vision.inference import STRUCTURED_PROMPT, FinishReason, NoShape, ObjectsPresent, PresentObject
+from vision.router import Router
 
 SETUP_READINGS = (0.0, 0.5)
 """Registering the Execution Providers: 0.500 s."""
@@ -90,7 +91,9 @@ def run(
     if foundry is None:
         foundry = FakeFoundry.resolving_everything_to(model, setup_lines=setup_lines)
     out, err = io.StringIO(), io.StringIO()
-    code = main(argv, camera=camera, foundry=foundry, clock=FakeClock(readings), out=out, err=err)
+    code = main(
+        argv, camera=camera, router=Router(foundry), clock=FakeClock(readings), out=out, err=err
+    )
     return Run(code, out.getvalue(), err.getvalue(), foundry, model)
 
 
@@ -110,7 +113,7 @@ def run_on_file(path: Path) -> Run:
     out, err = io.StringIO(), io.StringIO()
     code = main(
         ["--image", str(path)],
-        foundry=foundry,
+        router=Router(foundry),
         clock=FakeClock(CACHED_READINGS),
         out=out,
         err=err,
@@ -453,8 +456,10 @@ def test_reports_a_missing_image_in_one_line_and_exits_non_zero(tmp_path: Path) 
     out, err = io.StringIO(), io.StringIO()
     code = main(
         ["--image", str(missing)],
-        foundry=FakeFoundry.resolving_everything_to(
-            FakeVisionModel(make_identity(), [make_observation()])
+        router=Router(
+            FakeFoundry.resolving_everything_to(
+                FakeVisionModel(make_identity(), [make_observation()])
+            )
         ),
         clock=FakeClock(CACHED_READINGS),
         out=out,
@@ -631,7 +636,7 @@ def run_live(
     code = main(
         argv,
         open_feed=cameras,
-        foundry=FakeFoundry.resolving_everything_to(model),
+        router=Router(FakeFoundry.resolving_everything_to(model)),
         clock=FakeClock(CACHED_READINGS),
         out=out,
         err=err,
@@ -715,8 +720,10 @@ def test_does_not_keep_a_frame_that_came_from_an_image_file(
     main(
         [*flags, "--image", "a.jpg"],
         camera=FakeCamera([make_frame()]),
-        foundry=FakeFoundry.resolving_everything_to(
-            FakeVisionModel(make_identity(), [make_observation()])
+        router=Router(
+            FakeFoundry.resolving_everything_to(
+                FakeVisionModel(make_identity(), [make_observation()])
+            )
         ),
         clock=FakeClock(CACHED_READINGS),
         out=out,

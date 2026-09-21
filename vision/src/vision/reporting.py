@@ -781,7 +781,7 @@ def _markdown_cells(variant: MeasuredVariant | UnmeasuredVariant, total: int) ->
     identity = variant.model
     head = [
         f"`{identity.variant}`",
-        identity.runtime or MISSING,
+        identity.ran_on or MISSING,
         f"{_ordinal(variant.order)} of {total}",
     ]
     if isinstance(variant, UnmeasuredVariant):

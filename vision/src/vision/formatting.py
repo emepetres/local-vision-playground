@@ -32,8 +32,8 @@ def format_tokens_per_second(rate: float) -> str:
 
 def format_model(identity: ModelIdentity) -> str:
     detail = f"alias {identity.alias}"
-    if identity.runtime is not None:
-        detail = f"{detail}, {identity.runtime}"
+    if identity.ran_on is not None:
+        detail = f"{detail}, {identity.ran_on}"
     return f"{identity.variant} ({detail})"
 
 

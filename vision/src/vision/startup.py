@@ -22,7 +22,8 @@ from tqdm import tqdm
 
 from vision.errors import VisionError
 from vision.formatting import format_seconds
-from vision.inference import FoundryLocal, ModelIdentity, VisionModel, require_vision_task
+from vision.inference import ModelIdentity, VisionModel, require_vision_task
+from vision.router import Router
 
 Clock = Callable[[], float]
 """Reads a monotonic number of seconds. Injected so latencies are deterministic in tests."""
@@ -52,8 +53,8 @@ class ReadyModel:
     load: float
 
 
-def accept_variant(foundry: FoundryLocal, model_name: str) -> VisionModel:
-    """Resolve a Variant and refuse it if it cannot see a Frame.
+def accept_variant(router: Router, model_name: str) -> VisionModel:
+    """Resolve a Variant through the router and refuse it if it cannot see a Frame.
 
     Kept apart from bringing the model up, and ahead of every download either can start —
     the Execution Providers are fetched on a first run too, and waiting for those in order
@@ -61,7 +62,7 @@ def accept_variant(foundry: FoundryLocal, model_name: str) -> VisionModel:
     exists to prevent. A caller measuring several Variants accepts all of them first, so a
     name that names nothing is caught before the first measurement rather than after it.
     """
-    model = foundry.resolve(model_name)
+    model = router.resolve(model_name)
     require_vision_task(model.identity)
     return model
 
@@ -79,15 +80,17 @@ def bring_up(model: VisionModel, *, clock: Clock, out: TextIO) -> ReadyModel:
 
 
 def register_execution_providers(
-    foundry: FoundryLocal,
+    router: Router,
     *,
     clock: Clock,
     out: TextIO,
 ) -> float:
-    """Register the Execution Providers, timing and announcing what the port reports.
+    """Register the Execution Providers, timing and announcing what the router reports.
 
     Timed apart from the latencies because it is not one of them: it is paid once per
-    process, before a model is loaded. Why it is not optional is on the port.
+    process, before a model is loaded. The router registers them only for a sitting with a
+    Foundry Local Variant in it, so a sitting that never touched Foundry Local is timed at
+    zero and announces nothing (ADR-0013). Why it is not optional otherwise is on the port.
     """
     announced = False
 
@@ -96,7 +99,7 @@ def register_execution_providers(
         announced = True
         print(line, file=out, flush=True)
 
-    _, seconds = timed(clock, lambda: foundry.register_execution_providers(announce))
+    _, seconds = timed(clock, lambda: router.register_execution_providers(announce))
     if announced:
         print(file=out)
     return seconds
@@ -117,7 +120,7 @@ def load_model(model: VisionModel) -> None:
         raise
     except Exception as error:
         identity = model.identity
-        on = f" on {identity.runtime}" if identity.runtime is not None else ""
+        on = f" on {identity.ran_on}" if identity.ran_on is not None else ""
         raise VisionError(
             f"{identity.variant} would not load{on} — pin a different variant with"
             " --variant (run `foundry model list`; a -generic-cpu variant is the safe one)."

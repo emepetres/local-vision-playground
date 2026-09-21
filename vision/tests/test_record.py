@@ -44,6 +44,7 @@ from tests.test_benchmark import (
 from vision.cli import benchmark_main
 from vision.inference import PROMPT, STRUCTURED_PROMPT, NoShape, ObjectsPresent
 from vision.record import SCHEMA_VERSION, hardware_profile, this_machine
+from vision.router import Router
 
 PROFILE = "RTX 4090 + i7-13700KF"
 """What an Operator declares their machine to be — the words a reader is left with."""
@@ -90,11 +91,13 @@ def keep(
     code = benchmark_main(
         [*(argv or []), *declared],
         camera=camera if camera is not None else FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry(
-            {
-                GPU_VARIANT: gpu if gpu is not None else make_gpu(),
-                CPU_VARIANT: cpu if cpu is not None else make_cpu(),
-            }
+        router=Router(
+            FakeFoundry(
+                {
+                    GPU_VARIANT: gpu if gpu is not None else make_gpu(),
+                    CPU_VARIANT: cpu if cpu is not None else make_cpu(),
+                }
+            )
         ),
         clock=FakeClock(readings),
         now=lambda: at,
@@ -145,7 +148,7 @@ def test_a_second_benchmark_in_the_same_second_does_not_overwrite_the_first(
         benchmark_main(
             ["--hardware", PROFILE],
             camera=FakeCamera([make_frame(width=640, height=360)]),
-            foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+            router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
             clock=FakeClock(READINGS),
             now=lambda: AT,
             out=io.StringIO(),
@@ -320,15 +323,17 @@ def test_a_benchmark_that_measured_nothing_is_not_written_down(benchmarks: Path)
     code = benchmark_main(
         ["--hardware", PROFILE],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry(
-            {
-                GPU_VARIANT: FakeVisionModel(
-                    make_identity(), [], load_error=RuntimeError(INVALID_GRAPH)
-                ),
-                CPU_VARIANT: FakeVisionModel(
-                    CPU_IDENTITY, [], load_error=RuntimeError(INVALID_GRAPH)
-                ),
-            }
+        router=Router(
+            FakeFoundry(
+                {
+                    GPU_VARIANT: FakeVisionModel(
+                        make_identity(), [], load_error=RuntimeError(INVALID_GRAPH)
+                    ),
+                    CPU_VARIANT: FakeVisionModel(
+                        CPU_IDENTITY, [], load_error=RuntimeError(INVALID_GRAPH)
+                    ),
+                }
+            )
         ),
         clock=FakeClock((0.0, 0.5, 10.0, 100.0)),
         now=lambda: AT,
@@ -484,7 +489,7 @@ def test_a_record_that_cannot_be_written_costs_the_file_and_not_the_numbers(
     code = benchmark_main(
         ["--hardware", PROFILE],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
         clock=FakeClock(READINGS),
         now=lambda: AT,
         out=out,
@@ -541,7 +546,7 @@ def test_a_document_that_breaks_mid_write_leaves_neither_half_behind(
     code = benchmark_main(
         ["--hardware", PROFILE],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
         clock=FakeClock(READINGS),
         now=lambda: AT,
         out=out,

@@ -23,6 +23,7 @@ from tools.convert.convert import (
     EXPORT_ARGS,
     TOOLCHAIN,
     build_provenance,
+    child_environment,
     default_cache_root,
     main,
     scrubbed_environment,
@@ -139,10 +140,25 @@ class TestScrub:
         assert "openvino_2025" not in kept.lower()
         assert r"C:\Windows\System32" in kept
 
-    def test_the_scrubbed_copy_is_marked_so_the_re_exec_does_not_recurse(self) -> None:
-        clean = scrubbed_environment({"INTEL_OPENVINO_DIR": r"C:\Intel\openvino_2025.3"})
-        assert clean is not None
-        assert clean["LVP_CONVERT_CLEAN_ENV"] == "1"
+    def test_the_export_child_is_handed_a_scrubbed_environment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The export shells out to a child that imports OpenVINO; that child is what the archive
+        # would shadow (#38), so it is the child that runs in a scrubbed environment.
+        monkeypatch.setenv("INTEL_OPENVINO_DIR", r"C:\Intel\openvino_2025.3")
+        monkeypatch.setenv("PATH", os_pathsep([r"C:\Intel\openvino_2025.3\runtime\bin", r"C:\bin"]))
+        env = child_environment()
+        assert "INTEL_OPENVINO_DIR" not in env
+        assert "openvino_2025" not in env["PATH"].lower()
+
+    def test_a_clean_machine_hands_the_child_its_own_environment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The dev box has no archive, so there is nothing to scrub and the child simply inherits.
+        for var in ("PYTHONPATH", "INTEL_OPENVINO_DIR", "OpenVINO_DIR"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("PATH", os_pathsep([r"C:\Windows\System32", r"C:\bin"]))
+        assert child_environment()["PATH"] == os_pathsep([r"C:\Windows\System32", r"C:\bin"])
 
 
 class TestDryRun:

@@ -92,9 +92,11 @@ and the first-try result is no longer the one #40 proved.
 The demo machine carries a system-wide **OpenVINO 2025.3.0 archive install** whose `setupvars`
 are permanent in the environment (`PYTHONPATH`, `INTEL_OPENVINO_DIR`, `OpenVINO_DIR`, and three
 `PATH` entries). It shadows any installed `openvino` and makes `openvino_genai` fail with a DLL
-load error ([#38](https://github.com/emepetres/local-vision-playground/issues/38)). `convert.py`
-detects this at startup, scrubs those variables, and re-execs itself once with a clean
-environment — so the Operator does not have to.
+load error ([#38](https://github.com/emepetres/local-vision-playground/issues/38)). The export
+runs in a **child process** — that child is the one that imports OpenVINO — and `convert.py`
+hands it a scrubbed environment with the archive removed, so the Operator does not have to.
+(The tool itself imports no OpenVINO, so it needs no scrub; re-execing the whole process was
+tried and rejected — `os.execve` segfaults under `uv run` on the demo machine.)
 
 ## Smoke run (acceptance)
 

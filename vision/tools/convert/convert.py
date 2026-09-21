@@ -76,30 +76,26 @@ NPU_DRIVER_FLOOR = (32, 0, 100, 3104)
 
 # The demo machine carries a system-wide OpenVINO 2025.3 archive install whose setupvars are
 # permanent in the environment. It shadows any pip/uv-installed openvino and then makes
-# ``openvino_genai`` fail to import (#38). We scrub its footprint and re-exec ourselves with a
-# clean environment before any openvino import can happen downstream (in the optimum-cli child).
+# ``openvino_genai`` fail to import (#38). The child that runs the export is the one that
+# imports OpenVINO, so it is the child we hand a scrubbed environment (see child_environment).
 _SHADOW_ENV_VARS = ("PYTHONPATH", "INTEL_OPENVINO_DIR", "OpenVINO_DIR")
 _SHADOW_PATH_MARKERS = ("openvino_2025", os.path.join("Intel", "openvino"))
-_CLEAN_SENTINEL = "LVP_CONVERT_CLEAN_ENV"
 
 
 def scrubbed_environment(env: dict[str, str]) -> dict[str, str] | None:
     """A copy of ``env`` with the OpenVINO 2025.3 archive removed, or ``None`` if it is clean.
 
     The archive announces itself in three variables and in three ``PATH`` entries (#38). This
-    returns a scrubbed copy when any of them is present and ``None`` when none is — so the
-    caller re-execs with the copy only when there is something to scrub, and the decision is
-    testable without spawning a process. The returned copy always carries the sentinel that
-    stops the re-exec recursing: a clean environment is marked clean, a dirty one is cleaned
-    and marked.
+    returns a scrubbed copy when any of them is present and ``None`` when none is — so a caller
+    hands the copy to a child that imports OpenVINO only when there is something to scrub, and
+    the decision is testable without spawning anything.
     """
     dirty = any(env.get(var) for var in _SHADOW_ENV_VARS) or any(
         marker.lower() in env.get("PATH", "").lower() for marker in _SHADOW_PATH_MARKERS
     )
-    clean = dict(env)
-    clean[_CLEAN_SENTINEL] = "1"
     if not dirty:
         return None
+    clean = dict(env)
     for var in _SHADOW_ENV_VARS:
         clean.pop(var, None)
     parts = clean.get("PATH", "").split(os.pathsep)
@@ -108,21 +104,17 @@ def scrubbed_environment(env: dict[str, str]) -> dict[str, str] | None:
     return clean
 
 
-def ensure_clean_env() -> None:
-    """Re-exec once with the OpenVINO archive scrubbed, before any openvino import happens.
+def child_environment() -> dict[str, str]:
+    """The environment the OpenVINO-importing child (the export) should run in.
 
-    Runs at most once: the scrubbed environment carries a sentinel, and finding it set means
-    this process is already the clean re-exec and must not spawn another. On the dev machine,
-    which has no archive, nothing is scrubbed and the process simply carries on.
+    Only the child imports OpenVINO, so it — not this tool — is what the system-wide OpenVINO
+    2025.3 archive would shadow (#38). We hand the child a scrubbed environment and leave this
+    process untouched, rather than re-exec the whole tool: ``os.execve`` is unreliable on
+    Windows (it segfaults under ``uv run`` on the demo machine), and this tool imports no
+    OpenVINO and so has nothing of its own to defend. A clean machine, such as the dev box, is
+    handed its own environment unchanged.
     """
-    if os.environ.get(_CLEAN_SENTINEL):
-        return
-    clean = scrubbed_environment(dict(os.environ))
-    if clean is None:
-        os.environ[_CLEAN_SENTINEL] = "1"
-        return
-    print("[convert] OpenVINO 2025.3 archive on PATH/PYTHONPATH — scrubbing and re-execing.")
-    os.execve(sys.executable, [sys.executable, *sys.argv], clean)
+    return scrubbed_environment(dict(os.environ)) or dict(os.environ)
 
 
 def default_cache_root() -> Path:
@@ -240,7 +232,7 @@ def check_npu_driver() -> None:
     found = tuple(int(x) for x in out.split(".")[:4])
     floor = ".".join(map(str, NPU_DRIVER_FLOOR))
     verdict = "OK" if found >= NPU_DRIVER_FLOOR else "BELOW FLOOR, update it"
-    print(f"[convert] NPU driver {out} (floor {floor}) — {verdict}.")
+    print(f"[convert] NPU driver {out} (floor {floor}) - {verdict}.")
 
 
 def export(weights: str, out_dir: Path) -> None:
@@ -248,15 +240,15 @@ def export(weights: str, out_dir: Path) -> None:
 
     Invoked as ``python -m`` in this same interpreter rather than as a bare ``optimum-cli`` on
     PATH, so it runs against the environment ``uv run --group convert`` built and not whatever
-    else the shell might resolve. The clean-env re-exec has already happened, so the child does
-    not inherit the OpenVINO 2025.3 archive.
+    else the shell might resolve. The child is handed a scrubbed environment so the system-wide
+    OpenVINO 2025.3 archive cannot shadow the pip build it must import (#38, child_environment).
     """
     cmd = [
         sys.executable, "-m", "optimum.commands.optimum_cli",
         "export", "openvino", "-m", weights, *EXPORT_ARGS, str(out_dir),
     ]
     print(f"[convert] {' '.join(cmd)}")
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, env=child_environment())
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -284,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir: Path = args.out or (default_cache_root() / slug_for(weights, execution_provider))
 
     print(f"[convert] weights={weights} ep={execution_provider}")
-    print(f"[convert] IR -> {out_dir}  (outside the repo — gigabytes)")
+    print(f"[convert] IR -> {out_dir}  (outside the repo - gigabytes)")
 
     if args.dry_run:
         check_npu_driver()
@@ -302,5 +294,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    ensure_clean_env()  # must run before any openvino import happens in the child
     raise SystemExit(main())

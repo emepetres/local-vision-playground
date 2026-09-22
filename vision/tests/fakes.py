@@ -26,6 +26,7 @@ from vision.capture import (
 )
 from vision.errors import VisionError
 from vision.inference import (
+    FOUNDRY_LOCAL,
     VISION_TASK,
     FinishReason,
     FoundryLocal,
@@ -41,6 +42,7 @@ from vision.inference import (
     VisionModel,
     Workload,
 )
+from vision.openvino_runtime import OPENVINO_GENAI
 from vision.startup import Sleep
 from vision.watch import Abandoned, Composed, Questions, Resolution
 
@@ -478,27 +480,59 @@ def make_identity(
         task=task,
         execution_provider=execution_provider,
         device_type=device_type,
+        runtime=FOUNDRY_LOCAL,
     )
+
+
+def make_provenance(
+    *,
+    weights: str = "Qwen/Qwen3-VL-2B-Instruct",
+    execution_provider: str = "NPU",
+    slug: str = "qwen3-vl-2b-instruct-int4-sym-npu",
+) -> dict[str, object]:
+    """A ``provenance.json`` manifest, the structured identity an OpenVINO Variant carries.
+
+    The shape the conversion step writes (``tools/convert/convert.py``): the weights it came
+    from, the recipe it was exported with, and the Execution Provider it was built for. A test
+    that asserts what the record carries for an OpenVINO Variant reads it back from here.
+    """
+    return {
+        "weights": weights,
+        "recipe": {
+            "tool": "optimum-cli export openvino",
+            "args": ["--weight-format", "int4", "--sym", "--ratio=1.0", "--group-size=-1"],
+            "toolchain": {"openvino-genai": "2025.3.0", "optimum-intel": "2.1.0"},
+        },
+        "execution_provider": execution_provider,
+        "slug": slug,
+        "created": "2026-09-07T12:00:00+00:00",
+    }
 
 
 def make_provenance_identity(
     *,
     variant: str = "qwen3-vl-2b-instruct-int4-sym-npu",
     execution_provider: str | None = "NPU",
+    provenance: dict[str, object] | None = None,
 ) -> ModelIdentity:
     """A provenance-shaped identity, for an OpenVINO Variant no catalogue published.
 
     The sibling of ``make_identity``: no Alias and no catalogue id with a ``:version``, because
     an IR we exported has neither (CONTEXT.md, "Variant"). The ``variant`` is the provenance
     slug, and the Execution Provider it was built for stands with no ``device_type`` beside it —
-    OpenVINO is told a device where Foundry Local splits an Execution Provider from one.
+    OpenVINO is told a device where Foundry Local splits an Execution Provider from one. The
+    structured manifest rides along as ``provenance``, as the real Runtime reads it from the IR.
     """
+    if provenance is None:
+        provenance = make_provenance(execution_provider=execution_provider or "NPU", slug=variant)
     return ModelIdentity(
         alias=None,
         variant=variant,
         task=VISION_TASK,
         execution_provider=execution_provider,
         device_type=None,
+        runtime=OPENVINO_GENAI,
+        provenance=provenance,
     )
 
 

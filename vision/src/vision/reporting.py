@@ -75,6 +75,7 @@ GUTTER = "   "
 
 MARKDOWN_COLUMNS = (
     "Variant",
+    "Runtime",
     "Runs on",
     "Turn",
     "Load",
@@ -85,7 +86,13 @@ MARKDOWN_COLUMNS = (
     "Tokens",
     "Tokens/second",
 )
-"""The persisted table's columns: one row per Variant, so the sitting reads as one table."""
+"""The persisted table's columns: one row per Variant, so the sitting reads as one table.
+
+Runtime sits second, beside the Variant, because a four-row sitting crosses two Runtimes and
+the two CPU rows — FL-CPU and OV-CPU — read as the calibration between them only when the
+Runtime is on the row rather than inferred from whether an Alias is present (CONTEXT.md,
+"Hardware Profile").
+"""
 
 MISSING = "—"
 """What a cell holds where there is no number — never a zero, which would be a claim."""
@@ -464,7 +471,7 @@ def render_recorded(*, record: Path, document: Path) -> str:
     return "\n" + "\n".join(_labelled(rows, BENCHMARK_LABEL_WIDTH)) + "\n"
 
 
-def render_benchmark_markdown(benchmark: Benchmark, *, profile: str, at: datetime) -> str:
+def render_benchmark_markdown(benchmark: Benchmark, *, machine: str, at: datetime) -> str:
     """A Benchmark as a document: one table over every Variant, and what each one said.
 
     Where the terminal gives each Variant its own table and relies on shared column widths
@@ -473,11 +480,12 @@ def render_benchmark_markdown(benchmark: Benchmark, *, profile: str, at: datetim
     table carries the inference spread and the medians of the other two quantities; every
     Benchmark Run is in the JSON beside it, in full.
 
-    The Hardware Profile is the title. A file whose name says which machine it came from
-    and whose first line did not would have a reader checking that the two matched.
+    The machine is the title. A file whose name says which machine it came from and whose
+    first line did not would have a reader checking that the two matched; the Runtime and the
+    Execution Provider that vary from row to row are columns of the table, not the title.
     """
     lines = [
-        f"# Benchmark — {profile}",
+        f"# Benchmark — {machine}",
         "",
         *_markdown_facts(benchmark, at),
         "",
@@ -517,7 +525,7 @@ def _unmeasured_rows(variant: UnmeasuredVariant, total: int) -> list[tuple[str, 
     another model taken off it — but calling that turn a measurement would be a lie about
     the row it labels.
     """
-    rows = [("Model", format_model(variant.model))]
+    rows = [("Model", format_model(variant.model)), ("Runtime", variant.model.runtime)]
     if total > 1:
         rows.append(("Attempted", f"{_ordinal(variant.order)} of {total}"))
     rows.append(("Not measured", variant.reason))
@@ -532,8 +540,12 @@ def _variant_rows(variant: MeasuredVariant, total: int) -> list[tuple[str, str]]
     it. A reader who suspects that mattered can reverse the order and look again; a reader
     who cannot see the order has nothing to suspect with. It sits beside the numbers it
     casts doubt on rather than in a summary line above them all.
+
+    The Runtime is named on its own line under the Model, so a sitting that crosses both
+    Runtimes reads FL-CPU and OV-CPU apart at a glance rather than by noticing one Model line
+    carries an Alias and the other does not (CONTEXT.md, "Hardware Profile").
     """
-    rows = [("Model", format_model(variant.model))]
+    rows = [("Model", format_model(variant.model)), ("Runtime", variant.model.runtime)]
     if total > 1:
         rows.append(("Measured", f"{_ordinal(variant.order)} of {total}"))
     rows.append(("Load", format_seconds(variant.load)))
@@ -781,6 +793,7 @@ def _markdown_cells(variant: MeasuredVariant | UnmeasuredVariant, total: int) ->
     identity = variant.model
     head = [
         f"`{identity.variant}`",
+        identity.runtime,
         identity.ran_on or MISSING,
         f"{_ordinal(variant.order)} of {total}",
     ]

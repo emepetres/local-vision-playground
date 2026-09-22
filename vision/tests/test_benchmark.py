@@ -101,6 +101,7 @@ HEADER = (
 GPU_BLOCK = (
     "Model        qwen3-vl-2b-instruct-cuda-gpu:2"
     " (alias qwen3-vl-2b-instruct, GPU / NvTensorRtRtxExecutionProvider)\n"
+    "Runtime      Foundry Local\n"
     "Measured     1st of 2\n"
     "Load         1.250 s\n"
     "\n"
@@ -113,6 +114,7 @@ GPU_BLOCK = (
 CPU_BLOCK = (
     "Model        qwen3-vl-2b-instruct-generic-cpu:2"
     " (alias qwen3-vl-2b-instruct, CPU / CPUExecutionProvider)\n"
+    "Runtime      Foundry Local\n"
     "Measured     2nd of 2\n"
     "Load         0.800 s\n"
     "\n"
@@ -756,6 +758,7 @@ def test_renders_a_variant_that_would_not_load_as_a_row_carrying_its_reason() ->
         f"{HEADER}\n"
         "Model        qwen3-vl-2b-instruct-cuda-gpu:2"
         " (alias qwen3-vl-2b-instruct, GPU / NvTensorRtRtxExecutionProvider)\n"
+        "Runtime      Foundry Local\n"
         "Attempted    1st of 2\n"
         f"Not measured {WOULD_NOT_LOAD}\n"
         f"\n{CPU_BLOCK}{result.recorded}"

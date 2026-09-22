@@ -48,6 +48,14 @@ Its presence in a directory is what makes that directory an OpenVINO Variant thi
 claims, and its contents are the identity that Variant carries (ADR-0013).
 """
 
+OPENVINO_GENAI = "OpenVINO GenAI"
+"""The domain name of the second Runtime (CONTEXT.md, "OpenVINO GenAI").
+
+Carried on every Variant this Runtime resolves so the persisted Benchmark tells OV-CPU from
+FL-CPU — the calibration between the two Runtimes (CONTEXT.md, "Hardware Profile"). Beside the
+port it names, as ``FOUNDRY_LOCAL`` is beside the other.
+"""
+
 # The clean-env defence against the system-wide OpenVINO 2025.3 archive (#38). The archive's
 # setupvars leave these variables and PATH markers permanent in the environment, and they
 # shadow the pip/uv-installed openvino this adapter must import. The convert step defends a
@@ -126,6 +134,11 @@ def identity_from_provenance(provenance: dict[str, Any]) -> ModelIdentity:
     concept only (CONTEXT.md, "Alias"). The task is fixed rather than read: we exported a
     Qwen3-VL vision-language model, so it can always see a Frame, and stating that is what lets
     the same ``require_vision_task`` gate the two Runtimes alike.
+
+    The whole manifest rides along as the identity's ``provenance``, so the persisted record
+    can carry the structured provenance an IR is identified by (weights, recipe, Execution
+    Provider) rather than only the slug derived from it — a path on disk is not an identity,
+    and a Benchmark is read back months later (CONTEXT.md, "Provenance").
     """
     return ModelIdentity(
         alias=None,
@@ -133,6 +146,8 @@ def identity_from_provenance(provenance: dict[str, Any]) -> ModelIdentity:
         task=VISION_TASK,
         execution_provider=_execution_provider(provenance),
         device_type=None,
+        runtime=OPENVINO_GENAI,
+        provenance=dict(provenance),
     )
 
 

@@ -15,7 +15,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from vision.capture import Frame
 from vision.errors import VisionError
@@ -74,6 +74,15 @@ VISION_TASK = "vision-language-chat"
 
 APP_NAME = "local-vision-playground"
 
+FOUNDRY_LOCAL = "Foundry Local"
+"""The domain name of the Runtime a Foundry Local Variant is loaded by (CONTEXT.md, "Runtime").
+
+The record carries the Runtime per row so that a reader months later can tell FL-CPU from
+OV-CPU — two Benchmark Runs on the same CPU through different Runtimes are the calibration
+between them, not one measurement (CONTEXT.md, "Hardware Profile"). The name lives here, beside
+the port it names, so the adapter and its fake spell the one Runtime the same way.
+"""
+
 
 class FinishReason(StrEnum):
     """Why the model stopped, reduced to what an Operator needs to know."""
@@ -100,6 +109,13 @@ class ModelIdentity:
     "Alias"). The Execution Provider it was built for stands in ``execution_provider`` with
     no ``device_type`` beside it: OpenVINO is told a device — NPU, GPU or CPU — where
     Foundry Local splits a Windows ML Execution Provider from the device it dispatched to.
+
+    ``runtime`` is the domain Runtime that loaded it — ``Foundry Local`` or ``OpenVINO
+    GenAI`` (CONTEXT.md, "Runtime") — which is what lets a persisted Benchmark keep FL-CPU
+    and OV-CPU apart, the one pair a Benchmark most needs to (CONTEXT.md, "Hardware
+    Profile"). ``provenance`` is the structured manifest an OpenVINO Variant is identified
+    by — the weights, the recipe and the Execution Provider it was exported for — and
+    ``None`` for a Foundry Local Variant, which its resolved id already identifies.
     """
 
     alias: str | None
@@ -107,6 +123,22 @@ class ModelIdentity:
     task: str | None
     execution_provider: str | None
     device_type: str | None
+    runtime: str
+    provenance: dict[str, Any] | None = None
+
+    @property
+    def dispatched_execution_provider(self) -> str | None:
+        """The bare hardware backend — NPU, GPU or CPU — this Variant was dispatched to.
+
+        The Execution Provider the domain means (CONTEXT.md, "Execution Provider"), reduced
+        to the one token that authorises a comparison: for Foundry Local it is the
+        ``device_type`` it split off the Windows ML Execution Provider, and for OpenVINO it
+        is the ``execution_provider`` device it was told to run on. It is what the derived
+        Hardware Profile triple carries so that FL-CPU and OV-CPU read as the same CPU
+        through two Runtimes — the row's full ``execution_provider`` and ``device_type``
+        stay its identity, this only groups it.
+        """
+        return self.device_type or self.execution_provider
 
     @property
     def ran_on(self) -> str | None:
@@ -542,6 +574,7 @@ class FoundryLocalModel:
             task=info.task,
             execution_provider=runtime.execution_provider if runtime is not None else None,
             device_type=runtime.device_type if runtime is not None else None,
+            runtime=FOUNDRY_LOCAL,
         )
 
     @property

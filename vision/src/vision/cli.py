@@ -67,7 +67,7 @@ from vision.inference import (
     Workload,
     require_a_scene_question,
 )
-from vision.record import Now, Recorded, benchmarks_directory, hardware_profile, record
+from vision.record import Now, Recorded, benchmarks_directory, record, resolve_machine
 from vision.reporting import (
     render_benchmark,
     render_observation,
@@ -461,7 +461,7 @@ def _record_benchmark(
     try:
         return record(
             benchmark,
-            profile=hardware_profile(declared),
+            machine=resolve_machine(declared),
             at=now(),
             directory=directory,
         )

@@ -39,14 +39,18 @@ from vision.benchmark import (
     StructuredBenchmarkRun,
     UnmeasuredVariant,
 )
-from vision.inference import NoShape, Shape, Workload
+from vision.inference import ModelIdentity, NoShape, Shape, Workload
 from vision.reporting import render_benchmark_markdown
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 """What shape the JSON is in.
 
 Bumped when a reader written against the old shape would misread the new one — not when a
-field is added that such a reader can ignore.
+field is added that such a reader can ignore. Version 2 moved the Benchmark-level machine
+from the top-level ``hardware_profile`` to ``machine`` and gave that name to a new per-row
+derived triple (machine + Runtime + Execution Provider). A version-1 reader misreads it two
+ways: it no longer finds the machine where it read it, and the ``hardware_profile`` name it
+knew as a plain string now stands, per row, for the triple.
 """
 
 BENCHMARKS_DIRECTORY = Path(__file__).resolve().parents[3] / "docs" / "benchmarks"
@@ -78,14 +82,14 @@ about what day it is, which is the one thing a record needs from a clock.
 """
 
 MAXIMUM_SLUG = 60
-"""How much of a declared Hardware Profile a file name carries.
+"""How much of a declared machine a file name carries.
 
 An Operator describing their machine in words is welcome to be generous; a file name is
 not the place it all fits, and the full text is in both files anyway.
 """
 
 UNNAMED = "machine"
-"""The file-name stem for a Hardware Profile that slugs down to nothing at all."""
+"""The file-name stem for a machine description that slugs down to nothing at all."""
 
 
 @dataclass(frozen=True)
@@ -119,8 +123,15 @@ def this_machine() -> str:
     return ", ".join(part for part in parts if part)
 
 
-def hardware_profile(declared: str | None) -> str:
-    """What the Operator said the machine is, or what the machine says about itself."""
+def resolve_machine(declared: str | None) -> str:
+    """What the Operator said the machine is, or what the machine says about itself.
+
+    The machine is Benchmark-level: one sitting is one machine, and only the Runtime and the
+    Execution Provider vary from Run to Run (CONTEXT.md, "Hardware Profile"). It resolves to
+    the machine rather than a "hardware profile" because a Hardware Profile is now the derived
+    triple that authorises a comparison — machine, Runtime and Execution Provider together —
+    and the machine is only its constant part.
+    """
     if declared is not None and declared.strip():
         return declared.strip()
     return this_machine()
@@ -129,7 +140,7 @@ def hardware_profile(declared: str | None) -> str:
 def record(
     benchmark: Benchmark,
     *,
-    profile: str,
+    machine: str,
     at: datetime,
     directory: Path,
 ) -> Recorded:
@@ -139,22 +150,27 @@ def record(
     be laid out does not leave half of itself on disk.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    document = render_benchmark_markdown(benchmark, profile=profile, at=at)
-    payload = json.dumps(as_record(benchmark, profile=profile, at=at), indent=2)
-    return _claim(directory, _stem(profile, at), payload=payload, document=document)
+    document = render_benchmark_markdown(benchmark, machine=machine, at=at)
+    payload = json.dumps(as_record(benchmark, machine=machine, at=at), indent=2)
+    return _claim(directory, _stem(machine, at), payload=payload, document=document)
 
 
-def as_record(benchmark: Benchmark, *, profile: str, at: datetime) -> dict[str, Any]:
+def as_record(benchmark: Benchmark, *, machine: str, at: datetime) -> dict[str, Any]:
     """The whole Benchmark as plain data — the raw record the Markdown is a reading of.
 
     Everything the Benchmark holds, including what the report leaves out: every Benchmark
     Run rather than the spread over them, because a spread can be recomputed from the runs
     and the runs cannot be recovered from a spread.
+
+    ``machine`` sits at Benchmark level because a Benchmark is one sitting on one machine
+    (CONTEXT.md, "Hardware Profile"); each Variant row then carries the derived Hardware
+    Profile triple that pairs it with the Runtime and Execution Provider that vary from Run
+    to Run.
     """
     return {
         "schema_version": SCHEMA_VERSION,
         "recorded_at": at.isoformat(),
-        "hardware_profile": profile,
+        "machine": machine,
         "workload": _workload(benchmark.workload),
         "repetitions": benchmark.repetitions,
         "provider_registration": benchmark.providers,
@@ -162,7 +178,8 @@ def as_record(benchmark: Benchmark, *, profile: str, at: datetime) -> dict[str, 
         # turn it took as well — so a record read back through a tool that sorts the rows
         # has not thereby lost what the order was.
         "variants": [
-            _variant(variant, structured=benchmark.structured) for variant in benchmark.variants
+            _variant(variant, structured=benchmark.structured, machine=machine)
+            for variant in benchmark.variants
         ],
         "token_divergence": _divergence(benchmark),
     }
@@ -191,7 +208,9 @@ def _workload(workload: Workload) -> dict[str, Any]:
     }
 
 
-def _variant(variant: MeasuredVariant | UnmeasuredVariant, *, structured: bool) -> dict[str, Any]:
+def _variant(
+    variant: MeasuredVariant | UnmeasuredVariant, *, structured: bool, machine: str
+) -> dict[str, Any]:
     """One Variant as it is written down, whether or not it ever got onto the hardware.
 
     Both kinds are written in the same shape, with the same keys present either way: a
@@ -201,14 +220,25 @@ def _variant(variant: MeasuredVariant | UnmeasuredVariant, *, structured: bool) 
     sitting: a prose Variant carries its ``observation`` and a structured one carries its
     ``objects`` (and the reason there was no shape), so every Variant in one record — the
     Unmeasured ones included — carries the answer keys of the kind of Benchmark it belongs to.
+
+    ``runtime`` names which Runtime loaded it, and ``provenance`` carries the structured
+    manifest an OpenVINO Variant is identified by — ``None`` for a Foundry Local Variant,
+    whose ``id`` already identifies it (CONTEXT.md, "Provenance"). Both keys are present
+    either way, for the reason above: a reader groups the rows by ``runtime`` without first
+    having to work out which Runtime a row came from. ``hardware_profile`` is the derived
+    triple (machine + Runtime + Execution Provider) that authorises a comparison — it is not
+    the row's identity, which is the Measured Variant's ``id`` (CONTEXT.md, "Hardware Profile").
     """
     identity = variant.model
     recorded: dict[str, Any] = {
         "order": variant.order,
         "id": identity.variant,
         "alias": identity.alias,
+        "runtime": identity.runtime,
         "execution_provider": identity.execution_provider,
         "device_type": identity.device_type,
+        "hardware_profile": _hardware_profile(identity, machine),
+        "provenance": identity.provenance,
         "loaded": isinstance(variant, MeasuredVariant),
         "reason": None,
         "load": None,
@@ -230,6 +260,24 @@ def _variant(variant: MeasuredVariant | UnmeasuredVariant, *, structured: bool) 
     ]
     recorded.update(_answer(variant.first))
     return recorded
+
+
+def _hardware_profile(identity: ModelIdentity, machine: str) -> dict[str, Any]:
+    """The derived triple that authorises comparing a Benchmark Run against another.
+
+    Machine, Runtime and Execution Provider together (CONTEXT.md, "Hardware Profile"): the
+    machine is constant across the sitting, the Runtime and the Execution Provider vary from
+    Run to Run, and it is naming all three that keeps FL-CPU and OV-CPU from collapsing into
+    one row — the two are the same CPU through two Runtimes, the calibration between them. The
+    Execution Provider is the bare hardware backend (CPU here, not ``CPUExecutionProvider``),
+    so the two CPU rows agree on it and differ only in their Runtime. It authorises a
+    comparison; it does not identify the row — that is the Measured Variant's ``id``.
+    """
+    return {
+        "machine": machine,
+        "runtime": identity.runtime,
+        "execution_provider": identity.dispatched_execution_provider,
+    }
 
 
 def _empty_answer(structured: bool) -> dict[str, Any]:
@@ -287,20 +335,20 @@ def _divergence(benchmark: Benchmark) -> dict[str, Any] | None:
     }
 
 
-def _stem(profile: str, at: datetime) -> str:
-    """A slug of the Hardware Profile, and the instant it was recorded at.
+def _stem(machine: str, at: datetime) -> str:
+    """A slug of the machine, and the instant it was recorded at.
 
-    The Hardware Profile first, because a directory of records sorts by machine that way
-    and the machine is what an Operator scanning the list is looking for. The timestamp
-    goes down to the second so that two Benchmarks taken while tuning a demo on the same
-    afternoon are two files.
+    The machine first, because a directory of records sorts by machine that way and the
+    machine is what an Operator scanning the list is looking for. The timestamp goes down to
+    the second so that two Benchmarks taken while tuning a demo on the same afternoon are two
+    files.
     """
-    return f"{_slug(profile)}-{at.strftime('%Y%m%d-%H%M%S')}"
+    return f"{_slug(machine)}-{at.strftime('%Y%m%d-%H%M%S')}"
 
 
-def _slug(profile: str) -> str:
-    """The Hardware Profile reduced to something a file system will take everywhere."""
-    slug = re.sub(r"[^a-z0-9]+", "-", profile.lower()).strip("-")
+def _slug(machine: str) -> str:
+    """The machine reduced to something a file system will take everywhere."""
+    slug = re.sub(r"[^a-z0-9]+", "-", machine.lower()).strip("-")
     return slug[:MAXIMUM_SLUG].strip("-") or UNNAMED
 
 

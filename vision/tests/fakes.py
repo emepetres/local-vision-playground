@@ -26,18 +26,23 @@ from vision.capture import (
 )
 from vision.errors import VisionError
 from vision.inference import (
+    FOUNDRY_LOCAL,
+    VISION_TASK,
     FinishReason,
     FoundryLocal,
     ModelIdentity,
     NoShape,
     ObjectsPresent,
+    OpenVINO,
     PresentObject,
     RawObservation,
     RawStructuredObservation,
+    Runtime,
     Shape,
     VisionModel,
     Workload,
 )
+from vision.openvino_runtime import OPENVINO_GENAI
 from vision.startup import Sleep
 from vision.watch import Abandoned, Composed, Questions, Resolution
 
@@ -408,6 +413,44 @@ class FakeFoundry:
         return model
 
 
+class FakeOpenVINO:
+    """The second Runtime as a double: it claims the names it has an IR for, and resolves them.
+
+    A mapping of name to model, exactly as ``FakeFoundry`` is — a caller that resolves two
+    OpenVINO Variants asks for two names and gets two models. What makes it the double the seam
+    is read off is what it does **not** have: no ``register_execution_providers``, because
+    OpenVINO is told its device and has nothing to register (ADR-0013). It claims precisely the
+    names it holds a model for — a provenance slug or an IR path in a test is just a key here —
+    which is how a test says which names are OpenVINO's and which fall through to Foundry Local.
+
+    ``events`` is the shared journal the other doubles write to. Handing the same list to a
+    ``FakeFoundry`` and a ``FakeVisionModel`` puts resolving, loading and observing on one
+    timeline — which is how a test pins that an OpenVINO-only sitting never registered an
+    Execution Provider: no ``register`` appears on it at all.
+    """
+
+    def __init__(
+        self,
+        models: Mapping[str, FakeVisionModel],
+        *,
+        events: list[str] | None = None,
+    ) -> None:
+        self.models = dict(models)
+        self.events: list[str] = events if events is not None else []
+        self.resolved: list[str] = []
+
+    def claims(self, name: str) -> bool:
+        return name in self.models
+
+    def resolve(self, name: str) -> FakeVisionModel:
+        self.events.append("resolve")
+        self.resolved.append(name)
+        model = self.models.get(name)
+        if model is None:
+            raise VisionError(f"OpenVINO has no IR called {name!r}")
+        return model
+
+
 class FakeClock:
     """Hands out a prepared sequence of readings, so every latency is deterministic."""
 
@@ -437,6 +480,59 @@ def make_identity(
         task=task,
         execution_provider=execution_provider,
         device_type=device_type,
+        runtime=FOUNDRY_LOCAL,
+    )
+
+
+def make_provenance(
+    *,
+    weights: str = "Qwen/Qwen3-VL-2B-Instruct",
+    execution_provider: str = "NPU",
+    slug: str = "qwen3-vl-2b-instruct-int4-sym-npu",
+) -> dict[str, object]:
+    """A ``provenance.json`` manifest, the structured identity an OpenVINO Variant carries.
+
+    The shape the conversion step writes (``tools/convert/convert.py``): the weights it came
+    from, the recipe it was exported with, and the Execution Provider it was built for. A test
+    that asserts what the record carries for an OpenVINO Variant reads it back from here.
+    """
+    return {
+        "weights": weights,
+        "recipe": {
+            "tool": "optimum-cli export openvino",
+            "args": ["--weight-format", "int4", "--sym", "--ratio=1.0", "--group-size=-1"],
+            "toolchain": {"openvino-genai": "2025.3.0", "optimum-intel": "2.1.0"},
+        },
+        "execution_provider": execution_provider,
+        "slug": slug,
+        "created": "2026-09-07T12:00:00+00:00",
+    }
+
+
+def make_provenance_identity(
+    *,
+    variant: str = "qwen3-vl-2b-instruct-int4-sym-npu",
+    execution_provider: str | None = "NPU",
+    provenance: dict[str, object] | None = None,
+) -> ModelIdentity:
+    """A provenance-shaped identity, for an OpenVINO Variant no catalogue published.
+
+    The sibling of ``make_identity``: no Alias and no catalogue id with a ``:version``, because
+    an IR we exported has neither (CONTEXT.md, "Variant"). The ``variant`` is the provenance
+    slug, and the Execution Provider it was built for stands with no ``device_type`` beside it —
+    OpenVINO is told a device where Foundry Local splits an Execution Provider from one. The
+    structured manifest rides along as ``provenance``, as the real Runtime reads it from the IR.
+    """
+    if provenance is None:
+        provenance = make_provenance(execution_provider=execution_provider or "NPU", slug=variant)
+    return ModelIdentity(
+        alias=None,
+        variant=variant,
+        task=VISION_TASK,
+        execution_provider=execution_provider,
+        device_type=None,
+        runtime=OPENVINO_GENAI,
+        provenance=provenance,
     )
 
 
@@ -533,3 +629,11 @@ _sleep: Sleep = FakeSleep()
 _questions: Questions = TypedQuestions()
 _model: VisionModel = FakeVisionModel(make_identity(), [make_observation()])
 _foundry: FoundryLocal = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})
+# Foundry Local is a Runtime too — it satisfies the common resolution port as well as its
+# own. The seam a test reads the boundary off is the second Runtime, which has no
+# register_execution_providers: it resolves and claims, and nothing else (ADR-0013).
+_runtime: Runtime = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})
+_openvino: OpenVINO = FakeOpenVINO({"an-ir-slug": FakeVisionModel(make_provenance_identity(), [])})
+_openvino_runtime: Runtime = FakeOpenVINO(
+    {"an-ir-slug": FakeVisionModel(make_provenance_identity(), [])}
+)

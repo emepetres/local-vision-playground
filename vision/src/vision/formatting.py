@@ -31,10 +31,20 @@ def format_tokens_per_second(rate: float) -> str:
 
 
 def format_model(identity: ModelIdentity) -> str:
-    detail = f"alias {identity.alias}"
-    if identity.runtime is not None:
-        detail = f"{detail}, {identity.runtime}"
-    return f"{identity.variant} ({detail})"
+    """The Variant, and beside it what identifies it — the Alias and what it ran on.
+
+    An OpenVINO Variant has no Alias (CONTEXT.md, "Alias"), so it is left out rather than
+    printed as ``alias None``; the slug that names it and the device it ran on are the
+    whole of what there is to say.
+    """
+    details = []
+    if identity.alias is not None:
+        details.append(f"alias {identity.alias}")
+    if identity.ran_on is not None:
+        details.append(identity.ran_on)
+    if not details:
+        return identity.variant
+    return f"{identity.variant} ({', '.join(details)})"
 
 
 def format_frame(frame: Frame) -> str:

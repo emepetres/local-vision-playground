@@ -15,7 +15,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from vision.capture import Frame
 from vision.errors import VisionError
@@ -74,6 +74,15 @@ VISION_TASK = "vision-language-chat"
 
 APP_NAME = "local-vision-playground"
 
+FOUNDRY_LOCAL = "Foundry Local"
+"""The domain name of the Runtime a Foundry Local Variant is loaded by (CONTEXT.md, "Runtime").
+
+The record carries the Runtime per row so that a reader months later can tell FL-CPU from
+OV-CPU — two Benchmark Runs on the same CPU through different Runtimes are the calibration
+between them, not one measurement (CONTEXT.md, "Hardware Profile"). The name lives here, beside
+the port it names, so the adapter and its fake spell the one Runtime the same way.
+"""
+
 
 class FinishReason(StrEnum):
     """Why the model stopped, reduced to what an Operator needs to know."""
@@ -91,17 +100,55 @@ class ModelIdentity:
     string they are printed as. They are two facts — *CUDA* is not *GPU* — and a persisted
     Benchmark has to carry each of them on its own, so that a later reader can group by
     Execution Provider without parsing a slash out of a display string.
+
+    It carries either shape a Variant's identity can take. A Foundry Local Variant is
+    identified by its catalogue id and named by its ``alias``; an OpenVINO Variant we
+    exported has neither — its identity is read from its ``provenance.json`` (CONTEXT.md,
+    "Provenance"), the ``variant`` is the provenance slug that carries no ``:version``, and
+    ``alias`` is ``None`` because an Alias is a Foundry Local concept only (CONTEXT.md,
+    "Alias"). The Execution Provider it was built for stands in ``execution_provider`` with
+    no ``device_type`` beside it: OpenVINO is told a device — NPU, GPU or CPU — where
+    Foundry Local splits a Windows ML Execution Provider from the device it dispatched to.
+
+    ``runtime`` is the domain Runtime that loaded it — ``Foundry Local`` or ``OpenVINO
+    GenAI`` (CONTEXT.md, "Runtime") — which is what lets a persisted Benchmark keep FL-CPU
+    and OV-CPU apart, the one pair a Benchmark most needs to (CONTEXT.md, "Hardware
+    Profile"). ``provenance`` is the structured manifest an OpenVINO Variant is identified
+    by — the weights, the recipe and the Execution Provider it was exported for — and
+    ``None`` for a Foundry Local Variant, which its resolved id already identifies.
     """
 
-    alias: str
+    alias: str | None
     variant: str
     task: str | None
     execution_provider: str | None
     device_type: str | None
+    runtime: str
+    provenance: dict[str, Any] | None = None
 
     @property
-    def runtime(self) -> str | None:
-        """The pair as one phrase, which is how a report names what a Variant ran on."""
+    def dispatched_execution_provider(self) -> str | None:
+        """The bare hardware backend — NPU, GPU or CPU — this Variant was dispatched to.
+
+        The Execution Provider the domain means (CONTEXT.md, "Execution Provider"), reduced
+        to the one token that authorises a comparison: for Foundry Local it is the
+        ``device_type`` it split off the Windows ML Execution Provider, and for OpenVINO it
+        is the ``execution_provider`` device it was told to run on. It is what the derived
+        Hardware Profile triple carries so that FL-CPU and OV-CPU read as the same CPU
+        through two Runtimes — the row's full ``execution_provider`` and ``device_type``
+        stay its identity, this only groups it.
+        """
+        return self.device_type or self.execution_provider
+
+    @property
+    def ran_on(self) -> str | None:
+        """The pair as one phrase, which is how a report names what a Variant ran on.
+
+        The device and Execution Provider a Variant was dispatched to, not the domain
+        Runtime that loaded it (CONTEXT.md, "Runtime"): the two read alike in a report but
+        are different facts, so this carries the display phrase under a name that leaves
+        ``Runtime`` free for the port a command resolves through.
+        """
         if self.execution_provider is None:
             return None
         if self.device_type is None:
@@ -308,8 +355,30 @@ class VisionModel(Protocol):
         ...
 
 
-class FoundryLocal(Protocol):
-    """The port onto Foundry Local."""
+class Runtime(Protocol):
+    """The common resolution port over the project's Runtimes: it resolves, nothing more.
+
+    A Runtime is what loads a model onto the machine and runs it on an Execution Provider
+    (CONTEXT.md, "Runtime"). This project has two — Foundry Local and OpenVINO GenAI — and
+    what they share, and all a command holds a router over them for, is turning a name into
+    a model. ``register_execution_providers`` is deliberately *not* here: it is Foundry
+    Local's alone, because Foundry Local picks the Execution Provider and nothing selects
+    one explicitly, while the second Runtime is told its device and has nothing to register
+    (ADR-0013). The Runtime that lacks the method is the one that proves the boundary.
+    """
+
+    def resolve(self, name: str) -> VisionModel:
+        """Resolve a name this Runtime claims into a model, before it is on the machine."""
+        ...
+
+
+class FoundryLocal(Runtime, Protocol):
+    """The port onto Foundry Local: a Runtime that also registers the Execution Providers.
+
+    It answers the common ``resolve`` and, unlike the other Runtime, owns
+    ``register_execution_providers`` — the one member that does not lift onto the shared
+    ``Runtime`` port (ADR-0013).
+    """
 
     def register_execution_providers(self, announce: Callable[[str], None]) -> None:
         """Make this machine's Execution Providers available, reporting what is worth saying.
@@ -322,8 +391,30 @@ class FoundryLocal(Protocol):
         """
         ...
 
-    def resolve(self, name: str) -> VisionModel:
-        """Resolve an alias (Foundry picks the hardware) or a variant id (pins it)."""
+
+class OpenVINO(Runtime, Protocol):
+    """The port onto OpenVINO GenAI: the Runtime that picks no Execution Provider.
+
+    It answers the common ``resolve`` and, unlike Foundry Local, has **no**
+    ``register_execution_providers`` — it is told its device and has nothing to register
+    (ADR-0013). The Runtime that lacks that method is the one a test reads the seam off.
+
+    It adds ``claims``, by which the router discriminates the two Runtimes. OpenVINO claims
+    a name that resolves to an on-disk IR directory carrying a ``provenance.json`` — the
+    provenance slug under the IR cache location, or a path to such a directory — and Foundry
+    Local claims the rest (CONTEXT.md, "Variant"). Claiming is kept off the common ``Runtime``
+    port for the same reason registration is: it is this Runtime's own concern, not a member
+    every Runtime has to grow.
+    """
+
+    def claims(self, name: str) -> bool:
+        """Whether this name resolves to an IR directory this Runtime can run.
+
+        True for a provenance slug found under the IR cache, or a path to a directory
+        carrying a ``provenance.json``. False for everything else — which is what leaves it
+        to Foundry Local, and a name neither claims is one refusal naming both ways to name
+        a Variant.
+        """
         ...
 
 
@@ -483,6 +574,7 @@ class FoundryLocalModel:
             task=info.task,
             execution_provider=runtime.execution_provider if runtime is not None else None,
             device_type=runtime.device_type if runtime is not None else None,
+            runtime=FOUNDRY_LOCAL,
         )
 
     @property

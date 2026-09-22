@@ -1,0 +1,281 @@
+{
+  "schema_version": 2,
+  "recorded_at": "2026-09-22T09:08:14.632926+02:00",
+  "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V",
+  "workload": {
+    "prompt": "Describe what you see in this image in two or three sentences.",
+    "max_output_tokens": 128,
+    "temperature": 0.0,
+    "frame": {
+      "sha256": "2e8dbaf486957506796f282282a0577a4093495edb837df7fb991dfca70af54f",
+      "bytes": 43881,
+      "width": 640,
+      "height": 360,
+      "codec": "jpeg",
+      "provenance": "C:\\Users\\jcarnero\\dev\\local-vision-playground\\docs\\fixtures\\reference-frame.jpg"
+    }
+  },
+  "repetitions": 5,
+  "provider_registration": 0.20571010000003298,
+  "variants": [
+    {
+      "order": 1,
+      "id": "qwen3-vl-2b-instruct-generic-cpu:2",
+      "alias": "qwen3-vl-2b-instruct",
+      "runtime": "Foundry Local",
+      "execution_provider": "CPUExecutionProvider",
+      "device_type": "CPU",
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V",
+        "runtime": "Foundry Local",
+        "execution_provider": "CPU"
+      },
+      "provenance": null,
+      "loaded": true,
+      "reason": null,
+      "load": 4.595875299999989,
+      "runs": [
+        {
+          "inference": 9.589391599999999,
+          "completion_tokens": 92,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 7.800948999999946,
+          "completion_tokens": 92,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 7.906149599999935,
+          "completion_tokens": 92,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 8.037242400000196,
+          "completion_tokens": 92,
+          "finish_reason": "complete"
+        },
+        {
+          "inference": 8.32095819999995,
+          "completion_tokens": 92,
+          "finish_reason": "complete"
+        }
+      ],
+      "observation": "This is a dimly lit room with a tall wooden bookshelf filled with books and various items on the shelves. A blue and gray office chair is in the foreground, partially obscuring the view of the bookshelf. On the wall, there is a large painting of a galaxy. A white door is visible in the background, leading to another room. The room has a few other items, including a small plant and a few books on the bookshelf."
+    },
+    {
+      "order": 2,
+      "id": "qwen3-vl-2b-instruct-int4-sym-cpu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "CPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "CPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-2B-Instruct",
+        "recipe": {
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.3.0",
+            "openvino-genai": "2026.3.0.0",
+            "openvino-tokenizers": "2026.3.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "CPU",
+        "slug": "qwen3-vl-2b-instruct-int4-sym-cpu",
+        "created": "2026-09-22T07:05:26.750331+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 4.550711100000171,
+      "runs": [
+        {
+          "inference": 9.056230600000163,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 4.587796199999957,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 4.634587300000021,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 4.4561344999997345,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 4.665593199999876,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        }
+      ],
+      "observation": "This is a low-angle, wide shot of a room. A bookshelf is on the left, and a white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door is in the center. A white door"
+    },
+    {
+      "order": 3,
+      "id": "qwen3-vl-2b-instruct-int4-sym-gpu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "GPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "GPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-2B-Instruct",
+        "recipe": {
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.3.0",
+            "openvino-genai": "2026.3.0.0",
+            "openvino-tokenizers": "2026.3.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "GPU",
+        "slug": "qwen3-vl-2b-instruct-int4-sym-gpu",
+        "created": "2026-09-22T07:05:26.750331+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 6.188272400000187,
+      "runs": [
+        {
+          "inference": 2.767941999999948,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 2.2706450000000586,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 2.4908519999999044,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 2.300653400000101,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 2.2621394999996483,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        }
+      ],
+      "observation": "This is a low-light, slightly blurry, and darkly lit room. The room has a white door, a white bookshelf, and a white bookshelf. The bookshelf has a white and black book. The bookshelf is on the left. The white door is in the middle. The white bookshelf is on the left. The white bookshelf is on the left. The white bookshelf is on the left. The white bookshelf is on the left. The white bookshelf is on the left. The white bookshelf is on the left. The white bookshelf is on the left. The white bookshelf is on"
+    },
+    {
+      "order": 4,
+      "id": "qwen3-vl-2b-instruct-int4-sym-npu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "NPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "NPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-2B-Instruct",
+        "recipe": {
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.3.0",
+            "openvino-genai": "2026.3.0.0",
+            "openvino-tokenizers": "2026.3.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "NPU",
+        "slug": "qwen3-vl-2b-instruct-int4-sym-npu",
+        "created": "2026-09-21T21:58:45.086200+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 2.2506429000000026,
+      "runs": [
+        {
+          "inference": 5.764952199999698,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 5.576850099999774,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 6.1326686000002155,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 5.94680580000022,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        },
+        {
+          "inference": 5.822614499999872,
+          "completion_tokens": 128,
+          "finish_reason": "truncated"
+        }
+      ],
+      "observation": "This image shows a room with a bookshelf, a white door, and a white door. The bookshelf is filled with books and other items. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white"
+    }
+  ],
+  "token_divergence": {
+    "fewest": "qwen3-vl-2b-instruct-generic-cpu:2",
+    "fewest_tokens": 92.0,
+    "most": "qwen3-vl-2b-instruct-int4-sym-cpu",
+    "most_tokens": 128.0,
+    "fraction": 0.391304347826087
+  }
+}

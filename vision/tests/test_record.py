@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -23,10 +24,12 @@ from tests.fakes import (
     FakeCamera,
     FakeClock,
     FakeFoundry,
+    FakeOpenVINO,
     FakeVisionModel,
     make_frame,
     make_identity,
     make_observation,
+    make_provenance_identity,
 )
 from tests.test_benchmark import (
     CPU_IDENTITY,
@@ -42,8 +45,9 @@ from tests.test_benchmark import (
     make_structured_gpu,
 )
 from vision.cli import benchmark_main
-from vision.inference import PROMPT, STRUCTURED_PROMPT, NoShape, ObjectsPresent
-from vision.record import SCHEMA_VERSION, hardware_profile, this_machine
+from vision.inference import PROMPT, STRUCTURED_PROMPT, NoShape, ObjectsPresent, RawObservation
+from vision.record import SCHEMA_VERSION, resolve_machine, this_machine
+from vision.router import Router
 
 PROFILE = "RTX 4090 + i7-13700KF"
 """What an Operator declares their machine to be — the words a reader is left with."""
@@ -90,11 +94,13 @@ def keep(
     code = benchmark_main(
         [*(argv or []), *declared],
         camera=camera if camera is not None else FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry(
-            {
-                GPU_VARIANT: gpu if gpu is not None else make_gpu(),
-                CPU_VARIANT: cpu if cpu is not None else make_cpu(),
-            }
+        router=Router(
+            FakeFoundry(
+                {
+                    GPU_VARIANT: gpu if gpu is not None else make_gpu(),
+                    CPU_VARIANT: cpu if cpu is not None else make_cpu(),
+                }
+            )
         ),
         clock=FakeClock(readings),
         now=lambda: at,
@@ -145,7 +151,7 @@ def test_a_second_benchmark_in_the_same_second_does_not_overwrite_the_first(
         benchmark_main(
             ["--hardware", PROFILE],
             camera=FakeCamera([make_frame(width=640, height=360)]),
-            foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+            router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
             clock=FakeClock(READINGS),
             now=lambda: AT,
             out=io.StringIO(),
@@ -189,7 +195,7 @@ def test_the_record_carries_the_instant_the_hardware_profile_and_the_sitting(
     record = keep(benchmarks).record
 
     assert record["recorded_at"] == "2026-09-07T14:03:11+02:00"
-    assert record["hardware_profile"] == PROFILE
+    assert record["machine"] == PROFILE
     assert record["repetitions"] == 5
     assert record["provider_registration"] == 0.5
 
@@ -320,15 +326,17 @@ def test_a_benchmark_that_measured_nothing_is_not_written_down(benchmarks: Path)
     code = benchmark_main(
         ["--hardware", PROFILE],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry(
-            {
-                GPU_VARIANT: FakeVisionModel(
-                    make_identity(), [], load_error=RuntimeError(INVALID_GRAPH)
-                ),
-                CPU_VARIANT: FakeVisionModel(
-                    CPU_IDENTITY, [], load_error=RuntimeError(INVALID_GRAPH)
-                ),
-            }
+        router=Router(
+            FakeFoundry(
+                {
+                    GPU_VARIANT: FakeVisionModel(
+                        make_identity(), [], load_error=RuntimeError(INVALID_GRAPH)
+                    ),
+                    CPU_VARIANT: FakeVisionModel(
+                        CPU_IDENTITY, [], load_error=RuntimeError(INVALID_GRAPH)
+                    ),
+                }
+            )
         ),
         clock=FakeClock((0.0, 0.5, 10.0, 100.0)),
         now=lambda: AT,
@@ -349,15 +357,16 @@ def test_the_markdown_lays_every_variant_out_as_one_comparison_table(benchmarks:
     assert document.startswith(f"# Benchmark — {PROFILE}\n")
     assert "- **Recorded** — 2026-09-07 14:03:11+02:00\n" in document
     assert (
-        "| Variant | Runs on | Turn | Load | First | Median | Min | Max |"
+        "| Variant | Runtime | Runs on | Turn | Load | First | Median | Min | Max |"
         " Tokens | Tokens/second |\n"
     ) in document
     assert (
-        "| `qwen3-vl-2b-instruct-cuda-gpu:2` | GPU / NvTensorRtRtxExecutionProvider |"
+        "| `qwen3-vl-2b-instruct-cuda-gpu:2` | Foundry Local |"
+        " GPU / NvTensorRtRtxExecutionProvider |"
         " 1st of 2 | 1.250 s | 2.500 s | 2.000 s | 1.800 s | 2.200 s | 25 | 12.1 |\n"
     ) in document
     assert (
-        "| `qwen3-vl-2b-instruct-generic-cpu:2` | CPU / CPUExecutionProvider |"
+        "| `qwen3-vl-2b-instruct-generic-cpu:2` | Foundry Local | CPU / CPUExecutionProvider |"
         " 2nd of 2 | 0.800 s | 20.000 s | 18.000 s | 17.500 s | 18.500 s | 25 | 1.4 |\n"
     ) in document
 
@@ -409,7 +418,8 @@ def test_the_markdown_says_why_an_unmeasured_variants_row_is_empty(benchmarks: P
     ).document
 
     assert (
-        "| `qwen3-vl-2b-instruct-cuda-gpu:2` | GPU / NvTensorRtRtxExecutionProvider |"
+        "| `qwen3-vl-2b-instruct-cuda-gpu:2` | Foundry Local |"
+        " GPU / NvTensorRtRtxExecutionProvider |"
         " 1st of 2 | — | — | — | — | — | — | — |\n"
     ) in document
     assert "**qwen3-vl-2b-instruct-cuda-gpu:2 was not measured.** " in document
@@ -428,7 +438,8 @@ def test_a_lone_repetition_has_no_steady_state_to_put_in_the_table(benchmarks: P
     ).document
 
     assert (
-        "| `qwen3-vl-2b-instruct-cuda-gpu:2` | GPU / NvTensorRtRtxExecutionProvider |"
+        "| `qwen3-vl-2b-instruct-cuda-gpu:2` | Foundry Local |"
+        " GPU / NvTensorRtRtxExecutionProvider |"
         " 1st of 1 | 1.250 s | 2.500 s | — | — | — | 30 | 12.0 |\n"
     ) in document
 
@@ -440,7 +451,7 @@ def test_an_operator_who_declares_no_hardware_profile_still_gets_a_named_record(
     apart; it is a fallback, not the description a reader six months from now needs."""
     kept = keep(benchmarks, profile=None)
 
-    assert kept.record["hardware_profile"] == this_machine()
+    assert kept.record["machine"] == this_machine()
     assert kept.json.name.endswith("-20260907-140311.json")
     assert kept.json.name != "-20260907-140311.json"
 
@@ -456,12 +467,12 @@ def test_what_the_machine_says_about_itself_names_the_host_and_the_platform() ->
     assert platform.machine() in described
 
 
-def test_a_declared_hardware_profile_is_preferred_to_what_the_machine_reports() -> None:
+def test_a_declared_machine_is_preferred_to_what_the_machine_reports() -> None:
     """ "RTX 4090 + i7-13700KF" is what a reader needs; a hostname means nothing to them."""
-    assert hardware_profile(PROFILE) == PROFILE
-    assert hardware_profile("  padded  ") == "padded"
-    assert hardware_profile(None) == this_machine()
-    assert hardware_profile("   ") == this_machine()
+    assert resolve_machine(PROFILE) == PROFILE
+    assert resolve_machine("  padded  ") == "padded"
+    assert resolve_machine(None) == this_machine()
+    assert resolve_machine("   ") == this_machine()
 
 
 def test_the_recorded_instant_carries_its_offset(benchmarks: Path) -> None:
@@ -484,7 +495,7 @@ def test_a_record_that_cannot_be_written_costs_the_file_and_not_the_numbers(
     code = benchmark_main(
         ["--hardware", PROFILE],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
         clock=FakeClock(READINGS),
         now=lambda: AT,
         out=out,
@@ -541,7 +552,7 @@ def test_a_document_that_breaks_mid_write_leaves_neither_half_behind(
     code = benchmark_main(
         ["--hardware", PROFILE],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
         clock=FakeClock(READINGS),
         now=lambda: AT,
         out=out,
@@ -650,3 +661,322 @@ def test_a_prose_record_is_unchanged_by_the_structured_answer_keys(benchmarks: P
     assert gpu["observation"] == OBSERVED
     assert "objects" not in gpu
     assert "no_shape" not in gpu
+
+
+FL_CPU_VARIANT = "qwen3-vl-2b-instruct-generic-cpu"
+"""The Foundry Local Variant name that resolves to FL-CPU — its resolved id carries the ``:2``."""
+
+OV_CPU_SLUG = "qwen3-vl-2b-instruct-int4-sym-cpu"
+"""The OpenVINO Variant's provenance slug, its identity in place of a catalogue id."""
+
+OV_GPU_SLUG = "qwen3-vl-2b-instruct-int4-sym-gpu"
+OV_NPU_SLUG = "qwen3-vl-2b-instruct-int4-sym-npu"
+"""The other two OpenVINO rows a four-row sitting names — the Arc iGPU and the NPU."""
+
+CALIBRATION_READINGS = (
+    5.0,
+    5.0,  # a Foundry Local Variant is present, so EPs register — but the no-op clock is flat
+    10.0,
+    11.25,
+    20.0,
+    22.5,
+    30.0,
+    32.0,
+    40.0,
+    41.8,
+    50.0,
+    52.2,
+    60.0,
+    62.0,  # FL-CPU: load then five inferences
+    100.0,
+    100.8,
+    200.0,
+    220.0,
+    300.0,
+    318.0,
+    400.0,
+    417.5,
+    500.0,
+    518.5,
+    600.0,
+    618.0,  # OV-CPU: load then five inferences
+)
+"""Twenty-six readings for the mixed sitting — register, then two Variants of five runs each."""
+
+
+def _fl_cpu() -> FakeVisionModel:
+    """FL-CPU: the Foundry Local Variant, its identity carrying a resolved id and an Alias."""
+    return FakeVisionModel(CPU_IDENTITY, [make_observation() for _ in range(5)])
+
+
+def _ov_cpu(
+    observations: Sequence[RawObservation | Exception] | None = None,
+    *,
+    load_error: Exception | None = None,
+) -> FakeVisionModel:
+    """OV-CPU: the OpenVINO Variant, its identity read from a provenance manifest, no Alias."""
+    identity = make_provenance_identity(variant=OV_CPU_SLUG, execution_provider="CPU")
+    if observations is None:
+        observations = [make_observation() for _ in range(5)]
+    return FakeVisionModel(identity, observations, load_error=load_error)
+
+
+def keep_mixed(
+    benchmarks: Path,
+    *,
+    fl: FakeVisionModel | None = None,
+    ov: FakeVisionModel | None = None,
+    readings: tuple[float, ...] = CALIBRATION_READINGS,
+    events: list[str] | None = None,
+) -> Kept:
+    """A sitting that names a Foundry Local Variant and an OpenVINO Variant, over one Workload.
+
+    Driven through the real router over the two fake Runtimes, so it exercises the claim and
+    dispatch logic and the "register EPs only when a Foundry Local Variant is present" guard —
+    the seam item 8 rests on (issue #46). FL-CPU is measured first, OV-CPU second.
+    """
+    fl = fl if fl is not None else _fl_cpu()
+    ov = ov if ov is not None else _ov_cpu()
+    out, err = io.StringIO(), io.StringIO()
+    code = benchmark_main(
+        ["--variant", FL_CPU_VARIANT, "--variant", OV_CPU_SLUG, "--hardware", PROFILE],
+        camera=FakeCamera([make_frame(width=640, height=360)]),
+        router=Router(
+            FakeFoundry({FL_CPU_VARIANT: fl}, events=events),
+            FakeOpenVINO({OV_CPU_SLUG: ov}, events=events),
+        ),
+        clock=FakeClock(readings),
+        now=lambda: AT,
+        out=out,
+        err=err,
+        benchmarks_dir=benchmarks,
+    )
+    written = sorted(benchmarks.glob("*.json"))
+    assert len(written) == 1, f"expected one record, found {written}"
+    return Kept(code, out.getvalue(), written[0], written[0].with_suffix(".md"))
+
+
+def test_a_mixed_sitting_measures_both_runtimes_under_one_workload(benchmarks: Path) -> None:
+    """FL-CPU and OV-CPU are measured in one sitting under one Workload — the four-row
+    Benchmark's core, here with the two calibration rows (issue #46, user story 2)."""
+    kept = keep_mixed(benchmarks)
+    fl, ov = kept.record["variants"]
+
+    assert kept.code == 0
+    assert [variant["id"] for variant in (fl, ov)] == [
+        "qwen3-vl-2b-instruct-generic-cpu:2",
+        OV_CPU_SLUG,
+    ]
+    assert fl["loaded"] is True and ov["loaded"] is True
+    assert len(fl["runs"]) == 5 and len(ov["runs"]) == 5
+    assert kept.record["workload"]["prompt"] == PROMPT
+
+
+def test_the_record_carries_the_runtime_of_each_row(benchmarks: Path) -> None:
+    """The explicit ``runtime`` field is what lets a reader group the rows by Runtime and not
+    mistake OV-CPU for FL-CPU (issue #46, user story 8)."""
+    fl, ov = keep_mixed(benchmarks).record["variants"]
+
+    assert fl["runtime"] == "Foundry Local"
+    assert ov["runtime"] == "OpenVINO GenAI"
+
+
+def test_an_openvino_variant_is_identified_by_its_provenance_and_slug(benchmarks: Path) -> None:
+    """No catalogue published it, so its identity is the structured provenance plus the derived
+    slug — a Foundry Local Variant keeps its id and carries no provenance (user story 9)."""
+    fl, ov = keep_mixed(benchmarks).record["variants"]
+
+    assert ov["id"] == OV_CPU_SLUG
+    assert ov["alias"] is None
+    assert ov["provenance"]["weights"] == "Qwen/Qwen3-VL-2B-Instruct"
+    assert ov["provenance"]["execution_provider"] == "CPU"
+    assert ov["provenance"]["recipe"]["tool"] == "optimum-cli export openvino"
+
+    assert fl["id"] == "qwen3-vl-2b-instruct-generic-cpu:2"
+    assert fl["alias"] == "qwen3-vl-2b-instruct"
+    assert fl["provenance"] is None
+
+
+def test_the_hardware_profile_triple_tells_fl_cpu_from_ov_cpu(benchmarks: Path) -> None:
+    """The derived triple authorises a comparison: FL-CPU and OV-CPU share the machine and the
+    Execution Provider and differ only in the Runtime — the calibration between the two, kept
+    apart rather than collapsed into one row (issue #46, user story 10)."""
+    record = keep_mixed(benchmarks).record
+    fl, ov = record["variants"]
+
+    assert fl["hardware_profile"] == {
+        "machine": PROFILE,
+        "runtime": "Foundry Local",
+        "execution_provider": "CPU",
+    }
+    assert ov["hardware_profile"] == {
+        "machine": PROFILE,
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "CPU",
+    }
+    fl_profile, ov_profile = fl["hardware_profile"], ov["hardware_profile"]
+    assert fl_profile["execution_provider"] == ov_profile["execution_provider"]
+    assert fl_profile["runtime"] != ov_profile["runtime"]
+    # The machine stays Benchmark-level; the triple is derived, not the row's identity.
+    assert record["machine"] == PROFILE
+
+
+def test_the_markdown_reads_the_two_cpu_rows_as_the_runtime_calibration(benchmarks: Path) -> None:
+    """The four-row sitting renders legibly, the Runtime column making FL-CPU and OV-CPU read
+    as the calibration between the Runtimes rather than two indistinguishable CPU rows."""
+    document = keep_mixed(benchmarks).document
+
+    assert (
+        "| Variant | Runtime | Runs on | Turn | Load | First | Median | Min | Max |"
+        " Tokens | Tokens/second |\n"
+    ) in document
+    assert (
+        "| `qwen3-vl-2b-instruct-generic-cpu:2` | Foundry Local | CPU / CPUExecutionProvider |"
+        " 1st of 2 |"
+    ) in document
+    assert (
+        f"| `{OV_CPU_SLUG}` | OpenVINO GenAI | CPU | 2nd of 2 |"
+    ) in document
+
+
+def test_an_openvino_only_sitting_pays_nothing_for_provider_registration(
+    benchmarks: Path,
+) -> None:
+    """Registration is Foundry Local's alone, so a sitting that never named a Foundry Local
+    Variant registers no Execution Providers and the ``provider_registration`` figure is zero
+    (issue #46, user story 14; ADR-0013)."""
+    events: list[str] = []
+    out, err = io.StringIO(), io.StringIO()
+    code = benchmark_main(
+        ["--variant", OV_CPU_SLUG, "--hardware", PROFILE],
+        camera=FakeCamera([make_frame(width=640, height=360)]),
+        router=Router(
+            FakeFoundry({}, events=events),
+            FakeOpenVINO({OV_CPU_SLUG: _ov_cpu()}, events=events),
+        ),
+        clock=FakeClock((5.0, 5.0, *CALIBRATION_READINGS[2:14])),
+        now=lambda: AT,
+        out=out,
+        err=err,
+        benchmarks_dir=benchmarks,
+    )
+    record = dict(json.loads(sorted(benchmarks.glob("*.json"))[0].read_text(encoding="utf-8")))
+
+    assert code == 0
+    assert "register" not in events
+    assert record["provider_registration"] == 0.0
+    assert record["variants"][0]["runtime"] == "OpenVINO GenAI"
+
+
+def test_a_mixed_sitting_registers_the_execution_providers_exactly_once(benchmarks: Path) -> None:
+    """A Foundry Local Variant is present, so the router registers the Execution Providers once
+    for the whole sitting — not per Variant and not zero (issue #46, user story 15)."""
+    events: list[str] = []
+    keep_mixed(benchmarks, events=events)
+
+    assert events.count("register") == 1
+
+
+def test_an_openvino_variant_that_will_not_load_is_an_unmeasured_row(benchmarks: Path) -> None:
+    """A broken OpenVINO Variant is an Unmeasured Variant — a row, not a crash — exactly as a
+    broken Foundry Local Variant is, so the other Runtime's numbers survive it (user story 16)."""
+    would_not_load = "the IR would not load"
+    ov = _ov_cpu([], load_error=RuntimeError(would_not_load))
+    kept = keep_mixed(
+        benchmarks,
+        ov=ov,
+        readings=(*CALIBRATION_READINGS[:14], 700.0),
+    )
+    fl, ov_row = kept.record["variants"]
+
+    assert kept.code == 0
+    assert fl["loaded"] is True and len(fl["runs"]) == 5
+    assert ov_row["loaded"] is False
+    assert ov_row["runtime"] == "OpenVINO GenAI"
+    assert would_not_load in ov_row["reason"]
+    # The Unmeasured row still carries the OpenVINO Variant's identity and its derived triple.
+    assert ov_row["provenance"]["execution_provider"] == "CPU"
+    assert ov_row["hardware_profile"]["runtime"] == "OpenVINO GenAI"
+
+
+def test_the_terminal_names_the_runtime_of_each_block(benchmarks: Path) -> None:
+    """The report an Operator watches live keeps the Runtimes apart too: each Variant's block
+    names its Runtime, so a mixed sitting reads FL-CPU and OV-CPU apart on screen and not only
+    in the persisted Markdown."""
+    out = keep_mixed(benchmarks).out
+
+    assert "Runtime      Foundry Local\n" in out
+    assert "Runtime      OpenVINO GenAI\n" in out
+
+
+def test_a_four_row_sitting_renders_all_four_rows_across_two_runtimes(benchmarks: Path) -> None:
+    """The four-row Benchmark the second Runtime exists for: FL-CPU alongside OV-CPU, OV-GPU
+    and OV-NPU in one sitting under one Workload, the two CPU rows the calibration between the
+    Runtimes (issue #46, user stories 2–3)."""
+
+    def ov(slug: str, execution_provider: str) -> FakeVisionModel:
+        identity = make_provenance_identity(variant=slug, execution_provider=execution_provider)
+        return FakeVisionModel(identity, [make_observation()])
+
+    fl = FakeVisionModel(CPU_IDENTITY, [make_observation()])
+    out, err = io.StringIO(), io.StringIO()
+    code = benchmark_main(
+        [
+            "--variant", FL_CPU_VARIANT,
+            "--variant", OV_CPU_SLUG,
+            "--variant", OV_GPU_SLUG,
+            "--variant", OV_NPU_SLUG,
+            "--repetitions", "1",
+            "--hardware", PROFILE,
+        ],
+        camera=FakeCamera([make_frame(width=640, height=360)]),
+        router=Router(
+            FakeFoundry({FL_CPU_VARIANT: fl}),
+            FakeOpenVINO(
+                {
+                    OV_CPU_SLUG: ov(OV_CPU_SLUG, "CPU"),
+                    OV_GPU_SLUG: ov(OV_GPU_SLUG, "GPU"),
+                    OV_NPU_SLUG: ov(OV_NPU_SLUG, "NPU"),
+                }
+            ),
+        ),
+        clock=FakeClock(tuple(float(reading) for reading in range(18))),
+        now=lambda: AT,
+        out=out,
+        err=err,
+        benchmarks_dir=benchmarks,
+    )
+    written = sorted(benchmarks.glob("*.json"))[0]
+    record = dict(json.loads(written.read_text(encoding="utf-8")))
+    document = written.with_suffix(".md").read_text(encoding="utf-8")
+    rows = record["variants"]
+
+    assert code == 0
+    assert [row["runtime"] for row in rows] == [
+        "Foundry Local",
+        "OpenVINO GenAI",
+        "OpenVINO GenAI",
+        "OpenVINO GenAI",
+    ]
+    assert [row["hardware_profile"]["execution_provider"] for row in rows] == [
+        "CPU",
+        "CPU",
+        "GPU",
+        "NPU",
+    ]
+    # The two CPU rows are the calibration: same machine and Execution Provider, one per Runtime.
+    assert rows[0]["hardware_profile"] == {
+        "machine": PROFILE,
+        "runtime": "Foundry Local",
+        "execution_provider": "CPU",
+    }
+    assert rows[1]["hardware_profile"] == {
+        "machine": PROFILE,
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "CPU",
+    }
+    # The Markdown lays all four rows out as one table, each naming its Runtime.
+    data_rows = [line for line in document.splitlines() if line.startswith("| `qwen3")]
+    assert len(data_rows) == 4
+    assert "| Foundry Local |" in data_rows[0]
+    assert all("| OpenVINO GenAI |" in row for row in data_rows[1:])

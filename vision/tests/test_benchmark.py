@@ -43,6 +43,7 @@ from vision.inference import (
     Workload,
 )
 from vision.record import benchmarks_directory
+from vision.router import Router
 
 GPU_VARIANT, CPU_VARIANT = DEFAULT_VARIANTS
 """The two Variants a Benchmark measures when the Operator names none."""
@@ -100,6 +101,7 @@ HEADER = (
 GPU_BLOCK = (
     "Model        qwen3-vl-2b-instruct-cuda-gpu:2"
     " (alias qwen3-vl-2b-instruct, GPU / NvTensorRtRtxExecutionProvider)\n"
+    "Runtime      Foundry Local\n"
     "Measured     1st of 2\n"
     "Load         1.250 s\n"
     "\n"
@@ -112,6 +114,7 @@ GPU_BLOCK = (
 CPU_BLOCK = (
     "Model        qwen3-vl-2b-instruct-generic-cpu:2"
     " (alias qwen3-vl-2b-instruct, CPU / CPUExecutionProvider)\n"
+    "Runtime      Foundry Local\n"
     "Measured     2nd of 2\n"
     "Load         0.800 s\n"
     "\n"
@@ -268,7 +271,7 @@ def run(
     code = benchmark_main(
         argv if argv is not None else [],
         camera=camera,
-        foundry=foundry,
+        router=Router(foundry),
         clock=FakeClock(readings),
         out=out,
         err=err,
@@ -407,12 +410,18 @@ def test_lays_every_variants_table_out_to_one_set_of_column_widths() -> None:
 
 
 def test_refuses_a_variant_that_is_not_in_the_catalogue_before_measuring_anything() -> None:
-    """Two minutes into a Benchmark is too late to be told the third name names nothing."""
+    """Two minutes into a Benchmark is too late to be told the third name names nothing.
+
+    A name that resolves to neither Runtime comes back as the router's one refusal naming
+    both ways to name a Variant, not Foundry Local's own message (ADR-0013).
+    """
     result = run(["--variant", GPU_VARIANT, "--variant", "no-such-variant"])
 
     assert result.code == 1
     assert result.out == ""
-    assert result.err == "error: Foundry Local has no model called 'no-such-variant'\n"
+    assert result.err.startswith("error: no Variant is named 'no-such-variant'.")
+    assert "For Foundry Local that is an alias" in result.err
+    assert "For OpenVINO it is a provenance slug" in result.err
     assert result.gpu.observed == []
     assert "load" not in result.events
 
@@ -513,9 +522,11 @@ def test_measures_the_reference_frame_by_default() -> None:
     out, err = io.StringIO(), io.StringIO()
     code = benchmark_main(
         [],
-        foundry=FakeFoundry(
-            {GPU_VARIANT: make_gpu(events=events), CPU_VARIANT: make_cpu(events=events)},
-            events=events,
+        router=Router(
+            FakeFoundry(
+                {GPU_VARIANT: make_gpu(events=events), CPU_VARIANT: make_cpu(events=events)},
+                events=events,
+            )
         ),
         clock=FakeClock(READINGS),
         out=out,
@@ -538,7 +549,7 @@ def test_says_the_reference_frame_only_exists_in_a_source_checkout(
 
     code = benchmark_main(
         [],
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
         clock=FakeClock(READINGS),
         out=out,
         err=err,
@@ -747,6 +758,7 @@ def test_renders_a_variant_that_would_not_load_as_a_row_carrying_its_reason() ->
         f"{HEADER}\n"
         "Model        qwen3-vl-2b-instruct-cuda-gpu:2"
         " (alias qwen3-vl-2b-instruct, GPU / NvTensorRtRtxExecutionProvider)\n"
+        "Runtime      Foundry Local\n"
         "Attempted    1st of 2\n"
         f"Not measured {WOULD_NOT_LOAD}\n"
         f"\n{CPU_BLOCK}{result.recorded}"
@@ -951,7 +963,7 @@ def test_shows_one_progress_bar_per_variant_on_a_terminal() -> None:
     code = benchmark_main(
         [],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(), CPU_VARIANT: make_cpu()})),
         clock=FakeClock(READINGS),
         out=out,
         err=io.StringIO(),
@@ -969,7 +981,7 @@ def test_the_progress_bar_carries_the_last_latency_and_the_running_median() -> N
     code = benchmark_main(
         ["--variant", GPU_VARIANT],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu()}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu()})),
         clock=FakeClock(ONE_VARIANT_READINGS),
         out=out,
         err=io.StringIO(),
@@ -985,7 +997,7 @@ def test_the_progress_bar_says_a_lone_repetition_is_cold_rather_than_calling_it_
     code = benchmark_main(
         ["--variant", GPU_VARIANT, "--repetitions", "1"],
         camera=FakeCamera([make_frame(width=640, height=360)]),
-        foundry=FakeFoundry({GPU_VARIANT: make_gpu(COMPLETION_TOKENS[:1])}),
+        router=Router(FakeFoundry({GPU_VARIANT: make_gpu(COMPLETION_TOKENS[:1])})),
         clock=FakeClock((*PROVIDER_READINGS, *GPU_READINGS[:4])),
         out=out,
         err=io.StringIO(),
@@ -1011,7 +1023,7 @@ def test_pins_an_exact_variant_id_and_reports_the_one_that_answered() -> None:
     code = benchmark_main(
         ["--variant", "qwen3-vl-2b-instruct-generic-cpu:2"],
         camera=FakeCamera([make_frame()]),
-        foundry=foundry,
+        router=Router(foundry),
         clock=FakeClock(ONE_VARIANT_READINGS),
         out=out,
         err=err,

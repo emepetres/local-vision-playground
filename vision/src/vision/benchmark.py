@@ -39,12 +39,12 @@ from vision.errors import VisionError
 from vision.formatting import format_seconds
 from vision.inference import (
     FinishReason,
-    FoundryLocal,
     ModelIdentity,
     Shape,
     VisionModel,
     Workload,
 )
+from vision.router import Router
 from vision.startup import (
     Clock,
     accept_variant,
@@ -398,7 +398,7 @@ def refuse_a_live_camera(camera: int | None) -> None:
 
 def measure(
     *,
-    foundry: FoundryLocal,
+    router: Router,
     clock: Clock,
     variants: Sequence[str],
     workload: Workload,
@@ -428,8 +428,8 @@ def measure(
     require_a_benchmark_run(repetitions)
     require_a_variant(variants)
 
-    models = [accept_variant(foundry, name) for name in variants]
-    providers = register_execution_providers(foundry, clock=clock, out=out)
+    models = [accept_variant(router, name) for name in variants]
+    providers = register_execution_providers(router, clock=clock, out=out)
     measured = tuple(
         _measure_one(
             model,

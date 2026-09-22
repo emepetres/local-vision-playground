@@ -17,11 +17,13 @@ from tests.fakes import (
     FakeClock,
     FakeFeed,
     FakeFoundry,
+    FakeOpenVINO,
     FakeVisionModel,
     colour_of,
     make_frame,
     make_identity,
     make_observation,
+    make_provenance_identity,
     make_structured_observation,
     settling_feed,
 )
@@ -563,7 +565,7 @@ def test_structured_notes_a_list_cut_short_by_the_output_limit() -> None:
 
 
 def test_structured_does_not_flag_an_empty_list_as_maybe_incomplete() -> None:
-    """"Nothing present" under truncation still means nothing present — the "may be incomplete"
+    """ "Nothing present" under truncation still means nothing present — the "may be incomplete"
     note would contradict it, so it is not shown for an empty list."""
     model = FakeVisionModel(
         make_identity(),
@@ -809,3 +811,84 @@ def test_asks_a_scene_question_of_a_camera_frame_it_also_keeps(tmp_path: Path) -
     (workload,) = result.model.observed
     assert workload.prompt == "is anyone looking at the camera?"
     assert saved.read_bytes() == workload.frame.data
+
+
+# --- The second Runtime: an OpenVINO Variant reaches observe behind the unchanged port ---
+#
+# observe holds a router over both Runtimes, so naming an OpenVINO Variant reaches OpenVINO
+# with no change to the command: the FakeOpenVINO claims the slug, and the FakeFoundry beside
+# it is never touched — which is how these pin that an OpenVINO-only observe registers no
+# Execution Providers (ADR-0013).
+
+OV_SLUG = "qwen3-vl-2b-instruct-int4-sym-npu"
+
+
+def observe_openvino(
+    argv: list[str],
+    *,
+    model: FakeVisionModel,
+    camera: FakeCamera | None = None,
+    frames_dir: Path | None = None,
+) -> tuple[int, str, str, FakeFoundry]:
+    """Drive observe with an OpenVINO Variant named, over a router that also holds Foundry Local."""
+    foundry = FakeFoundry({})
+    openvino = FakeOpenVINO({OV_SLUG: model})
+    out, err = io.StringIO(), io.StringIO()
+    code = main(
+        [*argv, "--variant", OV_SLUG],
+        camera=camera if camera is not None else FakeCamera([make_frame()]),
+        router=Router(foundry, openvino),
+        clock=FakeClock(CACHED_READINGS),
+        out=out,
+        err=err,
+        frames_dir=frames_dir,
+    )
+    return code, out.getvalue(), err.getvalue(), foundry
+
+
+def test_observes_off_an_openvino_variant_and_registers_no_execution_providers() -> None:
+    model = FakeVisionModel(make_provenance_identity(), [make_observation()])
+
+    code, out, err, foundry = observe_openvino(
+        ["--image", "docs/fixtures/reference-frame.jpg"], model=model
+    )
+
+    assert code == 0
+    assert err == ""
+    # The Model line reads the provenance identity — the slug, no Alias, the device it ran on.
+    assert f"Model      {OV_SLUG} (NPU)\n" in out
+    assert OBSERVATION in out
+    # Foundry Local was never resolved and never asked to register: an OpenVINO-only sitting.
+    assert foundry.events == []
+
+
+def test_structured_observation_crosses_the_second_runtime() -> None:
+    model = FakeVisionModel(
+        make_provenance_identity(),
+        [],
+        structured=[make_structured_observation(ObjectsPresent((PresentObject("cup", 2),)))],
+    )
+
+    code, out, err, foundry = observe_openvino(
+        ["--image", "docs/fixtures/reference-frame.jpg", "--structured"], model=model
+    )
+
+    assert code == 0
+    assert f"Model      {OV_SLUG} (NPU)\n" in out
+    assert "2  cup\n" in out
+    (workload,) = model.observed_structured
+    assert workload.prompt == STRUCTURED_PROMPT
+    assert foundry.events == []
+
+
+def test_keep_frames_works_across_the_second_runtime(tmp_path: Path) -> None:
+    model = FakeVisionModel(make_provenance_identity(), [make_observation()])
+
+    code, out, err, _ = observe_openvino(
+        ["--keep-frames"], model=model, camera=FakeCamera([make_frame()]), frames_dir=tmp_path
+    )
+
+    assert code == 0
+    (saved,) = sorted(tmp_path.glob("*.jpg"))
+    assert f"Saved      {saved}\n" in out
+    assert saved.read_bytes() == model.observed[0].frame.data

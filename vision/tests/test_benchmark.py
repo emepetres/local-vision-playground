@@ -408,12 +408,18 @@ def test_lays_every_variants_table_out_to_one_set_of_column_widths() -> None:
 
 
 def test_refuses_a_variant_that_is_not_in_the_catalogue_before_measuring_anything() -> None:
-    """Two minutes into a Benchmark is too late to be told the third name names nothing."""
+    """Two minutes into a Benchmark is too late to be told the third name names nothing.
+
+    A name that resolves to neither Runtime comes back as the router's one refusal naming
+    both ways to name a Variant, not Foundry Local's own message (ADR-0013).
+    """
     result = run(["--variant", GPU_VARIANT, "--variant", "no-such-variant"])
 
     assert result.code == 1
     assert result.out == ""
-    assert result.err == "error: Foundry Local has no model called 'no-such-variant'\n"
+    assert result.err.startswith("error: no Variant is named 'no-such-variant'.")
+    assert "For Foundry Local that is an alias" in result.err
+    assert "For OpenVINO it is a provenance slug" in result.err
     assert result.gpu.observed == []
     assert "load" not in result.events
 

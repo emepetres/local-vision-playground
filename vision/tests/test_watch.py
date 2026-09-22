@@ -21,6 +21,7 @@ from tests.fakes import (
     FakeClock,
     FakeFeed,
     FakeFoundry,
+    FakeOpenVINO,
     FakeReaders,
     FakeSleep,
     FakeVisionModel,
@@ -32,6 +33,7 @@ from tests.fakes import (
     make_identity,
     make_images,
     make_observation,
+    make_provenance_identity,
     make_structured_observation,
 )
 from vision.capture import SETTLING_FRAMES
@@ -1556,7 +1558,7 @@ def test_structured_notes_on_the_line_a_list_cut_short_by_the_output_limit() -> 
 
 
 def test_structured_does_not_note_an_empty_list_cut_short() -> None:
-    """"Nothing present" under truncation stays that: the "may be incomplete" note would
+    """ "Nothing present" under truncation stays that: the "may be incomplete" note would
     contradict it, so an empty list carries no truncation clause."""
     model = FakeVisionModel(
         make_identity(),
@@ -1653,3 +1655,42 @@ def test_structured_persists_nothing_it_produced(benchmarks: Path) -> None:
     run(["--count", "2", "--structured"], model=structured_model(DESK, HAND), observations=2)
 
     assert not benchmarks.exists()
+
+
+# --- The second Runtime: a Watch runs on an OpenVINO Variant behind the unchanged port ---
+
+OV_SLUG = "qwen3-vl-2b-instruct-int4-sym-npu"
+
+
+def test_watches_on_an_openvino_variant_and_registers_no_execution_providers() -> None:
+    """A Watch reaches OpenVINO by naming a Variant it claims, with Foundry Local untouched.
+
+    The header's Model line reads the provenance identity — the slug and the device, no Alias —
+    and the Foundry Local beside it is never resolved or asked to register: a Watch of only an
+    OpenVINO Variant registers no Execution Providers (ADR-0013).
+    """
+    model = FakeVisionModel(
+        make_provenance_identity(), [make_observation(text) for text in TEXTS[:2]]
+    )
+    foundry = FakeFoundry({})
+    openvino = FakeOpenVINO({OV_SLUG: model})
+    cameras = FakeCameras({0: watching_feed(2)})
+    out, err = io.StringIO(), io.StringIO()
+
+    code = watch_main(
+        ["--count", "2", "--variant", OV_SLUG],
+        open_feed=cameras,
+        make_reader=FakeReaders(),
+        router=Router(foundry, openvino),
+        clock=FakeClock(readings(2)),
+        sleep=FakeSleep(),
+        questions=TypedQuestions(),
+        out=out,
+        err=err,
+    )
+
+    assert code == 0
+    assert f"Model      {OV_SLUG} (NPU)\n" in out.getvalue()
+    assert TEXTS[0] in out.getvalue()
+    assert TEXTS[1] in out.getvalue()
+    assert foundry.events == []

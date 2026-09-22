@@ -786,17 +786,21 @@ def _resolve_router(router: Router | None, owned: list[Callable[[], None]]) -> R
     """The real router over the real Foundry Local when none was injected.
 
     A command holds a router over the Runtimes, not a bare Foundry Local (ADR-0013). When
-    nothing is injected it is a router over the one real Runtime there is here, whose close
-    is registered so the manager is torn down with the rest.
+    nothing is injected it is a router over both real Runtimes: Foundry Local, whose close is
+    registered so the manager is torn down with the rest, and OpenVINO GenAI, which owns no
+    process-wide resource and so has nothing to tear down. OpenVINO is constructed eagerly but
+    imports nothing of its own until a Variant it claims is loaded, so a sitting that names no
+    OpenVINO Variant pays nothing for it being there.
     """
     if router is not None:
         return router
 
     from vision.inference import InProcessFoundryLocal
+    from vision.openvino_runtime import InProcessOpenVINO
 
     real = InProcessFoundryLocal()
     owned.append(real.close)
-    return Router(real)
+    return Router(real, InProcessOpenVINO())
 
 
 def _resolve_questions(questions: Questions | None, stdin: TextIO | None, out: TextIO) -> Questions:

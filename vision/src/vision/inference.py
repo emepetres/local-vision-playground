@@ -91,9 +91,18 @@ class ModelIdentity:
     string they are printed as. They are two facts — *CUDA* is not *GPU* — and a persisted
     Benchmark has to carry each of them on its own, so that a later reader can group by
     Execution Provider without parsing a slash out of a display string.
+
+    It carries either shape a Variant's identity can take. A Foundry Local Variant is
+    identified by its catalogue id and named by its ``alias``; an OpenVINO Variant we
+    exported has neither — its identity is read from its ``provenance.json`` (CONTEXT.md,
+    "Provenance"), the ``variant`` is the provenance slug that carries no ``:version``, and
+    ``alias`` is ``None`` because an Alias is a Foundry Local concept only (CONTEXT.md,
+    "Alias"). The Execution Provider it was built for stands in ``execution_provider`` with
+    no ``device_type`` beside it: OpenVINO is told a device — NPU, GPU or CPU — where
+    Foundry Local splits a Windows ML Execution Provider from the device it dispatched to.
     """
 
-    alias: str
+    alias: str | None
     variant: str
     task: str | None
     execution_provider: str | None
@@ -347,6 +356,32 @@ class FoundryLocal(Runtime, Protocol):
         It is not the first thing the command does: on a first run this downloads the
         providers, and nothing may be downloaded before the model is known to be one that
         can see a Frame.
+        """
+        ...
+
+
+class OpenVINO(Runtime, Protocol):
+    """The port onto OpenVINO GenAI: the Runtime that picks no Execution Provider.
+
+    It answers the common ``resolve`` and, unlike Foundry Local, has **no**
+    ``register_execution_providers`` — it is told its device and has nothing to register
+    (ADR-0013). The Runtime that lacks that method is the one a test reads the seam off.
+
+    It adds ``claims``, by which the router discriminates the two Runtimes. OpenVINO claims
+    a name that resolves to an on-disk IR directory carrying a ``provenance.json`` — the
+    provenance slug under the IR cache location, or a path to such a directory — and Foundry
+    Local claims the rest (CONTEXT.md, "Variant"). Claiming is kept off the common ``Runtime``
+    port for the same reason registration is: it is this Runtime's own concern, not a member
+    every Runtime has to grow.
+    """
+
+    def claims(self, name: str) -> bool:
+        """Whether this name resolves to an IR directory this Runtime can run.
+
+        True for a provenance slug found under the IR cache, or a path to a directory
+        carrying a ``provenance.json``. False for everything else — which is what leaves it
+        to Foundry Local, and a name neither claims is one refusal naming both ways to name
+        a Variant.
         """
         ...
 

@@ -26,11 +26,13 @@ from vision.capture import (
 )
 from vision.errors import VisionError
 from vision.inference import (
+    VISION_TASK,
     FinishReason,
     FoundryLocal,
     ModelIdentity,
     NoShape,
     ObjectsPresent,
+    OpenVINO,
     PresentObject,
     RawObservation,
     RawStructuredObservation,
@@ -409,6 +411,44 @@ class FakeFoundry:
         return model
 
 
+class FakeOpenVINO:
+    """The second Runtime as a double: it claims the names it has an IR for, and resolves them.
+
+    A mapping of name to model, exactly as ``FakeFoundry`` is — a caller that resolves two
+    OpenVINO Variants asks for two names and gets two models. What makes it the double the seam
+    is read off is what it does **not** have: no ``register_execution_providers``, because
+    OpenVINO is told its device and has nothing to register (ADR-0013). It claims precisely the
+    names it holds a model for — a provenance slug or an IR path in a test is just a key here —
+    which is how a test says which names are OpenVINO's and which fall through to Foundry Local.
+
+    ``events`` is the shared journal the other doubles write to. Handing the same list to a
+    ``FakeFoundry`` and a ``FakeVisionModel`` puts resolving, loading and observing on one
+    timeline — which is how a test pins that an OpenVINO-only sitting never registered an
+    Execution Provider: no ``register`` appears on it at all.
+    """
+
+    def __init__(
+        self,
+        models: Mapping[str, FakeVisionModel],
+        *,
+        events: list[str] | None = None,
+    ) -> None:
+        self.models = dict(models)
+        self.events: list[str] = events if events is not None else []
+        self.resolved: list[str] = []
+
+    def claims(self, name: str) -> bool:
+        return name in self.models
+
+    def resolve(self, name: str) -> FakeVisionModel:
+        self.events.append("resolve")
+        self.resolved.append(name)
+        model = self.models.get(name)
+        if model is None:
+            raise VisionError(f"OpenVINO has no IR called {name!r}")
+        return model
+
+
 class FakeClock:
     """Hands out a prepared sequence of readings, so every latency is deterministic."""
 
@@ -438,6 +478,27 @@ def make_identity(
         task=task,
         execution_provider=execution_provider,
         device_type=device_type,
+    )
+
+
+def make_provenance_identity(
+    *,
+    variant: str = "qwen3-vl-2b-instruct-int4-sym-npu",
+    execution_provider: str | None = "NPU",
+) -> ModelIdentity:
+    """A provenance-shaped identity, for an OpenVINO Variant no catalogue published.
+
+    The sibling of ``make_identity``: no Alias and no catalogue id with a ``:version``, because
+    an IR we exported has neither (CONTEXT.md, "Variant"). The ``variant`` is the provenance
+    slug, and the Execution Provider it was built for stands with no ``device_type`` beside it —
+    OpenVINO is told a device where Foundry Local splits an Execution Provider from one.
+    """
+    return ModelIdentity(
+        alias=None,
+        variant=variant,
+        task=VISION_TASK,
+        execution_provider=execution_provider,
+        device_type=None,
     )
 
 
@@ -535,6 +596,10 @@ _questions: Questions = TypedQuestions()
 _model: VisionModel = FakeVisionModel(make_identity(), [make_observation()])
 _foundry: FoundryLocal = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})
 # Foundry Local is a Runtime too — it satisfies the common resolution port as well as its
-# own. The seam a test reads the boundary off is the Runtime that has no
-# register_execution_providers; that one arrives with the second Runtime (ADR-0013).
+# own. The seam a test reads the boundary off is the second Runtime, which has no
+# register_execution_providers: it resolves and claims, and nothing else (ADR-0013).
 _runtime: Runtime = FakeFoundry({"an-alias": FakeVisionModel(make_identity(), [])})
+_openvino: OpenVINO = FakeOpenVINO({"an-ir-slug": FakeVisionModel(make_provenance_identity(), [])})
+_openvino_runtime: Runtime = FakeOpenVINO(
+    {"an-ir-slug": FakeVisionModel(make_provenance_identity(), [])}
+)

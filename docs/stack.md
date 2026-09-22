@@ -148,7 +148,7 @@ vision on-device with no bridge. That makes ADR-0003's technical half a design c
 than a hard blocker; its domain half — the Agent consumes Observations, it does not produce
 them — is untouched and still load-bearing.
 
-## Constraint 3 — no explicit Execution Provider switch, and no local NPU vision model **[verified 2026-09-05]**
+## Constraint 3 — Foundry Local offers no Execution Provider switch, and no NPU or GPU vision build on the demo machine **[verified 2026-09-05]**
 
 Two facts that together reshape what the benchmarking half of the demo can promise.
 
@@ -163,6 +163,12 @@ id** instead — `qwen3-vl-2b-instruct-generic-cpu` pins CPU, `…-cuda-gpu` pin
 Benchmark Run selects hardware by naming a variant, not by configuring a backend. Note that
 variant pinning is inferred from the sample's own `get_model_variant` fallback and its usage
 line; no Learn page says it in words.
+
+That the choice is implicit is a fact about **Foundry Local**, not about the project. The
+lever now has a companion: the second Runtime (OpenVINO GenAI) *is* told its Execution
+Provider explicitly — it has no catalogue to ask and never chooses one — see
+[ADR-0012](./adr/0012-two-runtimes-foundry-local-is-not-the-only-source.md) and
+[ADR-0013](./adr/0013-the-second-runtime-is-an-adapter-behind-an-unchanged-model-port.md).
 
 ### Naming a variant without pinning its version **[verified 2026-09-06]**
 
@@ -195,16 +201,24 @@ For reporting which Execution Provider a Benchmark Run *actually* used, the C#/J
 `DiscoverEps()` / `discoverEps()`, returning each EP's `Name` and `IsRegistered`. Not a
 switch, but it is the first-party way to evidence a Hardware Profile.
 
-**No NPU variant is visible to this machine** — every VLM above offers only `cuda-gpu`,
-`generic-gpu` and `generic-cpu`, and `foundry model list` returns zero hits for `npu`, `qnn`,
-`vitis` or `openvino`. That is weaker than "the catalogue has none": the catalogue is
-hardware-filtered per device, and this CLI failed to parse nine entries. A Copilot+ machine
-may well be offered variants this one is not. The development machine (RTX 4090 +
-i7-13700KF, Raptor Lake, no AI Boost) has no NPU either.
+**On the demo machine, Foundry Local's catalogue offers `qwen3-vl` only `generic-cpu`** —
+no `generic-gpu`, no NPU build — so through Foundry Local the vision path on the very
+machine the demo runs on is **CPU-only**, even though that machine has both an Arc 140V
+iGPU and an `Intel(R) AI Boost` NPU. (`qwen3-vl` having no GPU build at all is already
+visible in Constraint 1's table: its only variants are `-cuda-gpu` and `-generic-cpu`, so a
+machine without CUDA has no GPU option through Foundry Local.) Verified on the demo machine
+2026-09-16 (CLI 0.8.103): its catalogue does list NPU variants, but all `openvino-npu` and
+all of task `chat-completion` — zero `vision-language-chat` models have one. The catalogue
+is hardware-filtered per device, so a different machine may be offered other builds.
 
-The demonstrable Execution Provider axis is therefore **CUDA-GPU vs CPU**. NPU remains a
-committed backlog goal, blocked on both a Copilot+ class machine and an NPU variant
-appearing in the catalogue.
+The machine's own accelerators are therefore reached **outside Foundry Local**, through a
+second Runtime (OpenVINO GenAI) running the same weights — see
+[ADR-0012](./adr/0012-two-runtimes-foundry-local-is-not-the-only-source.md) and
+[ADR-0013](./adr/0013-the-second-runtime-is-an-adapter-behind-an-unchanged-model-port.md).
+The demonstrable Execution Provider axis is no longer "CUDA-GPU vs CPU" alone: it is a
+Benchmark of four rows across two Runtimes (FL-CPU, OV-CPU, OV-GPU, OV-NPU). The NPU is a
+third Execution Provider with its own profile — on a model this small it leads on TTFT, not
+on decode throughput — not a faster replacement for the GPU.
 
 For reference, per the Windows ML supported-EP table — the one page that carries the actual
 `EpName` strings, and which three Microsoft pages disagree about:

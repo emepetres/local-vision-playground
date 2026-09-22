@@ -1662,6 +1662,38 @@ def test_structured_persists_nothing_it_produced(benchmarks: Path) -> None:
 OV_SLUG = "qwen3-vl-2b-instruct-int4-sym-npu"
 
 
+def watch_openvino(
+    argv: list[str],
+    *,
+    model: FakeVisionModel,
+    observations: int = 2,
+    frames_dir: Path | None = None,
+) -> tuple[int, str, FakeFoundry]:
+    """Drive a Watch with an OpenVINO Variant named, over a router that also holds Foundry Local.
+
+    The command is unchanged; only the router discriminates. The Foundry Local beside OpenVINO
+    is handed back so a test can pin that it was never resolved or asked to register — a Watch
+    of only an OpenVINO Variant registers no Execution Providers (ADR-0013).
+    """
+    foundry = FakeFoundry({})
+    openvino = FakeOpenVINO({OV_SLUG: model})
+    cameras = FakeCameras({0: watching_feed(observations)})
+    out, err = io.StringIO(), io.StringIO()
+    code = watch_main(
+        [*argv, "--variant", OV_SLUG],
+        open_feed=cameras,
+        make_reader=FakeReaders(),
+        router=Router(foundry, openvino),
+        clock=FakeClock(readings(observations)),
+        sleep=FakeSleep(),
+        questions=TypedQuestions(),
+        out=out,
+        err=err,
+        frames_dir=frames_dir,
+    )
+    return code, out.getvalue(), foundry
+
+
 def test_watches_on_an_openvino_variant_and_registers_no_execution_providers() -> None:
     """A Watch reaches OpenVINO by naming a Variant it claims, with Foundry Local untouched.
 
@@ -1672,25 +1704,40 @@ def test_watches_on_an_openvino_variant_and_registers_no_execution_providers() -
     model = FakeVisionModel(
         make_provenance_identity(), [make_observation(text) for text in TEXTS[:2]]
     )
-    foundry = FakeFoundry({})
-    openvino = FakeOpenVINO({OV_SLUG: model})
-    cameras = FakeCameras({0: watching_feed(2)})
-    out, err = io.StringIO(), io.StringIO()
 
-    code = watch_main(
-        ["--count", "2", "--variant", OV_SLUG],
-        open_feed=cameras,
-        make_reader=FakeReaders(),
-        router=Router(foundry, openvino),
-        clock=FakeClock(readings(2)),
-        sleep=FakeSleep(),
-        questions=TypedQuestions(),
-        out=out,
-        err=err,
+    code, out, foundry = watch_openvino(["--count", "2"], model=model)
+
+    assert code == 0
+    assert f"Model      {OV_SLUG} (NPU)\n" in out
+    assert TEXTS[0] in out
+    assert TEXTS[1] in out
+    assert foundry.events == []
+
+
+def test_structured_and_keep_frames_cross_the_second_runtime(tmp_path: Path) -> None:
+    """A structured Watch that keeps its Frames runs the same off OpenVINO as off Foundry Local.
+
+    The fixed shape and --keep-frames are Runtime-agnostic — the shape crosses the port through
+    ``observe_structured`` and the Frame is kept by the command — so this pins the acceptance
+    that a Watch of an OpenVINO Variant carries --structured and --keep-frames (issue #49).
+    """
+    model = FakeVisionModel(
+        make_provenance_identity(),
+        [],
+        structured=[make_structured_observation(shape) for shape in (DESK, HAND)],
+    )
+
+    code, out, foundry = watch_openvino(
+        ["--count", "2", "--structured", "--keep-frames"],
+        model=model,
+        frames_dir=tmp_path,
     )
 
     assert code == 0
-    assert f"Model      {OV_SLUG} (NPU)\n" in out.getvalue()
-    assert TEXTS[0] in out.getvalue()
-    assert TEXTS[1] in out.getvalue()
+    assert f"Model      {OV_SLUG} (NPU)\n" in out
+    # The aligned list crossed the second Runtime, and each observed Frame was kept.
+    assert DESK_LINES in out
+    assert HAND_LINES in out
+    assert len(sorted(tmp_path.glob("*.jpg"))) == 2
+    assert "saved " in out
     assert foundry.events == []

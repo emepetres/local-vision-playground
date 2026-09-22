@@ -119,6 +119,12 @@ class TestIdentity:
         assert device_of({"execution_provider": "gpu"}) == "GPU"
         assert device_of({}) == "CPU"
 
+    def test_the_identity_and_the_device_agree_on_casing(self) -> None:
+        # A manifest that spelled the Execution Provider lower-case must not print ``slug (gpu)``
+        # while running on ``GPU`` — the slug and the manifest name the same Execution Provider.
+        provenance = {"slug": "m-int4-sym-gpu", "execution_provider": "gpu"}
+        assert identity_from_provenance(provenance).execution_provider == device_of(provenance)
+
 
 class TestReadProvenance:
     """The manifest as data, or a refusal that names the file rather than a traceback."""

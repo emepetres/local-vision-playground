@@ -131,9 +131,22 @@ def identity_from_provenance(provenance: dict[str, Any]) -> ModelIdentity:
         alias=None,
         variant=str(provenance.get("slug", "")),
         task=VISION_TASK,
-        execution_provider=provenance.get("execution_provider"),
+        execution_provider=_execution_provider(provenance),
         device_type=None,
     )
+
+
+def _execution_provider(provenance: dict[str, Any]) -> str | None:
+    """The Execution Provider the manifest names, upper-cased, or ``None`` if it names none.
+
+    Read through one place so the identity a report prints and the device the IR is told to run
+    on cannot disagree: ``device_of`` runs on this, and a manifest that spelled it ``gpu`` would
+    otherwise print ``slug (gpu)`` while running on ``GPU``. The conversion step writes it
+    upper-case (``tools/convert/convert.py``); normalising here makes a hand-edited manifest read
+    the same way.
+    """
+    ep = provenance.get("execution_provider")
+    return ep.upper() if isinstance(ep, str) and ep else None
 
 
 def device_of(provenance: dict[str, Any]) -> str:
@@ -142,9 +155,10 @@ def device_of(provenance: dict[str, Any]) -> str:
     OpenVINO GenAI never chooses a device (CONTEXT.md, "OpenVINO GenAI"); it is told one, and
     NPU / GPU / CPU are already its own device strings. The slug and the manifest name the same
     Execution Provider, so the ``-npu`` Variant runs on the NPU and the ``-gpu`` one on the Arc
-    iGPU, which is how an Operator picks the hardware by naming a Variant.
+    iGPU, which is how an Operator picks the hardware by naming a Variant. A manifest that names
+    none falls back to CPU, the device every machine has.
     """
-    return str(provenance.get("execution_provider") or "CPU").upper()
+    return _execution_provider(provenance) or "CPU"
 
 
 def without_shadow(entries: Iterable[str]) -> list[str]:

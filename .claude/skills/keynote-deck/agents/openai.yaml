@@ -1,0 +1,12 @@
+interface:
+  display_name: Keynote Deck
+  short_description: Authors a conference keynote as a validated, iterable markdown deck.
+  icon: presentation
+  accent_color: '#E4572E'
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true

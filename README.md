@@ -10,6 +10,12 @@ The point is not that it works — it is what it *feels like*: how fast local in
 actually is, what it costs on different hardware, and where the line sits between what a
 local model can do and what still wants the cloud.
 
+Why that matters outside a demo — a production-line workstation whose camera films workers,
+on a plant network with no way out, watched all shift — is argued in
+[`docs/business-value.md`](./docs/business-value.md): which value levers it claims
+(data residency and the cost of a continuous camera), which it does not (actuation
+latency, cloud-level quality), and what it would run on in production.
+
 See [`CONTEXT.md`](./CONTEXT.md) for the vocabulary (Feed, Frame, Observation, Trigger,
 Execution Provider…), [`docs/stack.md`](./docs/stack.md) for the Microsoft stack and its
 known constraints, and [`docs/adr/`](./docs/adr/) for the decisions that shaped it.
@@ -872,11 +878,20 @@ mirrored here.
       ([ADR-0009](./docs/adr/0009-a-scene-question-changes-what-a-watch-asks.md)).
 - [x] **5. Structured Observations.** Ask the model for a fixed shape — the list of
       objects present in a Frame — instead of prose.
-- [ ] **6. Triggers.** Fire when a condition over Observations holds: an object appears,
-      a scene changes.
+- [ ] **6. Triggers.** Fire when a condition over Observations holds — the conditions of
+      the [anchor scenario](./docs/business-value.md#the-anchor-scenario-a-workstation-on-a-production-line),
+      staged as a desk-scale work cell: a part is missing from the tray, someone is working
+      the cell without gloves, a foreign object is in the zone. Preceded by a spike that
+      measures whether `qwen3-vl-2b` resolves those conditions through Structured
+      Observations on real photos of the cell — before any of them is promised. Those
+      photos then become the Benchmark's fixed Workload, so that what is measured is the
+      scenario's work rather than a generic room.
 - [ ] **7. The Agent, in C#.** Microsoft Agent Framework consuming Observations over the
       local endpoint and invoking Actions when Triggers fire. The Agent never sees an
       image ([ADR-0003](./docs/adr/0003-the-agent-consumes-observations-not-images.md)).
+      Its Actions stay on the machine: a desktop notification — the supervisor finds out —
+      and an entry in a local incident log holding the Trigger, the Observation that fired
+      it and the time. Never a Frame: what is kept is a sentence, never a face.
 - [x] **8. A second Runtime: the NPU and the Arc GPU via OpenVINO GenAI.** Foundry
       Local's vision path on the demo machine is CPU-only — `qwen3-vl` ships no GPU or NPU
       build there — so the machine's own accelerators are reached through a second Runtime,
@@ -892,6 +907,21 @@ mirrored here.
       is a third Execution Provider with its own profile, not peak tokens/second. See
       [Reaching the NPU and the Arc GPU](#reaching-the-npu-and-the-arc-gpu-the-second-runtime)
       for how to run it.
+- [ ] **9. Capacity and cost.** From a Benchmark and a requested Cadence, how many cameras
+      a Hardware Profile could serve at most — ⌊Cadence / median inference latency⌋, one
+      model serving the Feeds in series — next to what the same Observations would cost
+      from a cloud vision API, priced per image from a versioned data file that cites each
+      price and the date it was read. An upper bound per Hardware Profile, stated as one:
+      concurrency on an NPU or GPU does not scale linearly, and no figure transfers to
+      another machine. Nothing is requested from the cloud to produce it.
+- [ ] **10. Runs without a network once prepared.** Preparing the machine may use the
+      network — downloading the model, exporting a Variant, caching the Foundry Local
+      catalogue, benchmarking. Operating it may not: once prepared, `observe` and `watch`
+      run with Wi-Fi off. Runtime telemetry is disabled by default (`ORT_TELEMETRY_DISABLED`,
+      since Foundry Local otherwise sends a process event even with non-essential telemetry
+      off), the demo pins its Variant id, and the airplane-mode rehearsal — including how
+      long a start takes with no catalogue to reach — is documented as a moment of the
+      demo script.
 
 ### Exploratory
 

@@ -173,6 +173,12 @@ _Avoid_: source, origin, lineage
 
 **Local-First**:
 The constraint that every stage — capture, understanding and action — runs on the Operator's machine, with no request leaving it. It is the reason the project exists, not an optimisation applied to it.
+
+It governs *operating* the machine, not *preparing* it. Obtaining a model, exporting a
+[[Variant]], refreshing a catalogue and running a [[Benchmark]] may all use the network;
+once the machine is prepared, observing and watching must go on with the network gone.
+"No request" is literal — it includes the telemetry a [[Runtime]] would send on its own,
+not only the Frames.
 _Avoid_: offline, on-prem, edge, air-gapped
 
 ### Measurement

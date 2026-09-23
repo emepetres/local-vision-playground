@@ -44,7 +44,7 @@ class Router:
         try:
             model = self._foundry.resolve(name)
         except VisionError as error:
-            raise self._named_by_neither(name) from error
+            raise self._no_variant_named(name) from error
         self._foundry_in_the_sitting = True
         return model
 
@@ -62,7 +62,7 @@ class Router:
         if self._foundry_in_the_sitting:
             self._foundry.register_execution_providers(announce)
 
-    def _named_by_neither(self, name: str) -> VisionError:
+    def _no_variant_named(self, name: str) -> VisionError:
         """The one refusal for a name that resolves to neither Runtime, naming both ways.
 
         A Foundry Local failure to resolve is the second half of "neither claims it" — OpenVINO

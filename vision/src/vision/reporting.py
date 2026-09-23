@@ -524,8 +524,13 @@ def _unmeasured_rows(variant: UnmeasuredVariant, total: int) -> list[tuple[str, 
     a Variant that would not load second was asked to load onto a machine that had just had
     another model taken off it — but calling that turn a measurement would be a lie about
     the row it labels.
+
+    A Variant no Runtime claimed has no Runtime line at all: there is none to name, and a
+    dash there would read as a Runtime that failed rather than as a name that reached neither.
     """
-    rows = [("Model", format_model(variant.model)), ("Runtime", variant.model.runtime)]
+    rows = [("Model", format_model(variant.model))]
+    if variant.model.runtime is not None:
+        rows.append(("Runtime", variant.model.runtime))
     if total > 1:
         rows.append(("Attempted", f"{_ordinal(variant.order)} of {total}"))
     rows.append(("Not measured", variant.reason))
@@ -545,7 +550,7 @@ def _variant_rows(variant: MeasuredVariant, total: int) -> list[tuple[str, str]]
     Runtimes reads FL-CPU and OV-CPU apart at a glance rather than by noticing one Model line
     carries an Alias and the other does not (CONTEXT.md, "Hardware Profile").
     """
-    rows = [("Model", format_model(variant.model)), ("Runtime", variant.model.runtime)]
+    rows = [("Model", format_model(variant.model)), ("Runtime", variant.model.runtime or MISSING)]
     if total > 1:
         rows.append(("Measured", f"{_ordinal(variant.order)} of {total}"))
     rows.append(("Load", format_seconds(variant.load)))
@@ -793,7 +798,7 @@ def _markdown_cells(variant: MeasuredVariant | UnmeasuredVariant, total: int) ->
     identity = variant.model
     head = [
         f"`{identity.variant}`",
-        identity.runtime,
+        identity.runtime or MISSING,
         identity.ran_on or MISSING,
         f"{_ordinal(variant.order)} of {total}",
     ]

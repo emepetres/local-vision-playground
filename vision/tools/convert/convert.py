@@ -229,10 +229,26 @@ def check_npu_driver() -> None:
         print("[convert] No 'Intel(R) AI Boost' NPU found — export still works; "
               "the smoke run needs the demo machine.")
         return
-    found = tuple(int(x) for x in out.split(".")[:4])
-    floor = ".".join(map(str, NPU_DRIVER_FLOOR))
+    floor_text = ".".join(map(str, NPU_DRIVER_FLOOR))
+    found = _version(out)
+    if found is None:
+        print(f"[convert] NPU driver {out} (floor {floor_text}) - unreadable version, skipping.")
+        return
     verdict = "OK" if found >= NPU_DRIVER_FLOOR else "BELOW FLOOR, update it"
-    print(f"[convert] NPU driver {out} (floor {floor}) - {verdict}.")
+    print(f"[convert] NPU driver {out} (floor {floor_text}) - {verdict}.")
+
+
+def _version(reported: str) -> tuple[int, ...] | None:
+    """The driver version as numbers, or ``None`` when it is not written as any.
+
+    A check that warns and never blocks must not raise on a version string it did not expect:
+    the export is CPU-bound and does not touch the NPU, so an unreadable version is one line
+    less of advice, not a refused conversion.
+    """
+    parts = reported.split(".")[:4]
+    if not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
 
 
 def export(weights: str, out_dir: Path) -> None:

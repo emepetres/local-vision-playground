@@ -788,9 +788,11 @@ def _resolve_router(router: Router | None, owned: list[Callable[[], None]]) -> R
     A command holds a router over the Runtimes, not a bare Foundry Local (ADR-0013). When
     nothing is injected it is a router over both real Runtimes: Foundry Local, whose close is
     registered so the manager is torn down with the rest, and OpenVINO GenAI, which owns no
-    process-wide resource and so has nothing to tear down. OpenVINO is constructed eagerly but
-    imports nothing of its own until a Variant it claims is loaded, so a sitting that names no
-    OpenVINO Variant pays nothing for it being there.
+    process-wide resource and so has nothing to tear down. Neither costs a sitting that does
+    not use it: OpenVINO imports nothing of its own until a Variant it claims is loaded, and
+    Foundry Local starts its manager only when a Variant is resolved through it — which is
+    what makes an OpenVINO-only run pay nothing for Foundry Local being on the router, the
+    same fact the ``providers`` zero reports.
     """
     if router is not None:
         return router

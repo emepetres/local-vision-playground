@@ -205,7 +205,11 @@ to the shell as a failure is a script that bins the numbers that did survive. Se
 [ADR-0007](../adr/0007-a-variant-that-will-not-load-is-a-row.md).
 
 Weights that never arrive are a row on the same terms — a fetch that fails is a load that
-fails seen a moment earlier, and `--variant` is the lever either way. But only _getting the
+fails seen a moment earlier, and `--variant` is the lever either way. So is a **name no
+Runtime claims**: a typo, or an OpenVINO provenance slug whose IR is not on this machine.
+That is the verdict a Variant that will not load gives, arriving one step earlier, and a
+four-row Benchmark should not lose the three rows that did run over one stale slug — the row
+carries the same one-line refusal, naming both ways to name a Variant. But only _getting the
 Variant onto the hardware_ fails this softly: a Benchmark Run that fails once the model is
 loaded still ends the Benchmark, because that is a fault in this code rather than a verdict
 on the catalogue, and it gets a traceback.

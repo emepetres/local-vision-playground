@@ -140,6 +140,14 @@ class TestReadProvenance:
         with pytest.raises(VisionError, match="provenance manifest"):
             read_provenance(ir)
 
+    def test_a_manifest_that_names_no_slug_is_a_refusal(self, tmp_path: Path) -> None:
+        # The slug is the name this Variant carries into a report and into a persisted
+        # record; a row with no name answers nobody's "which build produced these numbers?"
+        nameless = {key: value for key, value in PROVENANCE.items() if key != "slug"}
+        ir = write_ir(tmp_path / "ir", nameless)
+        with pytest.raises(VisionError, match="names no slug"):
+            read_provenance(ir)
+
 
 class TestInProcessOpenVINO:
     """Claiming and resolving a Variant, and the trivial OpenVINO meanings behind the port."""

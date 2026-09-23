@@ -34,6 +34,7 @@ from vision.inference import (
     ModelIdentity,
     RawObservation,
     RawStructuredObservation,
+    RuntimeName,
     Workload,
     parse_objects_present,
 )
@@ -46,14 +47,6 @@ PROVENANCE_FILE = "provenance.json"
 
 Its presence in a directory is what makes that directory an OpenVINO Variant this Runtime
 claims, and its contents are the identity that Variant carries (ADR-0013).
-"""
-
-OPENVINO_GENAI = "OpenVINO GenAI"
-"""The domain name of the second Runtime (CONTEXT.md, "OpenVINO GenAI").
-
-Carried on every Variant this Runtime resolves so the persisted Benchmark tells OV-CPU from
-FL-CPU — the calibration between the two Runtimes (CONTEXT.md, "Hardware Profile"). Beside the
-port it names, as ``FOUNDRY_LOCAL`` is beside the other.
 """
 
 # The clean-env defence against the system-wide OpenVINO 2025.3 archive (#38). The archive's
@@ -110,7 +103,10 @@ def read_provenance(ir_dir: Path) -> dict[str, Any]:
 
     A manifest that will not parse is not a crash to hand an Operator a traceback for: it is
     an IR that was not written whole, and the lever is to export it again (see
-    ``tools/convert/convert.py``).
+    ``tools/convert/convert.py``). A manifest that parses but names no ``slug`` is the same
+    fault read one line later: the slug is the name this Variant carries into a report and
+    into a persisted record, and a row with no name answers nobody's "which build produced
+    these numbers?" (CONTEXT.md, "Provenance").
     """
     path = ir_dir / PROVENANCE_FILE
     try:
@@ -122,7 +118,17 @@ def read_provenance(ir_dir: Path) -> dict[str, Any]:
         ) from error
     if not isinstance(parsed, dict):
         raise VisionError(f"{path} is not a provenance manifest — re-export the IR")
+    if not _slug(parsed):
+        raise VisionError(
+            f"{path} names no slug — that is the name this Variant carries into a report and"
+            " into a Benchmark record, so re-export the IR with tools/convert/convert.py"
+        )
     return parsed
+
+
+def _slug(provenance: dict[str, Any]) -> str:
+    slug = provenance.get("slug")
+    return slug.strip() if isinstance(slug, str) else ""
 
 
 def identity_from_provenance(provenance: dict[str, Any]) -> ModelIdentity:
@@ -142,11 +148,11 @@ def identity_from_provenance(provenance: dict[str, Any]) -> ModelIdentity:
     """
     return ModelIdentity(
         alias=None,
-        variant=str(provenance.get("slug", "")),
+        variant=_slug(provenance),
         task=VISION_TASK,
         execution_provider=_execution_provider(provenance),
         device_type=None,
-        runtime=OPENVINO_GENAI,
+        runtime=RuntimeName.OPENVINO_GENAI,
         provenance=dict(provenance),
     )
 

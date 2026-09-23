@@ -17,7 +17,8 @@ A Variant that will not go onto the hardware ends the Benchmark for that Variant
 no other: it becomes an Unmeasured Variant carrying its reason, and the sitting carries on.
 A published Variant whose ONNX graph is invalid is a real thing an Operator meets and
 cannot work around (microsoft/foundry-local#1075), and throwing away the other Variant's
-numbers over it would be trading a result for a traceback.
+numbers over it would be trading a result for a traceback. A name no Runtime claims — an
+OpenVINO slug whose IR is not on this machine, say — is a row on the same terms.
 
 Nothing here lays out a report: the rendering lives in ``reporting``, which is what lets
 the table be exercised without a clock or a model. The one thing this module does write is
@@ -43,11 +44,12 @@ from vision.inference import (
     Shape,
     VisionModel,
     Workload,
+    require_vision_task,
+    unresolved_identity,
 )
 from vision.router import Router
 from vision.startup import (
     Clock,
-    accept_variant,
     bring_up,
     register_execution_providers,
     timed,
@@ -408,15 +410,15 @@ def measure(
 ) -> Benchmark:
     """Measure each Variant against the same Workload, one on the hardware at a time.
 
-    Every Variant is resolved and accepted before the first one is measured. A name that
-    names nothing, or that names a model which cannot see a Frame, is then a failure an
-    Operator hears about immediately, rather than two minutes into a Benchmark whose
-    earlier numbers are about to be thrown away.
+    Every Variant is accepted before the first one is measured, so that a model which cannot
+    see a Frame is a failure an Operator hears about immediately rather than two minutes into
+    a Benchmark whose earlier numbers are about to be thrown away. That one is refused because
+    it is the Operator's mistake and costs nothing to catch.
 
-    Those two are refused because they are the Operator's mistake and cost nothing to
-    catch. A Variant that will not load is neither: it is the machine's answer, and it
-    arrives after the other Variants have already been paid for — so it comes back as an
-    Unmeasured Variant rather than as an exception, and the sitting goes on.
+    A Variant that never gets onto the hardware is neither: it is the machine's answer, and it
+    arrives once the other Variants have already been paid for — so it comes back as an
+    Unmeasured Variant and the sitting carries on. A name no Runtime claims is the same answer
+    read a moment earlier and is a row on the same terms (see ``_accept``).
 
     ``structured`` chooses which shape is asked of every Variant — the fixed list of objects
     or prose. It is one choice for the whole sitting because it is part of the Workload
@@ -428,11 +430,13 @@ def measure(
     require_a_benchmark_run(repetitions)
     require_a_variant(variants)
 
-    models = [accept_variant(router, name) for name in variants]
+    accepted = [_accept(router, name, order=order) for order, name in enumerate(variants, start=1)]
     providers = register_execution_providers(router, clock=clock, out=out)
     measured = tuple(
-        _measure_one(
-            model,
+        variant
+        if isinstance(variant, UnmeasuredVariant)
+        else _measure_one(
+            variant,
             order=order,
             clock=clock,
             workload=workload,
@@ -440,7 +444,7 @@ def measure(
             out=out,
             structured=structured,
         )
-        for order, model in enumerate(models, start=1)
+        for order, variant in enumerate(accepted, start=1)
     )
 
     return Benchmark(
@@ -450,6 +454,30 @@ def measure(
         variants=measured,
         structured=structured,
     )
+
+
+def _accept(router: Router, name: str, *, order: int) -> VisionModel | UnmeasuredVariant:
+    """Resolve one Variant, or turn the refusal into a row rather than the end of the sitting.
+
+    A name no Runtime claims — a typo, or an OpenVINO provenance slug whose IR is not on this
+    machine — is the verdict a Variant that will not load gives, arriving a moment earlier:
+    this one will not be measured, and the others still can be (ADR-0007). So it comes back as
+    an Unmeasured Variant naming itself, carrying the router's one-line refusal as its reason
+    and no Runtime, because neither claimed it. An Operator whose four-row Benchmark named one
+    stale slug still gets the other three rows, and the exit status still follows the Benchmark.
+
+    A model that cannot see a Frame is not this and still ends the sitting: it is refused
+    before any weights are fetched, which is what keeps a Benchmark aimed at a text-only
+    sibling failing in seconds.
+    """
+    try:
+        model = router.resolve(name)
+    except VisionError as error:
+        return UnmeasuredVariant(
+            model=unresolved_identity(name), order=order, reason=_single_line(str(error))
+        )
+    require_vision_task(model.identity)
+    return model
 
 
 def _single_line(reason: str) -> str:

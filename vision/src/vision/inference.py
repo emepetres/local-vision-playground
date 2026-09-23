@@ -21,7 +21,7 @@ from vision.capture import Frame
 from vision.errors import VisionError
 
 if TYPE_CHECKING:
-    from foundry_local_sdk import ChatSession, IModel, Item, Response
+    from foundry_local_sdk import ChatSession, FoundryLocalManager, IModel, Item, Response
 
 PROMPT = "Describe what you see in this image in two or three sentences."
 """The prompt a Workload carries when the Operator asks no Scene Question of their own.
@@ -74,14 +74,20 @@ VISION_TASK = "vision-language-chat"
 
 APP_NAME = "local-vision-playground"
 
-FOUNDRY_LOCAL = "Foundry Local"
-"""The domain name of the Runtime a Foundry Local Variant is loaded by (CONTEXT.md, "Runtime").
 
-The record carries the Runtime per row so that a reader months later can tell FL-CPU from
-OV-CPU — two Benchmark Runs on the same CPU through different Runtimes are the calibration
-between them, not one measurement (CONTEXT.md, "Hardware Profile"). The name lives here, beside
-the port it names, so the adapter and its fake spell the one Runtime the same way.
-"""
+class RuntimeName(StrEnum):
+    """The domain name of each Runtime a Variant can be loaded by (CONTEXT.md, "Runtime").
+
+    The record carries the Runtime per row so that a reader months later can tell FL-CPU from
+    OV-CPU — two Benchmark Runs on the same CPU through different Runtimes are the calibration
+    between them, not one measurement (CONTEXT.md, "Hardware Profile"). That grouping is only
+    as good as the spelling, so the Runtimes are one closed set here rather than a string
+    constant beside each adapter: a row spelled a third way would split the calibration in two
+    without saying so.
+    """
+
+    FOUNDRY_LOCAL = "Foundry Local"
+    OPENVINO_GENAI = "OpenVINO GenAI"
 
 
 class FinishReason(StrEnum):
@@ -110,12 +116,13 @@ class ModelIdentity:
     no ``device_type`` beside it: OpenVINO is told a device — NPU, GPU or CPU — where
     Foundry Local splits a Windows ML Execution Provider from the device it dispatched to.
 
-    ``runtime`` is the domain Runtime that loaded it — ``Foundry Local`` or ``OpenVINO
-    GenAI`` (CONTEXT.md, "Runtime") — which is what lets a persisted Benchmark keep FL-CPU
-    and OV-CPU apart, the one pair a Benchmark most needs to (CONTEXT.md, "Hardware
-    Profile"). ``provenance`` is the structured manifest an OpenVINO Variant is identified
-    by — the weights, the recipe and the Execution Provider it was exported for — and
-    ``None`` for a Foundry Local Variant, which its resolved id already identifies.
+    ``runtime`` is the domain Runtime that loaded it (CONTEXT.md, "Runtime") — which is what
+    lets a persisted Benchmark keep FL-CPU and OV-CPU apart, the one pair a Benchmark most
+    needs to (CONTEXT.md, "Hardware Profile") — and ``None`` only for the identity of a
+    Variant no Runtime claimed, which ``unresolved_identity`` below builds. ``provenance`` is
+    the structured manifest an OpenVINO Variant is identified by — the weights, the recipe and
+    the Execution Provider it was exported for — and ``None`` for a Foundry Local Variant,
+    which its resolved id already identifies.
     """
 
     alias: str | None
@@ -123,7 +130,7 @@ class ModelIdentity:
     task: str | None
     execution_provider: str | None
     device_type: str | None
-    runtime: str
+    runtime: RuntimeName | None
     provenance: dict[str, Any] | None = None
 
     @property
@@ -154,6 +161,25 @@ class ModelIdentity:
         if self.device_type is None:
             return self.execution_provider
         return f"{self.device_type} / {self.execution_provider}"
+
+
+def unresolved_identity(name: str) -> ModelIdentity:
+    """The identity of a Variant no Runtime claimed: the name it was asked for, and nothing else.
+
+    A Benchmark reports such a Variant as a row rather than ending on it (ADR-0007), and a row
+    needs an identity to be laid out under. There is none to read — no Runtime claimed the
+    name, so there is neither a catalogue entry nor a provenance manifest behind it — so every
+    field but the name stands empty, and ``runtime`` is ``None`` rather than a guess: naming
+    one here would say a Runtime owned a name neither of them did.
+    """
+    return ModelIdentity(
+        alias=None,
+        variant=name,
+        task=None,
+        execution_provider=None,
+        device_type=None,
+        runtime=None,
+    )
 
 
 @dataclass(frozen=True)
@@ -474,12 +500,25 @@ def require_vision_task(identity: ModelIdentity) -> None:
 
 
 class InProcessFoundryLocal:
-    """The real Foundry Local, called in-process (ADR-0004). Built by the entry point only."""
+    """The real Foundry Local, called in-process (ADR-0004). Built by the entry point only.
+
+    The manager is started on first use rather than in the constructor, because starting it
+    starts the Foundry Local service: a command that names only OpenVINO Variants never touches
+    this Runtime, and it must pay nothing for the router holding it (ADR-0013). That is the
+    same figure the ``providers`` zero reports from the other side.
+    """
 
     def __init__(self, *, app_name: str = APP_NAME) -> None:
-        from foundry_local_sdk import Configuration, FoundryLocalManager
+        self._app_name = app_name
+        self._started: FoundryLocalManager | None = None
 
-        self._manager = FoundryLocalManager(Configuration(app_name=app_name))
+    @property
+    def _manager(self) -> FoundryLocalManager:
+        if self._started is None:
+            from foundry_local_sdk import Configuration, FoundryLocalManager
+
+            self._started = FoundryLocalManager(Configuration(app_name=self._app_name))
+        return self._started
 
     def register_execution_providers(self, announce: Callable[[str], None]) -> None:
         """Register every Execution Provider this machine can offer.
@@ -554,7 +593,9 @@ class InProcessFoundryLocal:
         return max(versions, key=lambda variant: _version_key(variant.info.version))
 
     def close(self) -> None:
-        self._manager.close()
+        """Close the manager, if anything ever started one."""
+        if self._started is not None:
+            self._started.close()
 
 
 class FoundryLocalModel:
@@ -574,7 +615,7 @@ class FoundryLocalModel:
             task=info.task,
             execution_provider=runtime.execution_provider if runtime is not None else None,
             device_type=runtime.device_type if runtime is not None else None,
-            runtime=FOUNDRY_LOCAL,
+            runtime=RuntimeName.FOUNDRY_LOCAL,
         )
 
     @property

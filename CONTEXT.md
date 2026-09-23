@@ -23,8 +23,8 @@ _Avoid_: snapshot, capture, still, photo
 **Stale Frame**:
 An image the Feed produced while nobody was reading it, discarded unobserved so that the
 Frame observed is the present. Not the same thing as the Frames a Feed discards while it
-settles: those say *the camera is not ready yet*, a Stale Frame says *what you are being
-handed is no longer now*. The same read, a different fact — which is why a [[Watch]] counts
+settles: those say _the camera is not ready yet_, a Stale Frame says _what you are being
+handed is no longer now_. The same read, a different fact — which is why a [[Watch]] counts
 them apart.
 _Avoid_: dropped frame, skipped frame, backlog, buffered frame
 
@@ -41,7 +41,7 @@ _Avoid_: latest, current frame, newest image, live frame
 What the model reports about a Frame — what is present in it and how it is described.
 _Avoid_: detection, caption, description, result, inference
 
-The avoided words name the Observation. "Inference" is still the name of the *act* of
+The avoided words name the Observation. "Inference" is still the name of the _act_ of
 running the model over a Frame, which is a different thing and has no other name: hence
 the `inference` module and the inference latency, which is the cost of that act and the
 one cost that is the latency of the Observation.
@@ -49,18 +49,18 @@ one cost that is the latency of the Observation.
 **Structured Observation**:
 An Observation the model is asked to return as a fixed shape — a list of the objects
 present in a Frame rather than free-form prose. Same concept as an Observation, asked
-for differently. Whether an object being present *matters* is a [[Trigger]], not this.
+for differently. Whether an object being present _matters_ is a [[Trigger]], not this.
 _Avoid_: object detection, bounding boxes, labels, classification
 
 **Scene Question**:
 A natural-language question an Operator asks about a Frame, answered from that Frame alone —
-from no earlier Frame and no earlier answer. There is no follow-up: *and what colour is it?*
+from no earlier Frame and no earlier answer. There is no follow-up: _and what colour is it?_
 is not a question this project can answer, because nothing the model was told a moment ago is
 still there to be referred back to.
 
 A Scene Question outlives the Observation that answers it. Once it stands over a [[Watch]] it
 is what that Watch asks from its next [[Cadence]] onward, until the Operator replaces it — a
-*standing* question steers the Watch rather than interrupting it. *Composing* one is the other
+_standing_ question steers the Watch rather than interrupting it. _Composing_ one is the other
 half and does interrupt: the Operator suspends the Watch to compose the question, and the Watch
 produces nothing until the question is composed or the composing is abandoned. One act seen at
 two moments — the composing stops the Watch, the question that results steers it.
@@ -109,9 +109,17 @@ same Execution Provider reached through two Runtimes is two different measuremen
 is why a [[Hardware Profile]] names one.
 _Avoid_: engine, framework, backend, provider
 
+**Router**:
+What a command holds in place of a single [[Runtime]]: it sends each named [[Variant]] to
+the Runtime that claims it, and asks for the [[Execution Provider]]s to be registered once
+for the whole sitting — only where a [[Foundry Local]] Variant was among them, registration
+being Foundry Local's alone. It is how a second Runtime was added without any command
+learning there are two.
+_Avoid_: dispatcher, factory, registry, resolver
+
 **Foundry Local**:
 Microsoft's on-device model runtime, which serves models from the local machine over a
-local endpoint. The Runtime *with a catalogue*: it publishes [[Variant]]s, and given an
+local endpoint. The Runtime _with a catalogue_: it publishes [[Variant]]s, and given an
 [[Alias]] it chooses the [[Execution Provider]] for you.
 _Avoid_: Local Foundry, the runtime, the service
 
@@ -146,8 +154,8 @@ Naming a Variant instead of an Alias is the only lever there is over which hardw
 work runs on; nothing selects an Execution Provider directly.
 
 What identifies a Variant is whatever its Runtime can say about it. [[Foundry Local]]
-publishes them, so one of its Variants is *identified* by its **Variant id**, which carries
-the version — `qwen3-vl-2b-instruct-generic-cpu:2` — and *named* by its **Variant name**,
+publishes them, so one of its Variants is _identified_ by its **Variant id**, which carries
+the version — `qwen3-vl-2b-instruct-generic-cpu:2` — and _named_ by its **Variant name**,
 which does not — `qwen3-vl-2b-instruct-generic-cpu`. The name is the Variant across every
 version of it, so naming one leaves the version to the catalogue, exactly as an Alias
 leaves the Execution Provider to Foundry Local. That is what lets a Variant be named in
@@ -165,7 +173,7 @@ half of a Variant's identity that a Variant id hands over for free — so a [[Fo
 Variant satisfies it by naming its id, and one of ours has to state it. A path on disk is
 not an identity, and a Benchmark is persisted to be read months later.
 
-The *recipe* is one named part of a Provenance — the export command and its arguments, and
+The _recipe_ is one named part of a Provenance — the export command and its arguments, and
 the field of that name the conversion step writes into `provenance.json` — not another word
 for the whole: calling the whole "the recipe" would lose the weights and the Execution
 Provider standing beside it, which is why only the part carries the name.
@@ -174,7 +182,7 @@ _Avoid_: source, origin, lineage
 **Local-First**:
 The constraint that every stage — capture, understanding and action — runs on the Operator's machine, with no request leaving it. It is the reason the project exists, not an optimisation applied to it.
 
-It governs *operating* the machine, not *preparing* it. Obtaining a model, exporting a
+It governs _operating_ the machine, not _preparing_ it. Obtaining a model, exporting a
 [[Variant]], refreshing a catalogue and running a [[Benchmark]] may all use the network;
 once the machine is prepared, observing and watching must go on with the network gone.
 "No request" is literal — it includes the telemetry a [[Runtime]] would send on its own,
@@ -186,7 +194,7 @@ _Avoid_: offline, on-prem, edge, air-gapped
 **Workload**:
 Everything that has to be identical for two Benchmark Runs to be comparable: the prompt, the
 exact Frame — its bytes, not merely its resolution — and the limits the model generates
-under. A larger Frame is more work for the model, so the working resolution *bounds* a
+under. A larger Frame is more work for the model, so the working resolution _bounds_ a
 Workload; it does not on its own fix one.
 _Avoid_: task, job, prompt, request
 
@@ -203,8 +211,8 @@ _Avoid_: result, entry, row, per-variant benchmark
 
 **Unmeasured Variant**:
 A [[Variant]] that never got onto the hardware within a Benchmark, and the reason it did
-not. It covers a Variant that would not *load* or would not *run*, not one that would not
-*export*: a Variant that never exported is not one a Benchmark can name, so that failure
+not. It covers a Variant that would not _load_ or would not _run_, not one that would not
+_export_: a Variant that never exported is not one a Benchmark can name, so that failure
 belongs to the conversion that produced it, not to the Benchmark. It is part of the
 Benchmark, not an error that ended one: a published Variant that will not load on this
 machine is exactly the sort of thing an Operator runs a Benchmark to find out, and the
@@ -216,7 +224,7 @@ _Avoid_: failed variant, error, skipped variant, crash
 **Token Divergence**:
 Two [[Measured Variant]]s within one Benchmark that generated materially different amounts
 of text, and therefore did materially different amounts of work. It is a property of the
-Benchmark rather than of either Variant — it is the *comparison* it invalidates, not the
+Benchmark rather than of either Variant — it is the _comparison_ it invalidates, not the
 numbers, which are each true of the Variant that produced them. A Benchmark carries its
 Token Divergence so that a reader cannot be handed the latencies without it.
 _Avoid_: warning, token mismatch, unfair comparison, drift

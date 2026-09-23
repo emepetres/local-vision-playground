@@ -52,7 +52,10 @@ The provenance slug is the Variant name. With the exports above:
 | NPU                | OpenVINO GenAI | `qwen3-vl-2b-instruct-int4-sym-npu` |
 
 A path to an IR directory works anywhere a slug does. The two CPU rows are the same silicon
-through two Runtimes — the calibration between them.
+through two Runtimes — the calibration between them. A slug with no IR behind it reaches
+neither Runtime: `observe` and `watch` refuse it in one line naming both ways to name a
+Variant, and a Benchmark makes it [a row](benchmark.md#when-a-variant-will-not-load) so the Variants that
+did run still report their numbers.
 
 ## 3. Run each command on the hardware you name
 

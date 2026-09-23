@@ -409,21 +409,40 @@ def test_lays_every_variants_table_out_to_one_set_of_column_widths() -> None:
     assert headers[0] == headers[1]
 
 
-def test_refuses_a_variant_that_is_not_in_the_catalogue_before_measuring_anything() -> None:
-    """Two minutes into a Benchmark is too late to be told the third name names nothing.
+def test_a_variant_no_runtime_claims_is_a_row_and_the_others_are_still_measured() -> None:
+    """A stale name is the verdict a Variant that will not load gives, a moment earlier.
 
-    A name that resolves to neither Runtime comes back as the router's one refusal naming
-    both ways to name a Variant, not Foundry Local's own message (ADR-0013).
+    An OpenVINO provenance slug whose IR is not on this machine reaches neither Runtime, and
+    a four-row Benchmark that lost its numbers over one of them would be trading a result for
+    a refusal (ADR-0007). The reason is the router's one refusal naming both ways to name a
+    Variant, not Foundry Local's own message (ADR-0013).
     """
-    result = run(["--variant", GPU_VARIANT, "--variant", "no-such-variant"])
+    result = run(
+        ["--variant", GPU_VARIANT, "--variant", "qwen3-vl-2b-instruct-int4-sym-npu"],
+        readings=ONE_VARIANT_READINGS,
+    )
+
+    assert result.code == 0
+    assert len(result.gpu.observed) == 5
+    assert "Model        qwen3-vl-2b-instruct-int4-sym-npu\n" in result.out
+    assert "Attempted    2nd of 2\n" in result.out
+    assert "Not measured no Variant is named 'qwen3-vl-2b-instruct-int4-sym-npu'." in result.out
+    assert "For OpenVINO it is a provenance slug" in result.out
+    # No Runtime claimed it, so no Runtime line stands under the Model: a dash there would
+    # read as a Runtime that failed rather than as a name that reached neither.
+    assert "Model        qwen3-vl-2b-instruct-int4-sym-npu\nRuntime" not in result.out
+
+
+def test_a_benchmark_of_only_unclaimed_names_exits_non_zero() -> None:
+    """Nothing measured is still a failure — the rows are the answer, the status is the verdict."""
+    result = run(["--variant", "no-such-variant"], readings=PROVIDER_READINGS)
 
     assert result.code == 1
-    assert result.out == ""
-    assert result.err.startswith("error: no Variant is named 'no-such-variant'.")
-    assert "For Foundry Local that is an alias" in result.err
-    assert "For OpenVINO it is a provenance slug" in result.err
-    assert result.gpu.observed == []
-    assert "load" not in result.events
+    assert "Not measured no Variant is named 'no-such-variant'." in result.out
+    assert result.err == (
+        "error: no Variant could be measured — every one of them is reported above with"
+        " the reason it was not\n"
+    )
 
 
 def test_takes_five_benchmark_runs_per_variant_by_default() -> None:

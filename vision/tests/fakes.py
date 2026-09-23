@@ -26,7 +26,6 @@ from vision.capture import (
 )
 from vision.errors import VisionError
 from vision.inference import (
-    FOUNDRY_LOCAL,
     VISION_TASK,
     FinishReason,
     FoundryLocal,
@@ -38,11 +37,11 @@ from vision.inference import (
     RawObservation,
     RawStructuredObservation,
     Runtime,
+    RuntimeName,
     Shape,
     VisionModel,
     Workload,
 )
-from vision.openvino_runtime import OPENVINO_GENAI
 from vision.startup import Sleep
 from vision.watch import Abandoned, Composed, Questions, Resolution
 
@@ -480,7 +479,7 @@ def make_identity(
         task=task,
         execution_provider=execution_provider,
         device_type=device_type,
-        runtime=FOUNDRY_LOCAL,
+        runtime=RuntimeName.FOUNDRY_LOCAL,
     )
 
 
@@ -531,7 +530,7 @@ def make_provenance_identity(
         task=VISION_TASK,
         execution_provider=execution_provider,
         device_type=None,
-        runtime=OPENVINO_GENAI,
+        runtime=RuntimeName.OPENVINO_GENAI,
         provenance=provenance,
     )
 

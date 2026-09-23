@@ -160,6 +160,7 @@ two Benchmarks.
 | 8. A second Runtime | The NPU and iGPU of the laptop, and the Runtime that runs on industrial edge boxes | Cost, deployment |
 | 9. Capacity and cost | Cameras per machine at a Cadence, next to the cloud bill for the same work | Cost |
 | 10. Runs without a network once prepared | The Watch and the Agent carry on with the cable pulled | Offline, residency |
+| 11. Spike: can the 2B model see the work cell? | Knowing which of the plant's conditions the model resolves before any is promised | — (honesty about quality) |
 
 Item 4 deserves a word. The existing edge products in the research are detectors: trained
 for a fixed list of things, retrained when the list changes. A vision-language model trades
@@ -175,8 +176,8 @@ assumed.
   ([spike](./research/2026-09-15-forced-tool-call-with-image.md)), and on the demo laptop
   all three int4 OpenVINO Variants fell into repetition loops within 128 tokens
   ([Benchmark of 2026-09-22](./benchmarks/asus-zenbook-s14-intel-core-ultra-7-258v-20260922-090814.md)).
-  Whether the 2B model resolves the scenario's Triggers is exactly what the spike before
-  item 6 measures; if it does not, the larger 4B and 8B models (Exploratory) are the next
+  Whether the 2B model resolves the scenario's Triggers is exactly what the spike (item 11)
+  measures; if it does not, the larger 4B and 8B models (Exploratory) are the next
   lever, and the cloud comparison (Exploratory) is where quality is weighed against
   everything above.
 - **It is not what production already runs.** Shipping systems — John Deere's See &

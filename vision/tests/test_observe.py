@@ -892,3 +892,37 @@ def test_keep_frames_works_across_the_second_runtime(tmp_path: Path) -> None:
     (saved,) = sorted(tmp_path.glob("*.jpg"))
     assert f"Saved      {saved}\n" in out
     assert saved.read_bytes() == model.observed[0].frame.data
+
+
+def test_never_crashes_printing_an_observation_to_a_non_utf8_console(tmp_path: Path) -> None:
+    """The regression issue #69 exists for: a model's emoji and em dashes must not crash
+    a run whose ``stdout`` is a redirected Windows console — ``cp1252`` by default rather
+    than UTF-8. Driven with a real ``TextIOWrapper`` over a buffer opened as ``cp1252``,
+    which is what a redirected console gives a process, rather than the ``io.StringIO``
+    the rest of this module uses: only a stream with a real encoding can prove the bytes
+    it received were replaced instead of raising ``UnicodeEncodeError``.
+    """
+    model = FakeVisionModel(
+        make_identity(), [make_observation(text="✅ done — nothing else in frame")]
+    )
+    camera = FakeCamera([make_frame()])
+    foundry = FakeFoundry.resolving_everything_to(model)
+    out_buffer = io.BytesIO()
+    out = io.TextIOWrapper(out_buffer, encoding="cp1252", errors="strict")
+    err = io.StringIO()
+
+    code = main(
+        [],
+        camera=camera,
+        router=Router(foundry),
+        clock=FakeClock(CACHED_READINGS),
+        out=out,
+        err=err,
+    )
+    out.flush()
+
+    assert code == 0
+    # Reconfigured to UTF-8, so the emoji and the em dash round-trip whole rather than
+    # being replaced — replacement only has to cover what UTF-8 itself cannot carry.
+    written = out_buffer.getvalue().decode("utf-8")
+    assert "✅ done — nothing else in frame" in written

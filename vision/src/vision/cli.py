@@ -816,7 +816,34 @@ def _benchmark_source(image: Path | None) -> Camera:
 
 
 def _streams(out: TextIO | None, err: TextIO | None) -> tuple[TextIO, TextIO]:
-    return (out if out is not None else sys.stdout, err if err is not None else sys.stderr)
+    """The two streams every command writes to, made safe for whatever the model says.
+
+    Reconfigured to UTF-8 with ``errors="replace"`` before anything else runs: the 4B
+    model emits emoji and em dashes an Observation can carry regardless, and on Windows
+    a redirected console defaults to the system code page (cp1252) rather than UTF-8. An
+    Observation the model produced must never be lost to how it is printed (issue #69) —
+    a byte that does not fit becomes ``?`` rather than a ``UnicodeEncodeError``. Applied to
+    whichever stream is actually in use, real or injected, so a test can drive the same
+    reconfiguration a real console gets.
+    """
+    resolved_out = out if out is not None else sys.stdout
+    resolved_err = err if err is not None else sys.stderr
+    _reconfigure_for_utf8(resolved_out)
+    _reconfigure_for_utf8(resolved_err)
+    return resolved_out, resolved_err
+
+
+def _reconfigure_for_utf8(stream: TextIO) -> None:
+    """UTF-8 with ``errors="replace"``, for streams that support reconfiguring at all.
+
+    A real console stream (a ``TextIOWrapper``) does; ``io.StringIO``, which the tests use
+    where the encoding does not matter, does not — and is left alone rather than guarded
+    with a narrower ``isinstance`` check, so any text stream that opts into reconfiguring
+    gets the same treatment.
+    """
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(encoding="utf-8", errors="replace")
 
 
 def _resolve_router(router: Router | None, owned: list[Callable[[], None]]) -> Router:

@@ -425,9 +425,7 @@ def _feed_died(provenance: str) -> str:
     )
 
 
-def _announcing(
-    out: TextIO, *, emitted: EmittedWatch | None, now: Now, variant: str
-) -> Announce:
+def _announcing(out: TextIO, *, emitted: EmittedWatch | None, now: Now, variant: str) -> Announce:
     """Write each Cadence down as it arrives, flushed so an audience sees it arrive.
 
     Also writes it to the emitted file where the Operator asked for one, on the same terms:

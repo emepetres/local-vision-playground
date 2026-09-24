@@ -9,7 +9,7 @@ never pixels.
 Two independent reasons put the line here.
 
 **The domain says so.** `CONTEXT.md` already defines the Agent as the process that
-*consumes* Observations and does not produce them. Handing it a Frame would make it an
+_consumes_ Observations and does not produce them. Handing it a Frame would make it an
 Observer, collapsing a distinction the vocabulary depends on.
 
 **The runtime makes it expensive.** Foundry Local's vision payload is not the OpenAI shape:

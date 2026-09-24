@@ -50,5 +50,5 @@ present in a Frame; prose has nothing in it for one to act on, so `--emit` witho
 
 **The file is git-ignored**, exactly as `vision/frames/` is: it is a live artifact of one
 run, not something the repository keeps. `docs/fixtures/watch-emit-contract.jsonl` is the
-one example of it that *is* checked in, so `agent/` has a fixture to develop against before
+one example of it that _is_ checked in, so `agent/` has a fixture to develop against before
 `vision/` and `agent/` are ever run side by side.

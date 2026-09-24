@@ -39,8 +39,12 @@ vision/                 domain — turning Frames into Observations
     pyproject.toml          currently also the project root itself
     src/
 agent/                  domain — deciding and acting on Observations
-    Agent.csproj            likewise
-    src/
+    Agent.slnx              a solution, since this domain holds two projects
+    Agent/
+        Agent.csproj
+        Program.cs
+    Agent.Tests/
+        Agent.Tests.csproj
 docs/                   guides, ADRs, stack notes, agent-facing docs
 ```
 

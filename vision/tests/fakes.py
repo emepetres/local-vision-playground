@@ -40,6 +40,7 @@ from vision.inference import (
     RuntimeName,
     Shape,
     VisionModel,
+    Where,
     Workload,
 )
 from vision.startup import Sleep
@@ -549,7 +550,7 @@ def make_observation(
     )
 
 
-PRESENT = (PresentObject("cup", 2), PresentObject("laptop", 1))
+PRESENT = (PresentObject("cup", 2, Where.ZONE), PresentObject("laptop", 1, Where.ZONE))
 """The objects the fake model reports present when a test does not care which they are."""
 
 

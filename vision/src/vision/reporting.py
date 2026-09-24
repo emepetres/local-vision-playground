@@ -159,14 +159,18 @@ def _shape_lines(shape: ObjectsPresent | NoShape) -> list[str]:
     An empty list is a success and says so in words — "nothing present" — rather than as a
     blank the Operator has to read as either an answer or a failure. A ``NoShape`` is that
     failure, and it renders as its reason: an ordinary outcome carrying what went wrong, not
-    a blank and not a traceback.
+    a blank and not a traceback. Where each object was is shown beside its name — the ``where``
+    the Work Cell prompt asks for (issue #64) — rather than in a column of its own: it is a
+    short fixed word, not a figure worth aligning.
     """
     if isinstance(shape, NoShape):
         return [shape.reason]
     if not shape.objects:
         return ["nothing present"]
     width = max(len(str(present.count)) for present in shape.objects)
-    return [f"{present.count:>{width}}  {present.name}" for present in shape.objects]
+    return [
+        f"{present.count:>{width}}  {present.name}  ({present.where})" for present in shape.objects
+    ]
 
 
 def render_watch_header(start: WatchStart) -> str:
@@ -899,13 +903,14 @@ def _objects_seen(shape: ObjectsPresent | NoShape) -> list[str]:
     The objects as data rather than a paragraph, so the Markdown shows the same list the JSON
     records — an empty list says "nothing present" in words rather than as a blank a reader
     has to read as either an answer or a failure, and a ``NoShape`` says so as its reason: an
-    ordinary "no shape" outcome, never a silent degrade to prose (ADR-0011).
+    ordinary "no shape" outcome, never a silent degrade to prose (ADR-0011). Each object's
+    ``where`` (issue #64) is shown alongside it, as the console rendering does.
     """
     if isinstance(shape, NoShape):
         return [f"_No shape — {shape.reason}._"]
     if not shape.objects:
         return ["_Nothing present._"]
-    return [f"- {present.count} × {present.name}" for present in shape.objects]
+    return [f"- {present.count} × {present.name} ({present.where})" for present in shape.objects]
 
 
 def _quoted(text: str) -> list[str]:

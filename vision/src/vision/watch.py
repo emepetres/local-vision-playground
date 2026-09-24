@@ -50,6 +50,7 @@ from vision.capture import Frame, HeldFeed, save_frame
 from vision.errors import VisionError, one_line
 from vision.inference import (
     PROMPT,
+    STRUCTURED_MAX_OUTPUT_TOKENS,
     STRUCTURED_PROMPT,
     FinishReason,
     ModelIdentity,
@@ -800,7 +801,11 @@ def _observe(
         # Frame explains nothing, because nobody observed it.
         saved = save_frame(frame, keep_in) if keep_in is not None else None
         if structured:
-            structured_workload = Workload(prompt=STRUCTURED_PROMPT, frame=frame)
+            structured_workload = Workload(
+                prompt=STRUCTURED_PROMPT,
+                frame=frame,
+                max_output_tokens=STRUCTURED_MAX_OUTPUT_TOKENS,
+            )
             raw_structured, structured_inference = timed(
                 clock, lambda: model.observe_structured(structured_workload)
             )

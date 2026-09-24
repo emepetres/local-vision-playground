@@ -29,7 +29,14 @@ from tests.fakes import (
 )
 from vision.capture import SETTLING_FRAMES, WORKING_RESOLUTION
 from vision.cli import main
-from vision.inference import STRUCTURED_PROMPT, FinishReason, NoShape, ObjectsPresent, PresentObject
+from vision.inference import (
+    STRUCTURED_PROMPT,
+    FinishReason,
+    NoShape,
+    ObjectsPresent,
+    PresentObject,
+    Where,
+)
 from vision.router import Router
 
 SETUP_READINGS = (0.0, 0.5)
@@ -488,7 +495,12 @@ def test_structured_lists_the_objects_present_under_the_unchanged_facts_block() 
         [],
         structured=[
             make_structured_observation(
-                ObjectsPresent((PresentObject("cup", 2), PresentObject("laptop", 1)))
+                ObjectsPresent(
+                    (
+                        PresentObject("cup", 2, Where.ZONE),
+                        PresentObject("laptop", 1, Where.ZONE),
+                    )
+                )
             )
         ],
     )
@@ -496,7 +508,7 @@ def test_structured_lists_the_objects_present_under_the_unchanged_facts_block() 
 
     assert result.code == 0
     assert result.err == ""
-    assert result.out == f"{REPORT}\n2  cup\n1  laptop\n"
+    assert result.out == f"{REPORT}\n2  cup  (zone)\n1  laptop  (zone)\n"
     assert result.model.observed == []
 
 
@@ -507,13 +519,18 @@ def test_structured_right_aligns_the_counts_into_a_column() -> None:
         [],
         structured=[
             make_structured_observation(
-                ObjectsPresent((PresentObject("book", 12), PresentObject("lamp", 1)))
+                ObjectsPresent(
+                    (
+                        PresentObject("book", 12, Where.TRAY),
+                        PresentObject("lamp", 1, Where.ELSEWHERE),
+                    )
+                )
             )
         ],
     )
     result = run(["--image", "a.jpg", "--structured"], model=model)
 
-    assert result.out == f"{REPORT}\n12  book\n 1  lamp\n"
+    assert result.out == f"{REPORT}\n12  book  (tray)\n 1  lamp  (elsewhere)\n"
 
 
 def test_structured_renders_an_empty_list_as_nothing_present() -> None:
@@ -548,7 +565,7 @@ def test_structured_notes_a_list_cut_short_by_the_output_limit() -> None:
         [],
         structured=[
             make_structured_observation(
-                ObjectsPresent((PresentObject("cup", 2),)), FinishReason.TRUNCATED
+                ObjectsPresent((PresentObject("cup", 2, Where.ZONE),)), FinishReason.TRUNCATED
             )
         ],
     )
@@ -558,9 +575,9 @@ def test_structured_notes_a_list_cut_short_by_the_output_limit() -> None:
     assert result.out == (
         f"{REPORT}"
         "\n"
-        "2  cup\n"
+        "2  cup  (zone)\n"
         "\n"
-        "(truncated: the list may be incomplete — the Observation hit the 128-token output limit)\n"
+        "(truncated: the list may be incomplete — the Observation hit the 256-token output limit)\n"
     )
 
 
@@ -866,7 +883,9 @@ def test_structured_observation_crosses_the_second_runtime() -> None:
     model = FakeVisionModel(
         make_provenance_identity(),
         [],
-        structured=[make_structured_observation(ObjectsPresent((PresentObject("cup", 2),)))],
+        structured=[
+            make_structured_observation(ObjectsPresent((PresentObject("cup", 2, Where.ZONE),)))
+        ],
     )
 
     code, out, err, foundry = observe_openvino(
@@ -875,7 +894,7 @@ def test_structured_observation_crosses_the_second_runtime() -> None:
 
     assert code == 0
     assert f"Model      {OV_SLUG} (NPU)\n" in out
-    assert "2  cup\n" in out
+    assert "2  cup  (zone)\n" in out
     (workload,) = model.observed_structured
     assert workload.prompt == STRUCTURED_PROMPT
     assert foundry.events == []

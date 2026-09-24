@@ -114,7 +114,9 @@ def _cadence_line(produced: Produced, *, variant: str, at: datetime) -> dict[str
         line["reason"] = shape.reason
     else:
         line["outcome"] = "objects"
-        line["objects"] = [{"name": obj.name, "count": obj.count} for obj in shape.objects]
+        line["objects"] = [
+            {"name": obj.name, "count": obj.count, "where": obj.where} for obj in shape.objects
+        ]
     return line
 
 

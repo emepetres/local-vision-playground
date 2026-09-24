@@ -37,7 +37,7 @@ from tests.test_watch import (
 from vision.cli import benchmark_main, main
 from vision.emit import require_structured_for_emit
 from vision.errors import VisionError
-from vision.inference import FinishReason, ObjectsPresent, PresentObject
+from vision.inference import FinishReason, ObjectsPresent, PresentObject, Where
 
 AT = datetime(2026, 9, 24, 10, 30, 0, tzinfo=timezone(timedelta(hours=2)))
 """The instant every faked ``now()`` returns — one instant is enough: no test here is
@@ -66,8 +66,9 @@ def assert_watch_start_envelope(line: dict[str, Any]) -> None:
 def assert_cadence_envelope(line: dict[str, Any]) -> None:
     """What every Cadence line promises, whichever outcome it came to.
 
-    Checks the envelope only: the object shape inside an "objects" outcome — beyond a name
-    and a count — is not this ticket's to check (see the "where" ticket, #61).
+    The object shape inside an "objects" outcome is checked in full here — name, count and
+    ``where`` (issue #64) — because it is exactly what `docs/fixtures/watch-emit-contract.jsonl`
+    promises and this is the one place that keeps both honest against each other.
     """
     assert line["type"] == "cadence"
     assert isinstance(line["cadence"], int)
@@ -81,6 +82,7 @@ def assert_cadence_envelope(line: dict[str, Any]) -> None:
         for obj in line["objects"]:
             assert isinstance(obj["name"], str)
             assert isinstance(obj["count"], int)
+            assert obj["where"] in ("tray", "zone", "hand", "elsewhere")
     elif outcome == "no_shape":
         assert isinstance(line["reason"], str)
     else:
@@ -195,7 +197,10 @@ def test_an_objects_cadence_is_emitted_with_its_full_envelope(tmp_path: Path) ->
         "time": AT.isoformat(),
         "variant": VARIANT,
         "outcome": "objects",
-        "objects": [{"name": "cup", "count": 2}, {"name": "laptop", "count": 1}],
+        "objects": [
+            {"name": "cup", "count": 2, "where": "zone"},
+            {"name": "laptop", "count": 1, "where": "zone"},
+        ],
         "truncated": False,
         "shortfall": None,
     }
@@ -245,7 +250,7 @@ def test_a_truncated_cadence_is_emitted_with_truncated_true(tmp_path: Path) -> N
         [],
         structured=[
             make_structured_observation(
-                ObjectsPresent((PresentObject("cup", 2),)), FinishReason.TRUNCATED
+                ObjectsPresent((PresentObject("cup", 2, Where.ZONE),)), FinishReason.TRUNCATED
             )
         ],
     )

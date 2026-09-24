@@ -47,6 +47,7 @@ from vision.inference import (
     PresentObject,
     RawObservation,
     Shape,
+    Where,
     Workload,
 )
 from vision.record import Now
@@ -1390,16 +1391,16 @@ def test_reads_no_keyboard_where_stdin_is_not_a_terminal() -> None:
     assert [workload.prompt for workload in model.observed] == [STANDING] * 3
 
 
-DESK = ObjectsPresent((PresentObject("cup", 2), PresentObject("laptop", 1)))
+DESK = ObjectsPresent((PresentObject("cup", 2, Where.ZONE), PresentObject("laptop", 1, Where.ZONE)))
 """A Structured Observation's shape: the objects present on the desk, with their counts."""
 
-DESK_LINES = "2  cup\n1  laptop"
-"""How ``DESK`` is rendered under a Cadence's line — the aligned list of count and name."""
+DESK_LINES = "2  cup  (zone)\n1  laptop  (zone)"
+"""How ``DESK`` is rendered under a Cadence's line — the aligned list of count, name and where."""
 
-HAND = ObjectsPresent((PresentObject("mug", 1),))
+HAND = ObjectsPresent((PresentObject("mug", 1, Where.HAND),))
 """A second shape, so a run of them can be told apart in the order they were produced."""
 
-HAND_LINES = "1  mug"
+HAND_LINES = "1  mug  (hand)"
 
 
 def structured_model(*shapes: Shape | Exception) -> FakeVisionModel:
@@ -1542,7 +1543,7 @@ def test_structured_notes_on_the_line_a_list_cut_short_by_the_output_limit() -> 
         [],
         structured=[
             make_structured_observation(
-                ObjectsPresent((PresentObject("cup", 2),)), FinishReason.TRUNCATED
+                ObjectsPresent((PresentObject("cup", 2, Where.ZONE),)), FinishReason.TRUNCATED
             )
         ],
     )
@@ -1553,8 +1554,8 @@ def test_structured_notes_on_the_line_a_list_cut_short_by_the_output_limit() -> 
         HEADER
         + structured_block(
             1,
-            "2  cup",
-            extra=", truncated — the list may be incomplete, it hit the 128-token output limit",
+            "2  cup  (zone)",
+            extra=", truncated — the list may be incomplete, it hit the 256-token output limit",
         )
         + "\n1 Observation, median inference 1.000 s\n"
     )

@@ -40,6 +40,7 @@ from vision.inference import (
     ObjectsPresent,
     PresentObject,
     Shape,
+    Where,
     Workload,
 )
 from vision.record import benchmarks_directory
@@ -176,10 +177,10 @@ def make_cpu(
     )
 
 
-GPU_OBJECTS = (PresentObject("cup", 2), PresentObject("laptop", 1))
+GPU_OBJECTS = (PresentObject("cup", 2, Where.ZONE), PresentObject("laptop", 1, Where.ZONE))
 """The shape the GPU Variant reports for the fixed-shape Workload, when a test wants a known one."""
 
-CPU_OBJECTS = (PresentObject("cup", 2), PresentObject("book", 3))
+CPU_OBJECTS = (PresentObject("cup", 2, Where.ZONE), PresentObject("book", 3, Where.ZONE))
 """The CPU Variant's shape — different objects from the GPU's, so a test can tell them apart."""
 
 
@@ -1092,8 +1093,9 @@ def test_renders_a_benchmark_that_no_clock_and_no_model_ever_touched() -> None:
 
 STRUCTURED_HEADER = HEADER.replace(
     f"Prompt       {PROMPT}\n", f"Prompt       {STRUCTURED_PROMPT}\n"
-)
-"""The prose header with the fixed-shape request in the Prompt row — the one thing that moves."""
+).replace("Limits       at most 128 tokens,", "Limits       at most 256 tokens,")
+"""The prose header with the fixed-shape request in the Prompt row, and its own wider output
+limit in the Limits row (issue #64) — the two rows that move."""
 
 STRUCTURED_REPORT = f"{STRUCTURED_HEADER}\n{GPU_BLOCK}\n{CPU_BLOCK}"
 """The same numeric tables prose renders: the terminal shows numbers, not the objects (ADR-0008)."""
@@ -1132,7 +1134,7 @@ def test_structured_sends_the_fixed_shape_prompt_to_every_benchmark_run() -> Non
     assert len(observed) == 10
     assert all(workload.prompt == STRUCTURED_PROMPT for workload in observed)
     assert len({id(workload.frame) for workload in observed}) == 1
-    assert all(workload.max_output_tokens == 128 for workload in observed)
+    assert all(workload.max_output_tokens == 256 for workload in observed)
 
 
 def test_structured_overrides_ask_and_sends_the_fixed_shape() -> None:

@@ -60,7 +60,9 @@ from vision.errors import VisionError, one_line
 from vision.inference import (
     DEFAULT_ALIAS,
     DEFAULT_VARIANTS,
+    MAX_OUTPUT_TOKENS,
     PROMPT,
+    STRUCTURED_MAX_OUTPUT_TOKENS,
     STRUCTURED_PROMPT,
     Observation,
     StructuredObservation,
@@ -195,8 +197,10 @@ def benchmark_main(
         # The prompt joins them here and nowhere else, so one Workload stands over the whole
         # sitting; what that costs and what it buys is in ``_add_ask``. The fixed shape is a
         # prompt like any other, which is what keeps two structured runs comparable only when
-        # they share it, as they must share the Frame and the limits (ADR-0011).
-        workload = Workload(prompt=prompt, frame=camera.capture())
+        # they share it, as they must share the Frame and the limits (ADR-0011). Structured
+        # runs at the wider 256-token limit prose does not need (issue #64).
+        limit = STRUCTURED_MAX_OUTPUT_TOKENS if args.structured else MAX_OUTPUT_TOKENS
+        workload = Workload(prompt=prompt, frame=camera.capture(), max_output_tokens=limit)
         benchmark = measure(
             router=router,
             clock=clock,
@@ -979,7 +983,9 @@ def _observe(
     # overrides --ask). The two paths cross the model port through sibling methods, so each
     # returns its own shape and neither type's fields go optional (ADR-0011).
     if question is None:
-        workload = Workload(prompt=STRUCTURED_PROMPT, frame=frame)
+        workload = Workload(
+            prompt=STRUCTURED_PROMPT, frame=frame, max_output_tokens=STRUCTURED_MAX_OUTPUT_TOKENS
+        )
         raw_structured, inference = timed(clock, lambda: ready.model.observe_structured(workload))
         structured = StructuredObservation(
             shape=raw_structured.shape,

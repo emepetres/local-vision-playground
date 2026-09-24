@@ -40,19 +40,31 @@ Workload in the same one place, and nothing else about the request moves.
 """
 
 STRUCTURED_PROMPT = (
-    "List every distinct object you can see in this image. Reply with ONLY a JSON array,"
-    ' where each element is an object {"name": <string>, "count": <integer >= 1>}.'
-    ' Example: [{"name": "cup", "count": 2}, {"name": "book", "count": 1}].'
-    " If the image is empty, reply with []."
+    "This is a work bench seen from above. The work zone is the green cutting mat. The tray"
+    " is the white mesh tray beside it. List every distinct object you can see, and where it"
+    ' is: "tray" if it lies in the white tray, "zone" if it lies on the green mat, "hand" if a'
+    ' hand is holding it, "elsewhere" for anything else. Hands are objects too: name each'
+    ' visible hand "bare hand" (skin showing) or "gloved hand". Reply with ONLY a JSON array,'
+    ' where each element is an object {"name": <string>, "count": <integer >= 1>, "where":'
+    ' <one of "tray", "zone", "hand", "elsewhere">}. Example: [{"name": "cup", "count": 1,'
+    ' "where": "zone"}, {"name": "bare hand", "count": 1, "where": "zone"}]. If nothing is'
+    " there, reply with []."
 )
 """The fixed shape a Structured Observation asks for, put in the prompt and parsed back.
 
 Not a Scene Question and not the Operator's to change: ``--structured`` sends *this*, which
 is why it overrides ``--ask``. ADR-0011 first reached the shape by a forced tool call; the
 spike behind issue #30 found `qwen3-vl-2b-instruct` never honours one and instead answers a
-JSON-in-prompt request exactly, so the shape is spelled out here — ``name`` and ``count``
-with a worked example, because the model defaults to an array of bare strings without it —
-and read back out of the reply (see ``parse_objects_present``).
+JSON-in-prompt request exactly, so the shape is spelled out here — ``name``, ``count`` and
+``where`` with a worked example, because the model defaults to an array of bare strings
+without it — and read back out of the reply (see ``parse_objects_present``).
+
+This is the spike behind issue #58/#64's ``described`` prompt, verbatim: it names the demo's
+own Work Cell — the green cutting mat, the white mesh tray — rather than staying scenario-
+agnostic, because that is what got the 4B model naming hands correctly and answering with a
+valid ``where`` (docs/research/2026-09-24-work-cell-spike.md, A1/A3). Naming this project's
+own fixture in a prompt every Operator's Frame is sent through is a deliberate, recorded
+debt: ADR-0016 has the reasoning and the way out (a future ``--scene TEXT``), not built now.
 """
 
 # The generation limits a Workload takes when a caller does not say otherwise. They are
@@ -60,6 +72,17 @@ and read back out of the reply (see ``parse_objects_present``).
 # measuring one Workload against another can see — and record — what it ran under (ADR-0005).
 MAX_OUTPUT_TOKENS = 128
 TEMPERATURE = 0.0
+
+STRUCTURED_MAX_OUTPUT_TOKENS = 256
+"""The output limit a structured Workload runs under, rather than the prose ``MAX_OUTPUT_TOKENS``.
+
+Prose stays at 128 — the length bound the ``PROMPT`` above already asks for two or three
+sentences within. A Structured Observation's reply is longer: it names every object *and*
+places each one, and the 4B Variant's replies mostly do not fit in 128 — the spike found only
+12 of 32 4B replies closed the array at 128 tokens, against 29 of 32 at 256, with the
+remaining 3 truncated and salvaged rather than lost outright
+(docs/research/2026-09-24-work-cell-spike.md, A1).
+"""
 
 DEFAULT_ALIAS = "qwen3-vl-2b-instruct"
 """Resolved when no variant is pinned, so Foundry Local picks the hardware."""
@@ -104,6 +127,34 @@ class FinishReason(StrEnum):
     COMPLETE = "complete"
     TRUNCATED = "truncated"
     OTHER = "other"
+
+
+class Where(StrEnum):
+    """The one closed set of places a present object can be, per the Work Cell prompt.
+
+    Exactly the four words ``STRUCTURED_PROMPT`` asks the model to answer with — spelled
+    lower-case as the prompt spells them, because the model is asked to reply with these
+    words verbatim rather than something this adapter maps onto them. A model that returns
+    anything else names no member of this set and is not coerced onto the nearest one: see
+    ``_present_object``, where a value outside this set makes that element invalid rather
+    than guessed at. Whether an object being present *matters* is a Trigger's question, not
+    this one's (CONTEXT.md, "Structured Observation") — this only says where it was.
+    """
+
+    TRAY = "tray"
+    ZONE = "zone"
+    HAND = "hand"
+    ELSEWHERE = "elsewhere"
+
+
+_WHERE_VALUES = {member.value for member in Where}
+"""The four bare strings ``Where`` accepts, checked before the enum is even constructed.
+
+A plain set of ``str`` rather than a ``try/except ValueError`` around ``Where(where)``: the
+parsing this guards is on the hot path of every Structured Observation, and checking
+membership first keeps ``_present_object`` reading as one flat set of guard clauses rather
+than mixing early returns with a caught exception for the same kind of failure.
+"""
 
 
 @dataclass(frozen=True)
@@ -222,15 +273,20 @@ class RawObservation:
 
 @dataclass(frozen=True)
 class PresentObject:
-    """One object the model reports present in a Frame: what it is, and how many there are.
+    """One object the model reports present in a Frame: what it is, how many, and where.
 
     The count is a whole number of at least one — a Structured Observation lists what is
-    *present*, so an object with a count of zero is not present and has no row. A name and a
-    count together, because either alone is nothing an Operator can act on.
+    *present*, so an object with a count of zero is not present and has no row. ``where`` is
+    one of the closed ``Where`` set the prompt asks for, never guessed at: an element whose
+    ``where`` is missing or names something outside that set is not a ``PresentObject`` at
+    all (see ``_present_object``), because a Trigger that reads ``where`` needs the field to
+    mean what it says or to not be there. A name, a count and a place together, because any
+    one alone is nothing an Operator — or a Trigger — can act on.
     """
 
     name: str
     count: int
+    where: Where
 
 
 @dataclass(frozen=True)
@@ -251,9 +307,9 @@ class NoShape:
 
     An ordinary outcome, not a fall-back and not a crash (ADR-0011): the model answered in
     prose, wrapped a truncated array it never closed, or returned something that does not
-    validate as a list of ``{name, count}``. It carries its reason as one line an Operator
-    reads, and it never silently degrades to a prose Observation — a Watch or a Benchmark
-    that quietly mixed shapes would report a comparison it cannot vouch for.
+    validate as a list of ``{name, count, where}``. It carries its reason as one line an
+    Operator reads, and it never silently degrades to a prose Observation — a Watch or a
+    Benchmark that quietly mixed shapes would report a comparison it cannot vouch for.
     """
 
     reason: str
@@ -782,7 +838,7 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
     """Read the objects present out of a model's reply, or say why there is no shape.
 
     The fall-back the spike behind issue #30 landed on: `qwen3-vl-2b-instruct` never honours
-    a forced tool call but answers a JSON-in-prompt request in the exact ``{name, count}``
+    a forced tool call but answers a JSON-in-prompt request in the exact ``{name, count, where}``
     shape, wrapped in a markdown code fence and sometimes truncated mid-array when the output
     limit stops generation. So the fence is stripped, the first complete JSON array is decoded
     from the opening ``[`` — anything the model runs on with past the closing ``]`` is ignored
@@ -798,7 +854,10 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
     lot away. What comes back is the recovered list — the caller's ``finish_reason`` still says
     whether it was truncated, which is what has the report note it may be short. Nothing
     salvageable is a ``NoShape``: the limit named where truncation left an empty prefix, the
-    ``{name, count}`` shape named where a complete reply's every element missed it.
+    ``{name, count, where}`` shape named where a complete reply's every element missed it —
+    an element whose ``where`` is missing or names something outside the closed ``Where`` set
+    is exactly as non-conforming as one with no ``name`` or a bad ``count``, and is never
+    coerced onto the nearest member of that set (see ``_present_object``).
     """
     cut_off = "the model's list of objects was cut off by the output limit before it closed"
 
@@ -843,7 +902,7 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
         return ObjectsPresent(tuple(objects))
     if truncated:
         return NoShape(cut_off)
-    return NoShape("the model's reply did not match the expected {name, count} shape")
+    return NoShape("the model's reply did not match the expected {name, count, where} shape")
 
 
 def _salvage(text: str, start: int, cut_off: str) -> Shape:
@@ -863,7 +922,7 @@ def _salvage(text: str, start: int, cut_off: str) -> Shape:
 
 
 def _salvage_present(fragment: str) -> list[PresentObject]:
-    """Decode the complete ``{name, count}`` objects at the front of a truncated array.
+    """Decode the complete ``{name, count, where}`` objects at the front of a truncated array.
 
     One value at a time from just after the opening ``[``, skipping the commas and whitespace
     between them, and stopping at the first thing that will not decode or does not match the
@@ -893,16 +952,23 @@ def _present_object(element: object) -> PresentObject | None:
 
     A whole-number count of at least one is part of the shape, not a nicety: a bool is an
     ``int`` in Python and is rejected here so that ``true`` cannot be read as a count of one.
+    ``where`` is checked the same strict way: it must be a string matching one of the closed
+    ``Where`` values exactly as the prompt spells them, or the element is not a PresentObject
+    at all — a missing or unrecognised ``where`` is never guessed at or coerced onto the
+    nearest member of the set, it simply fails to match the shape like a missing name would.
     """
     if not isinstance(element, dict):
         return None
     name = element.get("name")
     count = element.get("count")
+    where = element.get("where")
     if not isinstance(name, str) or not name:
         return None
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
         return None
-    return PresentObject(name=name, count=count)
+    if not isinstance(where, str) or where not in _WHERE_VALUES:
+        return None
+    return PresentObject(name=name, count=count, where=Where(where))
 
 
 def _version_key(version: object) -> tuple[int, int, str]:

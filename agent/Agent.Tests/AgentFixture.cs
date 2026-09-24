@@ -26,6 +26,10 @@ public sealed class AgentFixture : IAsyncDisposable
 
     public SynchronizedStringWriter Writer { get; }
 
+    public FakeClock Clock { get; } = new();
+
+    public FakeNotifier Notifier { get; } = new();
+
     public string Output => Writer.ToString();
 
     public void WriteWorkCell(string json) => File.WriteAllText(Options.WorkCellPath, json.Trim());
@@ -38,6 +42,47 @@ public sealed class AgentFixture : IAsyncDisposable
           "triggers": {}
         }
         """);
+
+    /// <summary>A Work Cell with one expected Tray part and the missing-part Trigger on, for issue #63's Incident tests.</summary>
+    public void WriteWorkCellWithMissingPartTrigger(int n = 2, string partName = "widget") => WriteWorkCell($$"""
+        {
+          "tray": { "expected_parts": [{ "name": "{{partName}}", "synonyms": ["{{partName}} synonym"] }] },
+          "zone": { "allowed_objects": [{ "name": "{{partName}}", "synonyms": [] }] },
+          "hands": { "bare": ["bare hand"], "gloved": ["gloved hand"] },
+          "triggers": { "missing_part": { "n": {{n}} } }
+        }
+        """);
+
+    /// <summary>
+    /// Reads the incident log, retrying past a transient sharing violation from the Agent's
+    /// own append still in flight on its background task.
+    /// </summary>
+    public IReadOnlyList<string> ReadIncidentLogLines()
+    {
+        var path = Path.Combine(Options.IncidentsDirectory, "incidents.jsonl");
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var reader = new StreamReader(stream);
+                return reader.ReadToEnd()
+                    .Split('\n')
+                    .Select(l => l.TrimEnd('\r'))
+                    .Where(l => l.Length > 0)
+                    .ToList();
+            }
+            catch (IOException) when (attempt < 20)
+            {
+                Thread.Sleep(10);
+            }
+        }
+    }
 
     public void WriteObservations(string content) => File.WriteAllText(Options.ObservationsPath, Normalize(content));
 
@@ -60,7 +105,7 @@ public sealed class AgentFixture : IAsyncDisposable
         {
             try
             {
-                await AgentProcess.RunAsync(Options, Writer, token);
+                await AgentProcess.RunAsync(Options, Writer, token, Notifier, Clock);
             }
             catch (OperationCanceledException)
             {

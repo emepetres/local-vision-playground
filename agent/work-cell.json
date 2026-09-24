@@ -1,0 +1,32 @@
+{
+  "name": "soldering station",
+  "tray": {
+    "expected_parts": [
+      { "name": "soldering iron", "synonyms": ["solder iron"] },
+      { "name": "pliers", "synonyms": [] },
+      { "name": "tin", "synonyms": ["solder", "solder wire"] },
+      { "name": "small cables", "synonyms": ["small cable", "wires"] },
+      { "name": "brush", "synonyms": [] },
+      { "name": "electronics", "synonyms": ["circuit board", "pcb"] }
+    ]
+  },
+  "zone": {
+    "allowed_objects": [
+      { "name": "soldering iron", "synonyms": ["solder iron"] },
+      { "name": "pliers", "synonyms": [] },
+      { "name": "tin", "synonyms": ["solder", "solder wire"] },
+      { "name": "small cables", "synonyms": ["small cable", "wires"] },
+      { "name": "brush", "synonyms": [] },
+      { "name": "electronics", "synonyms": ["circuit board", "pcb"] }
+    ]
+  },
+  "hands": {
+    "bare": ["bare hand"],
+    "gloved": ["gloved hand", "white glove", "grey glove"]
+  },
+  "triggers": {
+    "missing_part": { "n": 2 },
+    "no_gloves": { "n": 2 },
+    "foreign_object": { "n": 2 }
+  }
+}

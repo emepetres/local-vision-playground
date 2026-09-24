@@ -30,10 +30,29 @@ if (args is ["measure", .. var measureArgs])
         results,
         Path.Combine(benchmarksDir, $"tool-call-reliability-zenbook-{stamp}.json"),
         Path.Combine(benchmarksDir, $"tool-call-reliability-zenbook-{stamp}.md"));
-    return;
+    return 0;
 }
 
 Console.WriteLine(AgentProcess.Name);
 
+var repoRoot = RepoRoot.Find(AppContext.BaseDirectory);
+AgentOptions options;
+try
+{
+    options = AgentOptions.Parse(args, repoRoot);
+}
+catch (ArgumentException ex)
+{
+    Console.Error.WriteLine($"Refused: {ex.Message}");
+    return 1;
+}
 
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = true;
+    cts.Cancel();
+};
+
+return await AgentProcess.RunAsync(options, Console.Out, cts.Token);
 

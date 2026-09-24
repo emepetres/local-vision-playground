@@ -12,6 +12,7 @@ leaves this module with its text already copied out — nothing native escapes.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -21,7 +22,14 @@ from vision.capture import Frame
 from vision.errors import VisionError
 
 if TYPE_CHECKING:
-    from foundry_local_sdk import ChatSession, FoundryLocalManager, IModel, Item, Response
+    from foundry_local_sdk import (
+        ChatSession,
+        Configuration,
+        FoundryLocalManager,
+        IModel,
+        Item,
+        Response,
+    )
 
 PROMPT = "Describe what you see in this image in two or three sentences."
 """The prompt a Workload carries when the Operator asks no Scene Question of their own.
@@ -499,6 +507,33 @@ def require_vision_task(identity: ModelIdentity) -> None:
         )
 
 
+def _disable_runtime_telemetry() -> None:
+    """Silence ONNX Runtime's own telemetry event, which Foundry Local's own setting cannot.
+
+    ``disable_nonessential_telemetry`` on ``Configuration`` (below) covers Foundry Local's
+    own telemetry, but its docstring says plainly that Foundry Local "may still send a
+    minimal ProcessInfo event" regardless — that one is ONNX Runtime's, sent from underneath
+    Foundry Local, and ``ORT_TELEMETRY_DISABLED`` is the only lever over it (backlog item 10).
+    ``setdefault`` so an Operator's own environment, set before this process started, is never
+    overridden by it.
+    """
+    os.environ.setdefault("ORT_TELEMETRY_DISABLED", "1")
+
+
+def _foundry_configuration(app_name: str) -> Configuration:
+    """The ``Configuration`` every ``FoundryLocalManager`` in this process is built from.
+
+    ``disable_nonessential_telemetry=True`` is not a flag an Operator chooses: Local-First
+    means no request leaves the machine while it is operating, and that is literal about
+    telemetry too (CONTEXT.md, "Local-First"). Kept apart from ``_manager`` so a test can
+    build one without starting the Foundry Local service that constructing a
+    ``FoundryLocalManager`` would.
+    """
+    from foundry_local_sdk import Configuration
+
+    return Configuration(app_name=app_name, disable_nonessential_telemetry=True)
+
+
 class InProcessFoundryLocal:
     """The real Foundry Local, called in-process (ADR-0004). Built by the entry point only.
 
@@ -509,15 +544,20 @@ class InProcessFoundryLocal:
     """
 
     def __init__(self, *, app_name: str = APP_NAME) -> None:
+        # Set ahead of every lazy import below, not inside them: ONNX Runtime reads this at
+        # native init, which the first of those imports triggers, and a variable set after
+        # that point is already too late (CONTEXT.md, "Local-First" — no request leaves the
+        # machine while operating, telemetry included; backlog item 10).
+        _disable_runtime_telemetry()
         self._app_name = app_name
         self._started: FoundryLocalManager | None = None
 
     @property
     def _manager(self) -> FoundryLocalManager:
         if self._started is None:
-            from foundry_local_sdk import Configuration, FoundryLocalManager
+            from foundry_local_sdk import FoundryLocalManager
 
-            self._started = FoundryLocalManager(Configuration(app_name=self._app_name))
+            self._started = FoundryLocalManager(_foundry_configuration(self._app_name))
         return self._started
 
     def register_execution_providers(self, announce: Callable[[str], None]) -> None:

@@ -49,14 +49,16 @@ How these items map onto the anchor scenario is in
       small the NPU is **not** the throughput winner — it leads only on TTFT — so its story
       is a third Execution Provider with its own profile, not peak tokens/second. See
       [Reaching the NPU and the Arc GPU](./guide/runtimes.md) for how to run it.
-- [ ] **10. Runs without a network once prepared.** Preparing the machine may use the
+- [x] **10. Runs without a network once prepared.** Preparing the machine may use the
       network — downloading the model, exporting a Variant, caching the Foundry Local
       catalogue, benchmarking. Operating it may not: once prepared, `observe` and `watch`
       run with Wi-Fi off. Runtime telemetry is disabled by default (`ORT_TELEMETRY_DISABLED`,
       since Foundry Local otherwise sends a process event even with non-essential telemetry
       off), the demo pins its Variant id, and the airplane-mode rehearsal — including how
       long a start takes with no catalogue to reach — is documented as a moment of the
-      demo script.
+      demo script (see [the offline rehearsal
+      section](./keynotes/azuretour26/beat-sheet.md#offline-rehearsal-backlog-item-10);
+      the rehearsal's own timing is still to be measured on the stage laptop, not code).
 - [ ] **11. Spike: can the 2B model see the work cell?** Before any Trigger is promised,
       measure whether `qwen3-vl-2b` resolves the conditions of item 6 — a part missing from
       the tray, no gloves, a foreign object in the zone — through Structured Observations on

@@ -138,7 +138,36 @@ not measured.
 - An energy measurement of this app.
 - Quantisation internals (NNCF, symmetric vs asymmetric, group size) — notes only.
 
+## Offline rehearsal (backlog item 10)
+The Wi-Fi-off moment at the open (beat 1) and its payoff at the close (beat 11) are only
+honest if they were rehearsed with the network actually gone, on the stage laptop, not
+assumed from the code. Three things have to be true before airplane mode goes on in front
+of the room:
+- The Foundry Local catalogue is cached — `observe` once, on network, so the catalogue
+  lookup that follows reads the disk cache and never reaches out.
+- Every Variant the demo runs is pinned by id, not by alias — an alias leaves the
+  Execution Provider, and the catalogue lookup that picks it, to Foundry Local; a pinned
+  id (`qwen3-vl-2b-instruct-generic-cpu:2`, and the OpenVINO slugs D3 switches through)
+  is what the run-up resolves with nothing to ask a catalogue for.
+- Runtime telemetry is off — `ORT_TELEMETRY_DISABLED` and Foundry Local's own
+  `disable_nonessential_telemetry`, both set unconditionally by this process now
+  (`vision.inference._disable_runtime_telemetry`, `_foundry_configuration`), not a manual
+  step before the talk.
+Rehearsal itself: switch the laptop to airplane mode, then time the run-up of `observe`
+and of `watch --variant <pinned id>` from a cold process start — the moment worth knowing
+in advance is how much longer a start takes with no catalogue to reach than the warm,
+on-network number already in [`docs/business-value.md`](../../business-value.md), since
+that gap is what the speaker stands through in silence on stage. **Not yet rehearsed on
+the stage laptop** — the figure belongs here once it is: run it airplane-mode, twice, and
+record the slower of the two starts next to the on-network one it is being compared
+against.
+
 ## Decisions
+- 2026-09-24 — Runtime telemetry off is no longer a manual pre-talk step: it is
+  unconditional in `InProcessFoundryLocal.__init__` (`ORT_TELEMETRY_DISABLED`, since
+  Foundry Local's own `disable_nonessential_telemetry` still lets through one ProcessInfo
+  event) — see backlog item 10. What is still owed before Saturday is the rehearsal
+  itself: the cold, airplane-mode start time is not yet measured.
 - 2026-09-23 — NPU balance rule adopted (see Arc). Dropped saying "the NPU leads on
   TTFT" unqualified: the Zenbook Benchmark does not measure TTFT; the only TTFT figure
   is issue #38, on Qwen2.5-VL-3B against the CPU, and is cited with its model named.

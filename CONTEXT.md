@@ -258,15 +258,60 @@ The process that decides what to do in response to Observations. It consumes Obs
 _Avoid_: assistant, bot, orchestrator, copilot
 
 **Trigger**:
-A condition over Observations that causes the Agent to act.
+A condition over Observations that causes the Agent to act. The condition is the Agent's,
+written down where an Operator can read it, and tested against what an Observation reports —
+the model reports what is present, it never decides that a Trigger holds. Whether an object
+being present _matters_ is exactly what a Trigger says and a [[Structured Observation]] does
+not.
 _Avoid_: rule, event, condition, hook
 
 **Action**:
 A discrete side-effecting operation the Agent can invoke once a Trigger fires.
 _Avoid_: tool, command, function, skill, task
 
+**Incident**:
+One episode of a [[Trigger]] holding: it begins when the Trigger fires and ends when the
+Trigger re-arms. A phone left on the [[Zone]] for a minute is one Incident, not thirty — the
+unit is the episode, never the Frame. What is kept of an Incident is a sentence: the Trigger,
+the Observation that fired it, and the time. Never a Frame, never a path to one.
+_Avoid_: alert, alarm, event, violation
+
+An Observation the model could not give a shape to is no evidence either way: it neither
+brings a Trigger closer to firing nor closer to re-arming.
+
+### Work cell
+
+**Work Cell**:
+The station a [[Watch]] is pointed at: a [[Zone]] where the work is done and a [[Tray]] the
+work draws on. The demo stages one at desk scale; the scenario it stands for is an assembly
+station on a production line.
+_Avoid_: station, workstation, desk, scene
+
+**Tray**:
+The part of a Work Cell that holds what the work needs, and holds it against a known list:
+what _should_ be there is fixed before the Watch starts, not learned from what the camera
+happened to see first. A part the list names is **missing** only when it is in neither the
+Tray nor the [[Zone]] — a tool in use on the Zone has been taken up, not lost.
+_Avoid_: bin, inventory, rack
+
+**Zone**:
+The surface of a Work Cell where the work is done — in the demo, the green mat. What may lie
+on it is a known list too, and anything else is a [[Foreign Object]].
+_Avoid_: area, mat, workspace, region
+
+**Foreign Object**:
+Anything on the [[Zone]] that its list does not name — a phone, a cup. Foreign to the Zone,
+not to the room: the same cup on the far side of the desk is nothing.
+_Avoid_: intruder, anomaly, unknown object, FOD
+
 ### People
 
 **Operator**:
 The person running the playground on their own machine — the one whose camera, hardware and privacy are in question.
 _Avoid_: user, presenter, audience, viewer
+
+**Supervisor**:
+Whoever an [[Incident]] is for: the person who is told when a Trigger fires and who reads
+the record afterwards. In the demo the Operator plays the part; in the scenario it is the
+line supervisor, who is not at the station.
+_Avoid_: admin, manager, recipient

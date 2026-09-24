@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work Cell Spike</title>
+<!-- PROTOTYPE — throwaway. Spike #58. Open by double-click after run.py has written results.js. -->
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
+    --accent: #0f7b6c; --accent-soft: #e2f2ef; --bad: #b3261e; --bad-soft: #fbe9e7;
+    --warn: #8a5a00; --warn-soft: #fdf1d8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --panel: #1e1e1c; --ink: #ecebe6; --muted: #9c9b94; --line: #33332f;
+      --accent: #4cc2ad; --accent-soft: #173a34; --bad: #f2877c; --bad-soft: #3d1f1c;
+      --warn: #e6b855; --warn-soft: #3a2f16;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 28px 0 10px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 900px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 24px; }
+  label { display: flex; gap: 8px; align-items: flex-start; }
+  select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel); color: var(--ink); max-width: 100%; }
+  textarea { width: 100%; min-height: 220px; font: 12px/1.4 ui-monospace, Consolas, monospace;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); padding: 8px; }
+  .verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+  .verdict { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; background: var(--panel); }
+  .verdict[aria-pressed="true"] { outline: 2px solid var(--accent); }
+  .verdict b { display: block; font-size: 13px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; margin-top: 4px; }
+  .confirmed { background: var(--accent-soft); color: var(--accent); }
+  .refuted { background: var(--bad-soft); color: var(--bad); }
+  .partial { background: var(--warn-soft); color: var(--warn); }
+  .verdict small { display: block; color: var(--muted); margin-top: 4px; }
+  .explain { margin-top: 12px; }
+  .explain ul { margin: 6px 0 0; padding-left: 18px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .card.wrong { border-color: var(--bad); }
+  .card img { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; }
+  .card .body { padding: 10px 12px; }
+  .card h3 { font-size: 13px; margin: 0 0 6px; display: flex; justify-content: space-between; gap: 8px; }
+  .row { display: grid; grid-template-columns: 92px 1fr 1fr; gap: 4px 8px; font-size: 12px; }
+  .row .h { color: var(--muted); }
+  .ok { color: var(--accent); } .no { color: var(--bad); font-weight: 600; }
+  details { margin-top: 8px; font-size: 12px; }
+  pre { white-space: pre-wrap; word-break: break-word; font: 11px/1.35 ui-monospace, Consolas, monospace;
+    background: var(--bg); padding: 8px; border-radius: 6px; margin: 6px 0 0; max-height: 260px; overflow: auto; }
+  .obj { font: 11px ui-monospace, Consolas, monospace; }
+  .obj .loc { color: var(--muted); }
+  .obj .unk { color: var(--warn); }
+  .obj .ign { color: var(--muted); text-decoration: line-through; }
+  .muted { color: var(--muted); }
+  .names td:first-child { white-space: nowrap; font-weight: 600; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Can the 2B model see the Work Cell?</h1>
+  <p class="lead">
+    Spike for issue #58. Each photo of the desk-scale Work Cell (a white mesh <b>Tray</b> of six parts, a green mat
+    as the <b>Zone</b>) was sent to <code>qwen3-vl-2b-instruct</code>, which answered with a list of
+    <code>{name, count, where}</code>. This page reads those lists the way the Agent's three Triggers would —
+    <i>part missing from the Tray</i>, <i>working without gloves</i>, <i>Foreign Object in the Zone</i> — and
+    compares what would have fired with what was really on the desk. Change a knob and every number below is
+    recomputed. The bar for "confirmed": the condition resolved on at least 4 of 5 of its photos, and no false
+    Trigger on the baseline, part-in-use, gloved and off-Zone photos.
+  </p>
+
+  <div class="panel controls" id="controls"></div>
+
+  <h2>Assumptions A1–A6 <span class="muted" style="font-weight:400">— click one to see its photos and its evidence</span></h2>
+  <div class="verdicts" id="verdicts"></div>
+  <div class="panel explain" id="explain"></div>
+
+  <h2 id="photos-title">Photos</h2>
+  <div class="grid" id="grid"></div>
+
+  <h2>Synonyms <span class="muted" style="font-weight:400">— the Work Cell configuration the Agent would read; edit and every score updates</span></h2>
+  <div class="panel"><textarea id="synonyms" spellcheck="false"></textarea><div id="syn-error" class="no"></div></div>
+</main>
+
+<script src="results.js"></script>
+<script>
+/* ============================================================================================
+ * WorkCell — the pure module. No DOM. This is the part worth lifting into the Agent's Triggers.
+ * ========================================================================================== */
+const WorkCell = (() => {
+  const PARTS = ["soldering iron", "solder", "brush", "tweezers", "jumper wires", "circuit board"];
+
+  const DEFAULT_CONFIG = {
+    parts: {
+      "soldering iron": ["soldering iron", "solder iron", "iron", "soldering pen", "soldering tool", "soldering station"],
+      "solder": ["solder", "solder spool", "solder wire", "solder reel", "spool of solder", "tin", "spool", "wire spool", "roll of solder"],
+      "brush": ["brush", "esd brush", "anti-static brush", "cleaning brush", "paintbrush", "paint brush"],
+      "tweezers": ["tweezers", "tweezer", "pliers", "forceps", "pincers"],
+      "jumper wires": ["jumper wires", "jumper wire", "wires", "wire", "cables", "cable", "small cables", "dupont wires", "jumper cables"],
+      "circuit board": ["circuit board", "arduino", "arduino board", "arduino uno", "pcb", "electronic board", "board", "microcontroller", "electronics"]
+    },
+    bareHand: ["bare hand", "bare hands", "hand without glove", "ungloved hand"],
+    glovedHand: ["gloved hand", "gloved hands", "glove", "gloves", "white glove", "hand in glove", "work glove"],
+    plainHand: ["hand", "hands", "human hand", "person's hand"],
+    foreign: { "phone": ["phone", "mobile phone", "cell phone", "smartphone", "mobile"], "cup": ["cup", "mug", "coffee cup", "coffee mug"] },
+    zoneAllows: [],
+    ignore: ["mat", "cutting mat", "work mat", "green mat", "green cutting mat", "tray", "white tray", "mesh tray",
+             "white mesh tray", "desk", "table", "work bench", "workbench", "tripod", "camera tripod", "camera",
+             "person", "arm", "watch", "wristwatch", "wood", "wooden table"]
+  };
+
+  const norm = s => String(s).trim().toLowerCase().replace(/\s+/g, " ");
+
+  /** What a name the model used stands for: a part, a hand, a known foreign thing, ignored, or unknown. */
+  function classify(name, config, opts) {
+    const n = norm(name);
+    for (const [part, syns] of Object.entries(config.parts)) if (syns.map(norm).includes(n)) return { kind: "part", key: part };
+    if (config.bareHand.map(norm).includes(n)) return { kind: "hand", key: "bare" };
+    if (config.glovedHand.map(norm).includes(n)) return { kind: "hand", key: "gloved" };
+    if (config.plainHand.map(norm).includes(n)) return { kind: "hand", key: opts.plainHandIsBare ? "bare" : "unknown" };
+    for (const [thing, syns] of Object.entries(config.foreign)) if (syns.map(norm).includes(n)) return { kind: "foreign", key: thing };
+    if (config.ignore.map(norm).includes(n)) return { kind: "ignored", key: n };
+    return { kind: "unknown", key: n };
+  }
+
+  /** The list as the Agent would read it: optionally stopping at the first exact repeat (a loop guard). */
+  function readObjects(objects, opts) {
+    if (!objects) return null;
+    if (!opts.loopGuard) return objects;
+    const seen = new Set(), out = [];
+    for (const o of objects) {
+      const k = norm(o.name) + "|" + o.where;
+      if (seen.has(k)) break;
+      seen.add(k); out.push(o);
+    }
+    return out;
+  }
+
+  /** The three Triggers' conditions over one Observation. null when there is no shape (counts neither way). */
+  function evaluate(objects, config, opts) {
+    const list = readObjects(objects, opts);
+    if (!list) return null;
+    const present = new Set(), foreignZone = new Set(), where = {};
+    let bare = false, gloved = false;
+    const placesThatCount = opts.elsewhereCounts ? ["tray", "zone", "hand", "elsewhere"] : ["tray", "zone", "hand"];
+    for (const o of list) {
+      const c = classify(o.name, config, opts);
+      if (c.kind === "part") {
+        (where[c.key] ||= new Set()).add(o.where || "?");
+        if (placesThatCount.includes(o.where)) present.add(c.key);
+      } else if (c.kind === "hand") {
+        if (c.key === "bare") bare = true;
+        if (c.key === "gloved") gloved = true;
+      } else if (o.where === "zone" && (c.kind === "foreign" || (c.kind === "unknown" && opts.unknownIsForeign))) {
+        if (!config.zoneAllows.map(norm).includes(c.key)) foreignZone.add(c.key);
+      }
+    }
+    return {
+      missing: PARTS.filter(p => !present.has(p)),
+      noGloves: bare,
+      gloved,
+      foreign: [...foreignZone].sort(),
+      where: Object.fromEntries(Object.entries(where).map(([k, v]) => [k, [...v]]))
+    };
+  }
+
+  /** The same three conditions read off closed yes/no answers instead of a list. An answer that is
+   *  neither yes nor no leaves its condition unfired, and is counted against A1. */
+  function fromAnswers(answers) {
+    const yes = k => answers[k] && answers[k].yes === true;
+    const no = k => answers[k] && answers[k].yes === false;
+    return {
+      missing: PARTS.filter(p => no(`part:${p}`)),
+      noGloves: yes("bare hand"),
+      gloved: false,
+      foreign: ["cup", "phone"].filter(t => yes(`foreign:${t}`)),
+      where: {}
+    };
+  }
+
+  /** What should have fired, from the hand label of what was really on the desk. */
+  function expected(label) {
+    const present = new Set([...label.tray, ...label.zone, ...label.hand]);
+    return { missing: PARTS.filter(p => !present.has(p)), noGloves: label.bare > 0, foreign: [...(label.foreignZone || [])].sort() };
+  }
+
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+  function score(label, got) {
+    const want = expected(label);
+    if (!got) return { want, got: null, missing: null, noGloves: null, foreign: null, all: false };
+    const r = { want, got, missing: same(want.missing, got.missing), noGloves: want.noGloves === got.noGloves, foreign: same(want.foreign, got.foreign) };
+    r.all = r.missing && r.noGloves && r.foreign;
+    return r;
+  }
+
+  /** Where each real part was, versus where the model put it (A2). */
+  function placement(label, got) {
+    const rows = [];
+    for (const p of PARTS) {
+      const truth = label.tray.includes(p) ? "tray" : label.zone.includes(p) ? "zone" : label.hand.includes(p) ? "hand" : "absent";
+      const said = got ? (got.where[p] || []) : null;
+      rows.push({ part: p, truth, said });
+    }
+    return rows;
+  }
+
+  /** How badly a reply repeats itself: the most times one {name, where} appears (A6). */
+  function repetition(objects) {
+    if (!objects) return 0;
+    const n = {};
+    for (const o of objects) { const k = norm(o.name) + "|" + o.where; n[k] = (n[k] || 0) + 1; }
+    return Math.max(0, ...Object.values(n));
+  }
+
+  return { PARTS, DEFAULT_CONFIG, classify, evaluate, fromAnswers, expected, score, placement, repetition, norm };
+})();
+
+/* ============================================================================================
+ * Labels — what was really on the desk, read off each photo by hand.
+ * ========================================================================================== */
+const ALL_TRAY = ["soldering iron", "solder", "brush", "tweezers", "jumper wires", "circuit board"];
+const L = (photo, conditions, tray, zone, hand, bare, gloved, extra = {}) => ({ photo, conditions, tray, zone, hand, bare, gloved, foreignZone: [], foreignElsewhere: [], ...extra });
+const BOARD = ["circuit board"];
+const LABELS = [
+  L("baseline_1.png", ["baseline"], ALL_TRAY, [], [], 0, 0, { note: "the Worker's forearm and watch show at the far edge, above the mat" }),
+  L("baseline_2.png", ["baseline"], ALL_TRAY, [], [], 0, 0),
+  L("baseline_3.png", ["baseline"], ALL_TRAY, [], [], 0, 0),
+  L("baseline_4.png", ["baseline"], ALL_TRAY, [], [], 0, 0),
+  L("baseline_5.png", ["baseline"], ALL_TRAY, [], [], 0, 0),
+
+  L("part-missing-brush.png", ["part missing"], ["tweezers", "circuit board", "soldering iron", "jumper wires", "solder"], [], [], 0, 0),
+  L("part-missing-electronics.png", ["part missing"], ["tweezers", "brush", "soldering iron", "solder", "jumper wires"], [], [], 0, 0),
+  L("part-missing-pliers.png", ["part missing"], ["circuit board", "brush", "soldering iron", "solder", "jumper wires"], [], [], 0, 0),
+  L("part-missing-small_cables.png", ["part missing"], ["circuit board", "tweezers", "brush", "soldering iron", "solder"], [], [], 0, 0),
+  L("part-missing-soldering_iron.png", ["part missing"], ["tweezers", "brush", "circuit board", "solder", "jumper wires"], [], [], 0, 0),
+  L("part-missing-tin.png", ["part missing"], ["circuit board", "tweezers", "brush", "soldering iron", "jumper wires"], [], [], 0, 0),
+
+  L("bare_hand_1.png", ["bare hand"], ["brush", "soldering iron", "jumper wires", "solder"], BOARD, ["tweezers"], 1, 0, { note: "the hand is at the far edge of the mat" }),
+  L("bare_hand_2.png", ["bare hand"], ["soldering iron", "jumper wires", "solder"], BOARD, ["tweezers", "brush"], 2, 0),
+  L("bare-hand_3.png", ["bare hand", "part in use"], ["soldering iron", "tweezers", "solder", "brush", "jumper wires"], BOARD, ["jumper wires"], 1, 0),
+  L("bare-hand_4.png", ["bare hand", "part in use"], ["brush", "soldering iron", "jumper wires", "solder"], BOARD, ["tweezers"], 1, 0),
+
+  L("one-glove_1.png", ["gloved"], ["brush", "soldering iron", "solder", "jumper wires"], BOARD, ["tweezers"], 0, 1),
+  L("one-glove_2.png", ["gloved", "part in use"], ["soldering iron", "solder", "tweezers", "jumper wires"], BOARD, ["brush"], 0, 1),
+  L("one-glove_3.png", ["gloved", "part in use"], ["soldering iron", "tweezers", "brush", "jumper wires"], BOARD, ["solder"], 0, 1),
+  L("one-glove_4.png", ["gloved", "part in use"], ["solder", "tweezers", "brush", "jumper wires"], BOARD, ["soldering iron"], 0, 1, { note: "a grey glove lies over the Tray's far corner" }),
+  L("two-gloves_1.png", ["gloved"], ["soldering iron", "jumper wires", "solder"], BOARD, ["tweezers", "brush"], 0, 2),
+  L("two-gloves_2.png", ["gloved"], ["solder", "tweezers", "brush", "jumper wires"], BOARD, ["soldering iron"], 0, 2),
+
+  L("mixed_1.png", ["mixed"], ["brush", "soldering iron", "solder", "jumper wires"], BOARD, ["tweezers"], 1, 1),
+  L("mixed_2.png", ["mixed"], ["soldering iron", "solder", "tweezers", "jumper wires"], BOARD, ["brush"], 1, 1),
+  L("mixed_3.png", ["mixed"], ["soldering iron", "tweezers", "brush", "jumper wires"], BOARD, ["solder"], 1, 1),
+  L("mixed_4.png", ["mixed"], ["soldering iron", "tweezers", "solder", "brush", "jumper wires"], BOARD, ["jumper wires"], 1, 1),
+  L("mixed_5.png", ["mixed"], ["solder", "tweezers", "brush", "jumper wires"], BOARD, ["soldering iron"], 1, 1, { note: "a grey glove lies over the Tray's far corner" }),
+
+  L("foreign-mobile.png", ["foreign"], ["tweezers", "brush", "soldering iron", "jumper wires", "solder"], BOARD, [], 0, 0, { foreignZone: ["phone"] }),
+  L("foreign-cup.png", ["foreign"], ["tweezers", "brush", "soldering iron", "jumper wires", "solder"], BOARD, [], 0, 0, { foreignZone: ["cup"] }),
+  L("foreign-cup-mobile.png", ["foreign"], ["tweezers", "brush", "soldering iron", "jumper wires", "solder"], BOARD, [], 0, 0, { foreignZone: ["cup", "phone"] }),
+  L("foreign-off-zone-mobile.png", ["off-zone"], ["tweezers", "brush", "soldering iron", "jumper wires", "solder"], BOARD, [], 0, 0, { foreignElsewhere: ["phone"] }),
+  L("foreign-off-zone-cup.png", ["off-zone"], ["tweezers", "brush", "soldering iron", "jumper wires", "solder"], BOARD, [], 0, 0, { foreignElsewhere: ["cup"] }),
+  L("foreign-off-zone-cup-mobile.png", ["off-zone"], ["tweezers", "brush", "soldering iron", "jumper wires", "solder"], BOARD, [], 0, 0, { foreignElsewhere: ["cup", "phone"] }),
+];
+/* The five part-in-use photos are byte-identical to photos above; they are scored once, under both names. */
+const SAME_AS = {
+  "part-in-use-brush.png": "one-glove_2.png", "part-in-use-pliers.png": "bare-hand_4.png",
+  "part-in-use-small_cable.png": "bare-hand_3.png", "part-in-use-soldering_iron.png": "one-glove_4.png",
+  "part-in-use-tin.png": "one-glove_3.png",
+};
+const FIXTURES = "../../../docs/fixtures/work-cell/";
+
+/* ============================================================================================
+ * The page — a thin shell over WorkCell.
+ * ========================================================================================== */
+const DATA = window.SPIKE_RESULTS || { runs: [], prompts: {} };
+const state = {
+  run: null, focus: "A2", config: structuredClone(WorkCell.DEFAULT_CONFIG),
+  opts: { elsewhereCounts: false, plainHandIsBare: false, unknownIsForeign: true, loopGuard: true, onlyWrong: false },
+};
+const runKey = r => `${r.variant_asked} · ${r.prompt} · ${r.box || "640x480"}`;
+const runKeys = [...new Set(DATA.runs.map(runKey))];
+state.run = runKeys.find(k => k.includes("4b-instruct-int4-sym-gpu · described")) || runKeys[0];
+
+const KNOBS = [
+  ["loopGuard", "Stop reading a reply at its first exact repeat", "A loop guard in the parser: once a {name, where} repeats, the rest is a loop and is dropped."],
+  ["elsewhereCounts", "A part placed \"elsewhere\" still counts as present", "Off, a tray part the model put \"elsewhere\" is missing — the spec's rule. On, it only has to be seen."],
+  ["plainHandIsBare", "A plain \"hand\" counts as a bare hand", "The model often says \"hand\" without saying bare or gloved."],
+  ["unknownIsForeign", "An unrecognised name on the Zone is a Foreign Object", "The spec's rule: anything the Zone's and Tray's lists do not name. Off, only a known phone or cup is."],
+  ["onlyWrong", "Show only photos where some Trigger was wrong", ""],
+];
+
+function renderControls() {
+  const el = document.getElementById("controls");
+  el.innerHTML = `
+    <label style="flex-direction:column"><b>Run (Variant · prompt · Frame box)</b>
+      <select id="run">${runKeys.map(k => `<option ${k === state.run ? "selected" : ""}>${k}</option>`).join("")}</select>
+      <span class="muted" id="run-facts"></span></label>
+    ${KNOBS.map(([k, t, d]) => `<label><input type="checkbox" data-k="${k}" ${state.opts[k] ? "checked" : ""}>
+      <span><b>${t}</b>${d ? `<br><span class="muted">${d}</span>` : ""}</span></label>`).join("")}`;
+  el.querySelector("#run").onchange = e => { state.run = e.target.value; render(); };
+  el.querySelectorAll("input[data-k]").forEach(i => i.onchange = () => { state.opts[i.dataset.k] = i.checked; render(); });
+}
+
+function runsOf(key) {
+  const byPhoto = Object.fromEntries(DATA.runs.filter(r => runKey(r) === key).map(r => [r.photo, r]));
+  return LABELS.map(label => {
+    const r = byPhoto[label.photo];
+    const got = !r ? null : r.answers ? WorkCell.fromAnswers(r.answers) : WorkCell.evaluate(r.objects, state.config, state.opts);
+    return { label, r, got, s: WorkCell.score(label, got) };
+  }).filter(x => x.r);
+}
+
+const pct = (a, b) => b ? `${a}/${b}` : "–";
+function verdictOf(ok, total, falseTriggers) {
+  if (!total) return "partial";
+  if (ok / total >= 0.8 && falseTriggers === 0) return "confirmed";
+  if (ok / total < 0.5) return "refuted";
+  return "partial";
+}
+
+function assess(items) {
+  const has = c => items.filter(x => x.label.conditions.includes(c));
+  const negatives = items.filter(x => x.label.conditions.some(c => ["baseline", "part in use", "gloved", "off-zone"].includes(c)));
+  const A = {};
+  if (items.length && items[0].r.answers) return assessAnswers(items, has, negatives);
+
+  // A1 — the shape comes back
+  const shaped = items.filter(x => x.r.objects);
+  const withWhere = shaped.filter(x => x.r.objects.every(o => ["tray", "zone", "hand", "elsewhere"].includes(o.where)));
+  const salvaged = shaped.filter(x => x.r.salvaged);
+  const reasons = {}; items.filter(x => !x.r.objects).forEach(x => reasons[x.r.reason || x.r.error] = (reasons[x.r.reason || x.r.error] || 0) + 1);
+  A.A1 = { title: "A1 · the shape comes back", v: verdictOf(withWhere.length, items.length, 0),
+    line: `${withWhere.length}/${items.length} parsed with a valid where · ${salvaged.length} salvaged`,
+    ids: items.filter(x => !x.r.objects || !withWhere.includes(x)).map(x => x.label.photo),
+    detail: `<ul><li>${shaped.length}/${items.length} replies parsed as a list; ${withWhere.length} gave every element a valid <code>where</code>.</li>
+      <li>${salvaged.length} were cut off by the ${DATA.max_output_tokens}-token limit and salvaged element by element.</li>
+      <li>No shape: ${Object.entries(reasons).map(([k, n]) => `${n} × ${k}`).join("; ") || "none"}.</li>
+      <li>Replies within the Watch's 128-token limit: ${items.filter(x => x.r.completion_tokens <= 128).length}/${items.length}.</li></ul>` };
+
+  // A2 — where separates the Tray from the Zone
+  let trayOk = 0, trayN = 0, useOk = 0, useN = 0, absentOk = 0, absentN = 0;
+  for (const x of items) for (const p of WorkCell.placement(x.label, x.got)) {
+    if (!p.said) continue;
+    if (p.truth === "tray") { trayN++; if (p.said.includes("tray")) trayOk++; }
+    else if (p.truth === "zone" || p.truth === "hand") { useN++; if (p.said.includes("zone") || p.said.includes("hand")) useOk++; }
+    else { absentN++; if (!p.said.includes("tray") && !p.said.includes("zone")) absentOk++; }
+  }
+  const pm = has("part missing"), pmOk = pm.filter(x => x.s.missing).length;
+  const pmFalse = negatives.filter(x => x.got && x.got.missing.length).length;
+  A.A2 = { title: "A2 · where separates Tray from Zone", v: verdictOf(pmOk, pm.length, pmFalse),
+    line: `missing part caught ${pct(pmOk, pm.length)} · false "missing" on ${pmFalse}/${negatives.length} negatives`,
+    ids: [...pm.filter(x => !x.s.missing), ...negatives.filter(x => x.got && x.got.missing.length)].map(x => x.label.photo),
+    detail: `<ul><li>A part in the Tray placed in <code>tray</code>: ${pct(trayOk, trayN)}.</li>
+      <li>A part in use placed in <code>zone</code> or <code>hand</code>: ${pct(useOk, useN)}.</li>
+      <li>A removed part absent from both: ${pct(absentOk, absentN)}.</li>
+      <li>The <i>part missing</i> Trigger fired for exactly the removed part on ${pct(pmOk, pm.length)} part-missing photos, and fired falsely on ${pmFalse} of ${negatives.length} baseline, part-in-use, gloved and off-Zone photos.</li></ul>` };
+
+  // A3 — bare vs gloved
+  const bareSet = [...has("bare hand"), ...has("mixed")], glovedSet = has("gloved");
+  const bareOk = bareSet.filter(x => x.got && x.got.noGloves).length;
+  const mixedOk = has("mixed").filter(x => x.got && x.got.noGloves).length;
+  const glovedFalse = glovedSet.filter(x => x.got && x.got.noGloves).length;
+  const baseFalse = negatives.filter(x => !x.label.conditions.includes("gloved") && x.label.bare === 0 && x.got && x.got.noGloves).length;
+  const glovedSeen = glovedSet.filter(x => x.got && x.got.gloved).length;
+  A.A3 = { title: "A3 · bare hands told from gloved", v: verdictOf(bareOk, bareSet.length, glovedFalse + baseFalse),
+    line: `bare caught ${pct(bareOk, bareSet.length)} (mixed ${pct(mixedOk, has("mixed").length)}) · false on ${glovedFalse + baseFalse} negatives`,
+    ids: [...bareSet.filter(x => !(x.got && x.got.noGloves)), ...negatives.filter(x => x.label.bare === 0 && x.got && x.got.noGloves)].map(x => x.label.photo),
+    detail: `<ul><li><i>Working without gloves</i> fired on ${pct(bareOk, bareSet.length)} photos with a bare hand; on the mixed ones (one gloved, one bare) ${pct(mixedOk, has("mixed").length)}.</li>
+      <li>It fired falsely on ${pct(glovedFalse, glovedSet.length)} gloved photos, and on ${baseFalse} other negatives with no hand at all.</li>
+      <li>A gloved hand was named on ${pct(glovedSeen, glovedSet.length)} gloved photos.</li>
+      <li>The fixtures hold <b>one glove type</b> — white with a grey palm coating. The grey electrical gloves appear only lying on the Tray's corner, so white and grey cannot be scored apart.</li></ul>` };
+
+  // A4 — phone and cup
+  const fz = has("foreign"), fzOk = fz.filter(x => x.s.foreign).length;
+  const off = has("off-zone"), offFalse = off.filter(x => x.got && x.got.foreign.length).length;
+  const otherFalse = negatives.filter(x => !x.label.conditions.includes("off-zone") && x.got && x.got.foreign.length).length;
+  const named = t => [...fz, ...off].filter(x => x.r.objects && x.r.objects.some(o => WorkCell.classify(o.name, state.config, state.opts).key === t)).length;
+  A.A4 = { title: "A4 · phone and cup named and placed", v: verdictOf(fzOk, fz.length, offFalse + otherFalse),
+    line: `on-Zone resolved ${pct(fzOk, fz.length)} · false on off-Zone ${offFalse}/${off.length}, others ${otherFalse}`,
+    ids: [...fz.filter(x => !x.s.foreign), ...negatives.filter(x => x.got && x.got.foreign.length)].map(x => x.label.photo),
+    detail: `<ul><li><i>Foreign Object in the Zone</i> named exactly the right things on ${pct(fzOk, fz.length)} on-Zone photos.</li>
+      <li>It fired on ${pct(offFalse, off.length)} off-Zone photos, and on ${otherFalse} baseline, part-in-use or gloved photos (usually an unrecognised name placed in <code>zone</code> — see A5).</li>
+      <li>The phone was named on ${named("phone")}, the cup on ${named("cup")}, of the ${fz.length + off.length} foreign photos.</li>
+      <li>Only 3 photos per condition exist here, below the issue's ≥ 5.</li></ul>` };
+
+  // A5 — names
+  const names = {};
+  for (const x of items) for (const o of x.r.objects || []) {
+    const c = WorkCell.classify(o.name, state.config, state.opts);
+    const k = c.kind === "part" ? c.key : c.kind === "hand" ? `${c.key} hand` : c.kind === "foreign" ? c.key : c.kind === "ignored" ? "(ignored)" : "(unrecognised)";
+    (names[k] ||= {}); names[k][WorkCell.norm(o.name)] = (names[k][WorkCell.norm(o.name)] || 0) + 1;
+  }
+  const unknownCount = Object.values(names["(unrecognised)"] || {}).reduce((a, b) => a + b, 0);
+  const totalNames = Object.values(names).flatMap(Object.values).reduce((a, b) => a + b, 0);
+  A.A5 = { title: "A5 · names stable enough to match", v: unknownCount / Math.max(1, totalNames) < 0.1 ? "confirmed" : unknownCount / Math.max(1, totalNames) < 0.3 ? "partial" : "refuted",
+    line: `${unknownCount}/${totalNames} names unrecognised by the synonyms`, ids: [],
+    detail: `<table class="names"><tr><th>Stands for</th><th>Names the model used (times)</th></tr>${Object.entries(names).sort().map(([k, v]) =>
+      `<tr><td>${k}</td><td>${Object.entries(v).sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} (${c})`).join(", ")}</td></tr>`).join("")}</table>
+      <p class="muted">Edit the synonyms at the bottom of the page to move an unrecognised name onto the thing it means.</p>` };
+
+  // A6 — loops
+  const trunc = items.filter(x => x.r.finish === "truncated").length;
+  const loops = items.filter(x => WorkCell.repetition(x.r.objects) >= 3).length;
+  const medTok = [...items.map(x => x.r.completion_tokens)].sort((a, b) => a - b)[Math.floor(items.length / 2)];
+  const medSec = [...items.map(x => x.r.seconds)].sort((a, b) => a - b)[Math.floor(items.length / 2)];
+  A.A6 = { title: "A6 · the repetition loops", v: loops === 0 ? "confirmed" : "partial",
+    line: `${loops}/${items.length} replies repeat an entry ≥ 3× · ${trunc} truncated`,
+    ids: items.filter(x => WorkCell.repetition(x.r.objects) >= 3).map(x => x.label.photo),
+    detail: `<ul><li>${loops}/${items.length} replies repeat the same <code>{name, where}</code> three or more times; ${trunc} ran to the ${DATA.max_output_tokens}-token limit.</li>
+      <li>Median ${medTok} tokens, ${medSec?.toFixed(1)} s per photo on this run.</li>
+      <li>Here "confirmed" means <i>no loops on this Variant</i>. Compare the OpenVINO iGPU run with the Foundry Local CPU run on the same prompt: loops on both point at the model, loops on OpenVINO alone at the export.</li></ul>` };
+  return A;
+}
+
+/* A closed-question run has no list: no `where`, no names, no loops. The Trigger scores are the same;
+ * A1 becomes "a yes or a no came back", A2 is read per part as "seen or not", A5 and A6 do not apply. */
+function assessAnswers(items, has, negatives) {
+  const A = {};
+  const all = items.flatMap(x => Object.values(x.r.answers));
+  const clean = all.filter(a => a.yes !== null).length;
+  const odd = [...new Set(all.filter(a => a.yes === null).map(a => a.text))];
+  A.A1 = { title: "A1 · a yes or a no comes back", v: clean / all.length >= 0.98 ? "confirmed" : clean / all.length >= 0.8 ? "partial" : "refuted",
+    line: `${clean}/${all.length} answers were a plain yes or no`, ids: items.filter(x => Object.values(x.r.answers).some(a => a.yes === null)).map(x => x.label.photo),
+    detail: `<ul><li>${clean}/${all.length} answers read as yes or no.</li><li>Anything else: ${odd.map(esc).join("; ") || "none"}.</li>
+      <li>9 questions per photo, 8 output tokens each.</li></ul>` };
+
+  let seenOk = 0, seenN = 0, goneOk = 0, goneN = 0;
+  for (const x of items) {
+    const want = WorkCell.expected(x.label);
+    for (const p of WorkCell.PARTS) {
+      const a = x.r.answers[`part:${p}`]; if (!a || a.yes === null) continue;
+      if (want.missing.includes(p)) { goneN++; if (a.yes === false) goneOk++; } else { seenN++; if (a.yes === true) seenOk++; }
+    }
+  }
+  const pm = has("part missing"), pmOk = pm.filter(x => x.s.missing).length;
+  const pmFalse = negatives.filter(x => x.got.missing.length).length;
+  A.A2 = { title: "A2 · a missing part is told from a present one", v: verdictOf(pmOk, pm.length, pmFalse),
+    line: `missing part caught ${pct(pmOk, pm.length)} · false "missing" on ${pmFalse}/${negatives.length} negatives`,
+    ids: [...pm.filter(x => !x.s.missing), ...negatives.filter(x => x.got.missing.length)].map(x => x.label.photo),
+    detail: `<ul><li>A part that is there (Tray, Zone or hand) answered <i>yes</i>: ${pct(seenOk, seenN)}.</li>
+      <li>A removed part answered <i>no</i>: ${pct(goneOk, goneN)}.</li>
+      <li>This asks "anywhere in the image", so it tests the Trigger, not whether <code>where</code> separates Tray from Zone.</li>
+      <li><i>Part missing</i> fired for exactly the removed part on ${pct(pmOk, pm.length)}, and falsely on ${pmFalse} of ${negatives.length} negatives.</li></ul>` };
+
+  const bareSet = [...has("bare hand"), ...has("mixed")], glovedSet = has("gloved");
+  const bareOk = bareSet.filter(x => x.got.noGloves).length, mixedOk = has("mixed").filter(x => x.got.noGloves).length;
+  const glovedFalse = glovedSet.filter(x => x.got.noGloves).length;
+  const baseFalse = negatives.filter(x => !x.label.conditions.includes("gloved") && x.label.bare === 0 && x.got.noGloves).length;
+  A.A3 = { title: "A3 · bare hands told from gloved", v: verdictOf(bareOk, bareSet.length, glovedFalse + baseFalse),
+    line: `bare caught ${pct(bareOk, bareSet.length)} (mixed ${pct(mixedOk, has("mixed").length)}) · false on ${glovedFalse + baseFalse} negatives`,
+    ids: [...bareSet.filter(x => !x.got.noGloves), ...negatives.filter(x => x.label.bare === 0 && x.got.noGloves)].map(x => x.label.photo),
+    detail: `<ul><li>"Is any hand bare?" answered yes on ${pct(bareOk, bareSet.length)} photos with a bare hand (mixed ${pct(mixedOk, has("mixed").length)}).</li>
+      <li>Answered yes falsely on ${pct(glovedFalse, glovedSet.length)} gloved photos and ${baseFalse} other negatives.</li></ul>` };
+
+  const fz = has("foreign"), fzOk = fz.filter(x => x.s.foreign).length;
+  const off = has("off-zone"), offFalse = off.filter(x => x.got.foreign.length).length;
+  const otherFalse = negatives.filter(x => !x.label.conditions.includes("off-zone") && x.got.foreign.length).length;
+  A.A4 = { title: "A4 · phone and cup on the Zone", v: verdictOf(fzOk, fz.length, offFalse + otherFalse),
+    line: `on-Zone resolved ${pct(fzOk, fz.length)} · false on off-Zone ${offFalse}/${off.length}, others ${otherFalse}`,
+    ids: [...fz.filter(x => !x.s.foreign), ...negatives.filter(x => x.got.foreign.length)].map(x => x.label.photo),
+    detail: `<ul><li>The phone and cup questions named exactly the right things on ${pct(fzOk, fz.length)} on-Zone photos.</li>
+      <li>Said yes on ${pct(offFalse, off.length)} off-Zone photos and ${otherFalse} other negatives.</li>
+      <li>Only a phone and a cup can be asked about: a closed question cannot catch a Foreign Object nobody named in advance.</li></ul>` };
+
+  A.A5 = { title: "A5 · names stable enough to match", v: "partial", line: "not applicable — the question fixes the name", ids: [],
+    detail: `<p>Closed questions never let the model choose a name, so there is nothing to match. The cost is A4's last point.</p>` };
+  const med = k => [...items.map(x => x.r[k])].sort((a, b) => a - b)[Math.floor(items.length / 2)];
+  A.A6 = { title: "A6 · the repetition loops", v: "confirmed", line: `no room to loop · median ${med("seconds").toFixed(1)} s per photo`, ids: [],
+    detail: `<p>With 8 output tokens per question there is nothing to loop over. Median ${med("seconds").toFixed(1)} s for all 9 questions on one photo — the cost of this shape is one prefill per question.</p>` };
+  return A;
+}
+
+function renderVerdicts(A) {
+  const el = document.getElementById("verdicts");
+  el.innerHTML = Object.entries(A).map(([id, a]) => `<div class="verdict" role="button" aria-pressed="${state.focus === id}" data-id="${id}">
+    <b>${a.title}</b><span class="tag ${a.v}">${a.v}</span><small>${a.line}</small></div>`).join("");
+  el.querySelectorAll(".verdict").forEach(v => v.onclick = () => { state.focus = state.focus === v.dataset.id ? null : v.dataset.id; render(); });
+  document.getElementById("explain").innerHTML = state.focus ? `<b>${A[state.focus].title}</b>${A[state.focus].detail}` : `<span class="muted">Pick an assumption above.</span>`;
+}
+
+const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const fmt = v => v === null || v === undefined ? "—" : Array.isArray(v) ? (v.length ? v.join(", ") : "none") : v ? "yes" : "no";
+
+function renderGrid(items, A) {
+  const focusIds = state.focus && A[state.focus].ids.length ? new Set(A[state.focus].ids) : null;
+  let shown = items;
+  if (focusIds) shown = shown.filter(x => focusIds.has(x.label.photo));
+  if (state.opts.onlyWrong) shown = shown.filter(x => !x.s.all);
+  document.getElementById("photos-title").textContent = focusIds ? `Photos behind ${state.focus} (${shown.length})` : `All photos (${shown.length})`;
+  const el = document.getElementById("grid");
+  if (!shown.length) { el.innerHTML = `<div class="empty">Nothing to show for this selection.</div>`; return; }
+  el.innerHTML = shown.map(({ label, r, got, s }) => {
+    const aliases = Object.entries(SAME_AS).filter(([, v]) => v === label.photo).map(([k]) => k);
+    const cell = (want, have, ok) => `<span class="${ok === null ? "muted" : ok ? "ok" : "no"}">${fmt(have)}</span>`;
+    const objs = (r.objects || []).map(o => {
+      const c = WorkCell.classify(o.name, state.config, state.opts);
+      const cls = c.kind === "unknown" ? "unk" : c.kind === "ignored" ? "ign" : "";
+      return `<span class="${cls}">${esc(o.name)}</span><span class="loc">@${o.where ?? "?"}</span>`;
+    }).join(" · ");
+    return `<div class="card ${s.all ? "" : "wrong"}">
+      <img loading="lazy" src="${FIXTURES}${label.photo}" alt="${label.photo}">
+      <div class="body">
+        <h3><span>${label.photo}${aliases.length ? ` <span class="muted">= ${aliases.join(", ")}</span>` : ""}</span><span class="muted">${label.conditions.join(", ")}</span></h3>
+        <div class="row"><span class="h">Trigger</span><span class="h">should fire</span><span class="h">would fire</span>
+          <span>part missing</span><span>${fmt(s.want.missing)}</span>${cell(s.want.missing, got?.missing, s.missing)}
+          <span>no gloves</span><span>${fmt(s.want.noGloves)}</span>${cell(s.want.noGloves, got?.noGloves, s.noGloves)}
+          <span>foreign on Zone</span><span>${fmt(s.want.foreign)}</span>${cell(s.want.foreign, got?.foreign, s.foreign)}
+        </div>
+        ${label.note ? `<p class="muted" style="margin:6px 0 0;font-size:12px">${label.note}</p>` : ""}
+        <p class="obj" style="margin:8px 0 0">${r.answers ? Object.entries(r.answers).map(([k, a]) => `${esc(k)}<span class="loc">=</span><span class="${a.yes === null ? "unk" : ""}">${esc(a.text)}</span>`).join(" · ")
+          : r.objects ? objs || "<i>empty list</i>" : `<span class="no">no shape: ${esc(r.reason || r.error)}</span>`}</p>
+        <details><summary>${r.completion_tokens} tokens · ${r.seconds.toFixed(1)} s · ${r.finish}${r.salvaged ? " · salvaged" : ""} · raw reply</summary><pre>${esc(r.text)}</pre></details>
+      </div></div>`;
+  }).join("");
+}
+
+function render() {
+  if (!DATA.runs.length) {
+    document.getElementById("grid").innerHTML = `<div class="empty">No results.js yet — run <code>uv run python prototypes/work-cell-spike/run.py</code> from <code>vision/</code>.</div>`;
+    return;
+  }
+  const r0 = DATA.runs.find(r => runKey(r) === state.run);
+  document.getElementById("run-facts").textContent = r0 ? `${r0.variant} on ${r0.ran_on} · Frame ${r0.frame || "640x360"} · up to ${DATA.max_output_tokens} tokens` : "";
+  const items = runsOf(state.run);
+  const A = assess(items);
+  renderVerdicts(A);
+  renderGrid(items, A);
+}
+
+const syn = document.getElementById("synonyms");
+syn.value = JSON.stringify(state.config, null, 2);
+syn.oninput = () => {
+  try { state.config = JSON.parse(syn.value); document.getElementById("syn-error").textContent = ""; render(); }
+  catch (e) { document.getElementById("syn-error").textContent = "Not valid JSON: " + e.message; }
+};
+renderControls();
+render();
+</script>
+</body>
+</html>

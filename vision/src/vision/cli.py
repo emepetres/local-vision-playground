@@ -60,15 +60,14 @@ from vision.errors import VisionError, one_line
 from vision.inference import (
     DEFAULT_ALIAS,
     DEFAULT_VARIANTS,
-    MAX_OUTPUT_TOKENS,
     PROMPT,
-    STRUCTURED_MAX_OUTPUT_TOKENS,
     STRUCTURED_PROMPT,
     Observation,
     StructuredObservation,
     Timings,
     Workload,
     require_a_scene_question,
+    structured_workload,
 )
 from vision.record import Now, Recorded, benchmarks_directory, record, resolve_machine
 from vision.reporting import (
@@ -186,21 +185,26 @@ def benchmark_main(
         # and load every Variant before saying anything. Not asked at all in structured
         # mode: the request is the fixed shape, so --structured overrides --ask and an empty
         # --ask beside it is not the mistake it is on its own — the same rule ``observe`` keeps.
-        prompt = STRUCTURED_PROMPT if args.structured else require_a_scene_question(args.ask)
+        question = None if args.structured else require_a_scene_question(args.ask)
         if camera is None:
             camera = _benchmark_source(args.image)
         router = _resolve_router(router, owned)
         clock = _resolve_clock(clock)
 
         # Read once, and reuse these exact bytes: re-reading the file per repetition would
-        # re-encode it, and a Workload is the Frame's bytes rather than its resolution.
-        # The prompt joins them here and nowhere else, so one Workload stands over the whole
+        # re-encode it, and a Workload is the Frame's bytes rather than its resolution. The
+        # prompt joins them here and nowhere else, so one Workload stands over the whole
         # sitting; what that costs and what it buys is in ``_add_ask``. The fixed shape is a
         # prompt like any other, which is what keeps two structured runs comparable only when
-        # they share it, as they must share the Frame and the limits (ADR-0011). Structured
-        # runs at the wider 256-token limit prose does not need (issue #64).
-        limit = STRUCTURED_MAX_OUTPUT_TOKENS if args.structured else MAX_OUTPUT_TOKENS
-        workload = Workload(prompt=prompt, frame=camera.capture(), max_output_tokens=limit)
+        # they share it, as they must share the Frame and the limits (ADR-0011).
+        # Structured is built by ``structured_workload`` so the prompt and its own wider
+        # 256-token limit (issue #64) cannot drift apart across the three places that send one.
+        frame = camera.capture()
+        workload = (
+            structured_workload(frame)
+            if question is None
+            else Workload(prompt=question, frame=frame)
+        )
         benchmark = measure(
             router=router,
             clock=clock,
@@ -983,9 +987,7 @@ def _observe(
     # overrides --ask). The two paths cross the model port through sibling methods, so each
     # returns its own shape and neither type's fields go optional (ADR-0011).
     if question is None:
-        workload = Workload(
-            prompt=STRUCTURED_PROMPT, frame=frame, max_output_tokens=STRUCTURED_MAX_OUTPUT_TOKENS
-        )
+        workload = structured_workload(frame)
         raw_structured, inference = timed(clock, lambda: ready.model.observe_structured(workload))
         structured = StructuredObservation(
             shape=raw_structured.shape,

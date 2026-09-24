@@ -147,16 +147,6 @@ class Where(StrEnum):
     ELSEWHERE = "elsewhere"
 
 
-_WHERE_VALUES = {member.value for member in Where}
-"""The four bare strings ``Where`` accepts, checked before the enum is even constructed.
-
-A plain set of ``str`` rather than a ``try/except ValueError`` around ``Where(where)``: the
-parsing this guards is on the hot path of every Structured Observation, and checking
-membership first keeps ``_present_object`` reading as one flat set of guard clauses rather
-than mixing early returns with a caught exception for the same kind of failure.
-"""
-
-
 @dataclass(frozen=True)
 class ModelIdentity:
     """Which model actually answered, and what it was built for.
@@ -255,6 +245,23 @@ class Workload:
     frame: Frame
     max_output_tokens: int = MAX_OUTPUT_TOKENS
     temperature: float = TEMPERATURE
+
+
+def structured_workload(frame: Frame) -> Workload:
+    """The one Workload every ``--structured`` request sends: the fixed prompt, at its own limit.
+
+    Built here rather than left to the three call sites that need one (``observe``'s single
+    shot, ``benchmark``'s sitting, a Watch's structured Cadence) so that ``STRUCTURED_PROMPT``
+    and ``STRUCTURED_MAX_OUTPUT_TOKENS`` cannot drift apart. Pairing them by convention across
+    three files is three places that pairing can silently break — and the cost of it breaking
+    is not academic: the spike found only 12 of 32 4B replies close the array at 128 tokens,
+    against 29 of 32 at 256, so a call site that quietly reverted to the Workload's own default
+    would mostly be sending truncated replies to the salvage path rather than the wider limit
+    this shape needs.
+    """
+    return Workload(
+        prompt=STRUCTURED_PROMPT, frame=frame, max_output_tokens=STRUCTURED_MAX_OUTPUT_TOKENS
+    )
 
 
 @dataclass(frozen=True)
@@ -966,9 +973,13 @@ def _present_object(element: object) -> PresentObject | None:
         return None
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
         return None
-    if not isinstance(where, str) or where not in _WHERE_VALUES:
+    if not isinstance(where, str):
         return None
-    return PresentObject(name=name, count=count, where=Where(where))
+    try:
+        parsed_where = Where(where)
+    except ValueError:
+        return None
+    return PresentObject(name=name, count=count, where=parsed_where)
 
 
 def _version_key(version: object) -> tuple[int, int, str]:

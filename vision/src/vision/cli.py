@@ -55,6 +55,7 @@ from vision.capture import (
     open_camera_feed,
     save_frame,
 )
+from vision.emit import EmittedWatch, require_structured_for_emit
 from vision.errors import VisionError, one_line
 from vision.inference import (
     DEFAULT_ALIAS,
@@ -238,6 +239,7 @@ def watch_main(
     router: Router | None = None,
     clock: Clock | None = None,
     sleep: Sleep | None = None,
+    now: Now | None = None,
     questions: Questions | None = None,
     stdin: TextIO | None = None,
     out: TextIO | None = None,
@@ -290,6 +292,7 @@ def watch_main(
         refuse_an_image_file(args.image)
         require_a_cadence(args.every)
         require_an_observation(args.count)
+        require_structured_for_emit(args.emit, structured=args.structured)
         # Asked here with the other invariants of a Watch, and for the sharper version of
         # the reason ``observe`` asks it early: a Watch that took the mistake to the
         # hardware would settle a camera and load the model before saying the question
@@ -302,6 +305,7 @@ def watch_main(
         router = _resolve_router(router, owned)
         clock = _resolve_clock(clock)
         sleep = _resolve_sleep(sleep)
+        now = _resolve_now(now)
 
         model = accept_variant(router, args.model)
         providers = register_execution_providers(router, clock=clock, out=out)
@@ -338,6 +342,11 @@ def watch_main(
                 settling=settling,
                 settling_discards=feed.settling_discards,
             )
+            emitted: EmittedWatch | None = None
+            if args.emit is not None:
+                emitted = EmittedWatch(args.emit)
+                lifetime.callback(emitted.close)
+                emitted.write_start(start, at=now())
             print(render_watch_header(start), file=out, end="", flush=True)
             watched = keep_watch(
                 start=start,
@@ -347,7 +356,7 @@ def watch_main(
                 clock=clock,
                 sleep=sleep,
                 keep_in=frames_dir if args.keep_frames else None,
-                announce=_announcing(out),
+                announce=_announcing(out, emitted=emitted, now=now, variant=start.model.variant),
                 questions=questions,
                 structured=args.structured,
             )
@@ -416,11 +425,20 @@ def _feed_died(provenance: str) -> str:
     )
 
 
-def _announcing(out: TextIO) -> Announce:
-    """Write each Cadence down as it arrives, flushed so an audience sees it arrive."""
+def _announcing(
+    out: TextIO, *, emitted: EmittedWatch | None, now: Now, variant: str
+) -> Announce:
+    """Write each Cadence down as it arrives, flushed so an audience sees it arrive.
+
+    Also writes it to the emitted file where the Operator asked for one, on the same terms:
+    as it happens, not once the Watch is over — a reader following the file is reading it
+    live, in the other terminal pane.
+    """
 
     def announce(produced: Produced) -> None:
         print(render_watch_line(produced), file=out, end="", flush=True)
+        if emitted is not None:
+            emitted.write_cadence(produced, variant=variant, at=now())
 
     return announce
 
@@ -530,6 +548,26 @@ def _add_structured(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_emit(parser: argparse.ArgumentParser) -> None:
+    """Where a Watch writes every Cadence it reaches as JSON Lines — the whole boundary
+    between ``vision/`` and ``agent/`` (ADR-0014). Valid only alongside ``--structured``:
+    prose has nothing in it a Trigger can act on, and the refusal says so before the camera
+    opens or the model loads.
+    """
+    parser.add_argument(
+        "--emit",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "write every Cadence reached to PATH as JSON Lines, so another process can act"
+            " on what a Watch observes without ever seeing a Frame. Valid only alongside"
+            " --structured. Default: nothing is written; watch.md names the conventional"
+            " path, vision/observations.jsonl, which is git-ignored"
+        ),
+    )
+
+
 def _benchmark_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="benchmark",
@@ -634,6 +672,7 @@ def _watch_parser() -> argparse.ArgumentParser:
         help="refused: a Watch observes a live Feed, and one file would never change",
     )
     _add_structured(parser)
+    _add_emit(parser)
     _add_pinned_variant(parser)
     _add_keep_frames(parser)
     _add_debug(parser)

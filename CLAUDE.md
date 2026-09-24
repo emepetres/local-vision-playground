@@ -48,10 +48,11 @@ As the playground grows, a domain gains project folders rather than spilling int
 root — and the manifests move down with them (`vision/capture/pyproject.toml`,
 `vision/inference/pyproject.toml`).
 
-The two domains are separate processes. They meet at the OpenAI-compatible endpoint that
-Foundry Local serves on localhost — that seam is deliberate, and it is part of what the
-playground demonstrates. See
-[ADR-0003](./docs/adr/0003-the-agent-consumes-observations-not-images.md).
+The two domains are separate processes. They meet at a JSON Lines file `watch --emit`
+writes and `agent/` reads — that seam is deliberate, and it is part of what the playground
+demonstrates. See
+[ADR-0003](./docs/adr/0003-the-agent-consumes-observations-not-images.md) and
+[ADR-0014](./docs/adr/0014-observations-cross-as-a-json-lines-file.md).
 
 ## Agent skills
 

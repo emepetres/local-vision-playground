@@ -143,6 +143,8 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
   are two runtimes; Foundry Local is not the only source.
 - [ADR-0013](./docs/adr/0013-the-second-runtime-is-an-adapter-behind-an-unchanged-model-port.md)
   — the second runtime is an adapter behind an unchanged model port.
+- [ADR-0014](./docs/adr/0014-observations-cross-as-a-json-lines-file.md) — observations
+  cross to the agent as a JSON Lines file, not an endpoint.
 
 **What was verified, and when**
 

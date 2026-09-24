@@ -1,9 +1,10 @@
 # The Agent consumes Observations, never images
 
 The C# Agent never receives a Frame. Vision happens entirely in `vision/` (Python), which
-produces Observations as text; the Agent reads those Observations over the local endpoint
-and decides on Actions. The boundary between the two halves of the playground carries
-text, never pixels.
+produces Observations as text; the Agent reads those Observations from the JSON Lines file
+`watch --emit` writes ([ADR-0014](./0014-observations-cross-as-a-json-lines-file.md)) and
+decides on Actions. The boundary between the two halves of the playground carries text,
+never pixels.
 
 Two independent reasons put the line here.
 

@@ -9,6 +9,9 @@ __pycache__/
 # Frames the camera took, kept so a surprising Observation can be explained afterwards
 vision/frames/
 
+# The JSON Lines a Watch emits with --emit, one file per Watch
+vision/observations.jsonl
+
 # .NET
 bin/
 obj/

@@ -49,6 +49,7 @@ from vision.inference import (
     Shape,
     Workload,
 )
+from vision.record import Now
 from vision.router import Router
 
 SETUP_READINGS = (0.0, 0.5)
@@ -151,6 +152,7 @@ def run(
     readers: FakeReaders | HandTurnedReaders | None = None,
     questions: TypedQuestions | None = None,
     frames_dir: Path | None = None,
+    now: Now | None = None,
 ) -> Run:
     """One invocation, over a Feed read on demand rather than drained by a thread.
 
@@ -179,6 +181,7 @@ def run(
         router=Router(FakeFoundry.resolving_everything_to(model)),
         clock=clock if clock is not None else FakeClock(readings(observations)),
         sleep=sleep,
+        now=now,
         questions=questions,
         out=out,
         err=err,

@@ -73,9 +73,9 @@ How these items map onto the anchor scenario is in
       staged as a desk-scale work cell: a part is missing from the tray, someone is working
       the cell without gloves, a foreign object is in the zone — those of them the spike
       (item 11) found the model can resolve.
-- [ ] **7. The Agent, in C#.** Microsoft Agent Framework consuming Observations over the
-      local endpoint and invoking Actions when Triggers fire. The Agent never sees an
-      image ([ADR-0003](./adr/0003-the-agent-consumes-observations-not-images.md)).
+- [ ] **7. The Agent, in C#.** Microsoft Agent Framework consuming Observations from the
+      JSON Lines file `watch --emit` writes and invoking Actions when Triggers fire. The
+      Agent never sees an image ([ADR-0003](./adr/0003-the-agent-consumes-observations-not-images.md)).
       Its Actions stay on the machine: a desktop notification — the supervisor finds out —
       and an entry in a local incident log holding the Trigger, the Observation that fired
       it and the time. Never a Frame: what is kept is a sentence, never a face.

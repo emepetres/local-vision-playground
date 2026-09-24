@@ -152,6 +152,7 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
 - [2026-09-15 — forcing a tool call with an image](./docs/research/2026-09-15-forced-tool-call-with-image.md)
 - [2026-09-22 — value scenarios for local multimodal vision](./docs/research/2026-09-22-local-multimodal-vision-value-scenarios.md)
 - [2026-09-23 — Intel NPU edge devices](./docs/research/2026-09-23-intel-npu-edge-devices.md)
+- [2026-09-24 — can the 2B model see the Work Cell?](./docs/research/2026-09-24-work-cell-spike.md)
 
 **What was measured**
 

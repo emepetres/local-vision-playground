@@ -59,24 +59,28 @@ How these items map onto the anchor scenario is in
       demo script (see [the offline rehearsal
       section](./keynotes/azuretour26/beat-sheet.md#offline-rehearsal-backlog-item-10);
       the rehearsal's own timing is still to be measured on the stage laptop, not code).
-- [ ] **11. Spike: can the 2B model see the work cell?** Before any Trigger is promised,
+- [x] **11. Spike: can the 2B model see the work cell?** Before any Trigger is promised,
       measure whether `qwen3-vl-2b` resolves the conditions of item 6 — a part missing from
       the tray, no gloves, a foreign object in the zone — through Structured Observations on
-      real photos of the desk-scale work cell. It also settles whether the repetition loops
-      the int4 OpenVINO Variants fell into on the demo laptop come from the model or from the
-      export. The photos then become the Benchmark's fixed Workload, so that what is
-      measured is the scenario's work rather than a generic room. A condition the 2B model
-      cannot resolve is a finding, not a failure: it is the case for the 4B and 8B models
-      (Exploratory).
+      real photos of the desk-scale work cell. **Negative for the 2B, and negative for the
+      missing part on every model tried**: the small parts go unseen, so a missing-part
+      Trigger would fire constantly. The 4B iGPU export resolves bare hands (8/9, no false
+      Trigger) and the phone and the cup on the Zone (by closed question). The repetition
+      loops come from the model and are worse in the int4 export. See
+      [the spike write-up](./research/2026-09-24-work-cell-spike.md) and, for the Scene
+      Questions the demo asks, [their validation](./research/2026-09-24-d2-scene-questions.md).
 - [ ] **6. Triggers.** Fire when a condition over Observations holds — the conditions of
       the [anchor scenario](./business-value.md#the-anchor-scenario-a-workstation-on-a-production-line),
       staged as a desk-scale work cell: a part is missing from the tray, someone is working
       the cell without gloves, a foreign object is in the zone — those of them the spike
-      (item 11) found the model can resolve.
+      (item 11) found the model can resolve. That is **working without gloves**, on the 4B
+      model: the missing part is beyond it, and the Foreign Object waits on a choice of
+      Observation shape (#70).
 - [ ] **7. The Agent, in C#.** Microsoft Agent Framework consuming Observations from the
       JSON Lines file `watch --emit` writes and invoking Actions when Triggers fire. The
       Agent never sees an image ([ADR-0003](./adr/0003-the-agent-consumes-observations-not-images.md)).
-      Its Actions stay on the machine: a desktop notification — the supervisor finds out —
+      Its model is `qwen2.5-1.5b-instruct` on the CPU, the only candidate that called its
+      tools reliably on the demo machine (#62). Its Actions stay on the machine: a desktop notification — the supervisor finds out —
       and an entry in a local incident log holding the Trigger, the Observation that fired
       it and the time. Never a Frame: what is kept is a sentence, never a face.
 - [ ] **9. Capacity and cost.** From a Benchmark and a requested Cadence, how many cameras

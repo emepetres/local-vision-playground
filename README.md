@@ -153,6 +153,7 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
 - [2026-09-22 — value scenarios for local multimodal vision](./docs/research/2026-09-22-local-multimodal-vision-value-scenarios.md)
 - [2026-09-23 — Intel NPU edge devices](./docs/research/2026-09-23-intel-npu-edge-devices.md)
 - [2026-09-24 — can the 2B model see the Work Cell?](./docs/research/2026-09-24-work-cell-spike.md)
+- [2026-09-24 — which Scene Questions the 4B model can answer on the Work Cell](./docs/research/2026-09-24-d2-scene-questions.md)
 
 **What was measured**
 

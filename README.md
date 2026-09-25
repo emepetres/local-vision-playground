@@ -114,6 +114,8 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
   to name the hardware you want.
 - [`vision/tools/convert/README.md`](./vision/tools/convert/README.md) — exporting the model
   to an OpenVINO IR: prerequisites, the recipe, and the trap it defends against.
+- [`agent`](./docs/guide/agent.md) — running the Agent next to the Watch: Triggers,
+  Incidents, and the safety net when the model does not act.
 
 **Why it is the way it is — the decisions**
 

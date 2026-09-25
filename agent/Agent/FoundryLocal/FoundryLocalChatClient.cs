@@ -20,7 +20,7 @@ namespace Agent.FoundryLocal;
 /// <see cref="GetStreamingResponseAsync"/> wraps a single <see cref="GetResponseAsync"/>
 /// call.
 /// </remarks>
-public sealed class FoundryLocalChatClient : IChatClient, IAsyncDisposable
+public sealed class FoundryLocalChatClient : IChatClient, IAsyncDisposable, IModelDescriptor
 {
     /// <summary>
     /// The app name <c>vision/</c> registers its <c>Configuration</c> under
@@ -96,6 +96,14 @@ public sealed class FoundryLocalChatClient : IChatClient, IAsyncDisposable
     public object? GetService(Type serviceType, object? serviceKey = null)
     {
         return serviceKey is null && serviceType.IsInstanceOfType(this) ? this : null;
+    }
+
+    /// <summary>The Variant id and, once resolved, the Execution Provider it loaded on (issue #65's header).</summary>
+    public async Task<string> DescribeAsync(CancellationToken cancellationToken = default)
+    {
+        var model = await ResolveModelAsync(cancellationToken).ConfigureAwait(false);
+        var executionProvider = model.Info?.Runtime?.ExecutionProvider;
+        return string.IsNullOrEmpty(executionProvider) ? _variantId : $"{_variantId} ({executionProvider})";
     }
 
     public void Dispose()

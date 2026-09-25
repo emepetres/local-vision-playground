@@ -1,7 +1,9 @@
+using Agent.FoundryLocal;
 using Agent.Incidents;
 using Agent.Observations;
 using Agent.Triggers;
 using Agent.WorkCells;
+using Microsoft.Extensions.AI;
 
 namespace Agent;
 
@@ -10,14 +12,12 @@ public static class AgentProcess
 {
     public const string Name = "Agent";
 
-    /// <summary>The reason recorded on every fired Incident's log entry, until a model sits in front of the Trigger engine (issue #63).</summary>
-    private const string NoModelReason = "no model turn: the sentence and the Actions came from the template path";
-
     /// <summary>
     /// Runs the Agent: loads and validates the Work Cell, prints the header, then follows the
     /// Observations file from the present onward until <paramref name="cancellationToken"/> is
-    /// cancelled (issue #61), evaluating its Triggers, raising Incidents and logging them
-    /// (issue #63). This is the one seam the whole Agent is tested through.
+    /// cancelled (issue #61), evaluating its Triggers, raising Incidents, handing each firing
+    /// to the model and logging it (issues #63 and #65). This is the one seam the whole Agent
+    /// is tested through.
     /// </summary>
     /// <returns>0 on a clean shutdown, 1 when the Work Cell file is refused.</returns>
     public static async Task<int> RunAsync(
@@ -25,7 +25,9 @@ public static class AgentProcess
         TextWriter output,
         CancellationToken cancellationToken,
         IIncidentNotifier? notifier = null,
-        IClock? clock = null)
+        IClock? clock = null,
+        IChatClient? chatClient = null,
+        TimeSpan? incidentAgentTimeout = null)
     {
         WorkCell workCell;
         try
@@ -38,34 +40,85 @@ public static class AgentProcess
             return 1;
         }
 
-        PrintHeader(output, workCell, options);
-
-        Directory.CreateDirectory(options.IncidentsDirectory);
-
-        var triggerEngine = new TriggerEngine(workCell);
-        var incidentLog = new IncidentLog(options.IncidentsDirectory, clock ?? new SystemClock());
-        notifier ??= new WindowsToastNotifier();
-
-        output.WriteLine($"Watching {options.ObservationsPath} for the present onward...");
-
-        var follower = new ObservationsFollower(options.ObservationsPath);
-        await foreach (var evt in follower.FollowAsync(cancellationToken).WithCancellation(cancellationToken))
+        // Only a chat client we created ourselves is ours to dispose — one a caller (a test)
+        // handed in is theirs, and may outlive this run.
+        FoundryLocalChatClient? ownedChatClient = null;
+        if (chatClient is null)
         {
-            if (evt.Kind == FollowedEventKind.Recreated)
-            {
-                // The new Watch's own watch_start line, parsed just below, is what re-arms
-                // and reports — recreation on its own carries nothing worth printing twice.
-                continue;
-            }
-
-            HandleLine(output, evt.Text!, triggerEngine, incidentLog, notifier);
+            ownedChatClient = new FoundryLocalChatClient(options.VariantId);
+            chatClient = ownedChatClient;
         }
 
-        return 0;
+        try
+        {
+            string modelDescription;
+            try
+            {
+                modelDescription = chatClient is IModelDescriptor descriptor
+                    ? await descriptor.DescribeAsync(cancellationToken).ConfigureAwait(false)
+                    : "unknown";
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Resolving the model is the one thing before the loop starts that talks to
+                // the outside world (Foundry Local's catalogue, a download) — a failure here
+                // is refused the same way a bad Work Cell file is, rather than crashing with a
+                // raw stack trace before "Watching" is ever printed.
+                output.WriteLine($"Refused: the model could not be resolved — {ex.Message}");
+                return 1;
+            }
+
+            PrintHeader(output, workCell, options, modelDescription);
+
+            Directory.CreateDirectory(options.IncidentsDirectory);
+
+            var effectiveClock = clock ?? new SystemClock();
+            var triggerEngine = new TriggerEngine(workCell);
+            var incidentLog = new IncidentLog(options.IncidentsDirectory, effectiveClock);
+            var incidentAgent = new IncidentAgent(chatClient, incidentAgentTimeout);
+            notifier ??= new WindowsToastNotifier();
+
+            output.WriteLine($"Watching {options.ObservationsPath} for the present onward...");
+
+            var follower = new ObservationsFollower(options.ObservationsPath);
+            await foreach (var evt in follower.FollowAsync(cancellationToken).WithCancellation(cancellationToken))
+            {
+                if (evt.Kind == FollowedEventKind.Recreated)
+                {
+                    // The new Watch's own watch_start line, parsed just below, is what re-arms
+                    // and reports — recreation on its own carries nothing worth printing twice.
+                    continue;
+                }
+
+                await HandleLineAsync(
+                    output, evt.Text!, triggerEngine, incidentLog, notifier, incidentAgent, effectiveClock, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return 0;
+        }
+        finally
+        {
+            if (ownedChatClient is not null)
+            {
+                await ownedChatClient.DisposeAsync().ConfigureAwait(false);
+            }
+        }
     }
 
-    private static void HandleLine(
-        TextWriter output, string line, TriggerEngine triggerEngine, IncidentLog incidentLog, IIncidentNotifier notifier)
+    private static async Task HandleLineAsync(
+        TextWriter output,
+        string line,
+        TriggerEngine triggerEngine,
+        IncidentLog incidentLog,
+        IIncidentNotifier notifier,
+        IncidentAgent incidentAgent,
+        IClock clock,
+        CancellationToken cancellationToken)
     {
         ObservationLine parsed;
         try
@@ -90,7 +143,8 @@ public static class AgentProcess
         {
             foreach (var trigger in triggerEngine.Evaluate(cadence.Objects, line))
             {
-                HandleTriggerEvent(output, incidentLog, notifier, trigger);
+                await HandleTriggerEventAsync(output, incidentLog, notifier, incidentAgent, clock, trigger, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
@@ -98,7 +152,14 @@ public static class AgentProcess
         // either way (spec #59).
     }
 
-    private static void HandleTriggerEvent(TextWriter output, IncidentLog incidentLog, IIncidentNotifier notifier, TriggerEvent trigger)
+    private static async Task HandleTriggerEventAsync(
+        TextWriter output,
+        IncidentLog incidentLog,
+        IIncidentNotifier notifier,
+        IncidentAgent incidentAgent,
+        IClock clock,
+        TriggerEvent trigger,
+        CancellationToken cancellationToken)
     {
         var descriptor = TriggerCatalog.Of(trigger.TriggerKind);
         switch (trigger.Kind)
@@ -109,10 +170,13 @@ public static class AgentProcess
 
             case TriggerEventKind.Fired:
             {
-                var sentence = descriptor.Sentence(trigger.InstanceKey);
+                var templateSentence = descriptor.Sentence(trigger.InstanceKey);
+                var incidentText = BuildIncidentText(descriptor, trigger.RawObservation!, clock.Now);
+                var outcome = await incidentAgent.ActAsync(incidentText, templateSentence, cancellationToken).ConfigureAwait(false);
+
                 incidentLog.RecordFired(
-                    trigger.IncidentId!, descriptor, trigger.InstanceKey, trigger.RawObservation!, sentence,
-                    agentActed: false, agentActedReason: NoModelReason);
+                    trigger.IncidentId!, descriptor, trigger.InstanceKey, trigger.RawObservation!, outcome.Sentence,
+                    agentActed: outcome.AgentActed, agentActedReason: outcome.AgentActedReason);
 
                 // The Incident is already on record above; a toast the OS refuses to raise
                 // (an unpackaged app not registered for notifications, most likely) must not
@@ -120,12 +184,12 @@ public static class AgentProcess
                 // fails" — the same stance extended to the notifier).
                 try
                 {
-                    notifier.Notify(descriptor.Label, sentence);
-                    output.WriteLine($"Incident fired — {sentence} Actions: notified supervisor, logged incident.");
+                    notifier.Notify(descriptor.Label, outcome.Sentence);
+                    output.WriteLine($"Incident fired — {outcome.Sentence} Actions: notified supervisor, logged incident.");
                 }
                 catch (Exception ex)
                 {
-                    output.WriteLine($"Incident fired — {sentence} Actions: logged incident. Notification failed: {ex.Message}");
+                    output.WriteLine($"Incident fired — {outcome.Sentence} Actions: logged incident. Notification failed: {ex.Message}");
                 }
                 break;
             }
@@ -137,9 +201,17 @@ public static class AgentProcess
         }
     }
 
-    private static void PrintHeader(TextWriter output, WorkCell workCell, AgentOptions options)
+    /// <summary>
+    /// The Incident as the model turn receives it (spec #59): the Trigger, its condition in
+    /// words, the Observation line exactly as it crossed, and the time. Never an image.
+    /// </summary>
+    private static string BuildIncidentText(TriggerDescriptor descriptor, string rawObservation, DateTimeOffset time) =>
+        $"Trigger: {descriptor.Label}\nCondition: {descriptor.Condition}\nObservation: {rawObservation}\nTime: {time:O}";
+
+    private static void PrintHeader(TextWriter output, WorkCell workCell, AgentOptions options, string modelDescription)
     {
         output.WriteLine($"Agent watching Work Cell '{workCell.Name}' ({options.WorkCellPath})");
+        output.WriteLine($"  Model: {modelDescription}");
         output.WriteLine($"  Tray expects: {Describe(workCell.ExpectedParts)}");
         output.WriteLine($"  Zone allows: {Describe(workCell.AllowedObjects)}");
 

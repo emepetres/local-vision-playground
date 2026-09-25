@@ -30,6 +30,14 @@ public sealed class AgentFixture : IAsyncDisposable
 
     public FakeNotifier Notifier { get; } = new();
 
+    public FakeChatClient ChatClient { get; } = new();
+
+    /// <summary>
+    /// Short by default so a scripted stall (issue #65's timeout safety-net path) does not
+    /// make every other test wait out the real 60 s bound.
+    /// </summary>
+    public TimeSpan IncidentAgentTimeout { get; set; } = TimeSpan.FromMilliseconds(500);
+
     public string Output => Writer.ToString();
 
     public void WriteWorkCell(string json) => File.WriteAllText(Options.WorkCellPath, json.Trim());
@@ -115,7 +123,7 @@ public sealed class AgentFixture : IAsyncDisposable
         {
             try
             {
-                await AgentProcess.RunAsync(Options, Writer, token, Notifier, Clock);
+                await AgentProcess.RunAsync(Options, Writer, token, Notifier, Clock, ChatClient, IncidentAgentTimeout);
             }
             catch (OperationCanceledException)
             {

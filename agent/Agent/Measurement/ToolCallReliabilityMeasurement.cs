@@ -1,7 +1,7 @@
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
 using Agent.FoundryLocal;
+using Agent.Incidents;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
@@ -32,13 +32,6 @@ public static class ToolCallReliabilityMeasurement
         ("qwen3-4b", "GPU", "qwen3-4b-generic-gpu:2"),
     ];
 
-    private const string Instructions =
-        "You are the safety agent for a Work Cell. Every message you receive describes one Incident " +
-        "as plain text: a Trigger name, its condition, the Observation line that crossed it, and the " +
-        "time. Write one short sentence describing the Incident for a Supervisor to read, then call " +
-        "notify_supervisor with that sentence and call log_incident with that same sentence. Always " +
-        "call both tools exactly once each; never only describe them in your reply.";
-
     public static async Task<IReadOnlyList<CombinationResult>> RunAsync(
         IReadOnlyList<IncidentScenario>? incidents = null,
         IReadOnlyList<(string Candidate, string ExecutionProvider, string VariantId)>? combinations = null,
@@ -55,34 +48,15 @@ public static class ToolCallReliabilityMeasurement
 
             await using var chatClient = new FoundryLocalChatClient(variantId);
             var tracker = new CallTracker();
-            var tools = new List<AITool>
-            {
-                AIFunctionFactory.Create(
-                    ([Description("The sentence describing the Incident.")] string sentence) =>
-                    {
-                        tracker.NotifySupervisorCalled = true;
-                        return "notified";
-                    },
-                    "notify_supervisor",
-                    "Notify the on-call Supervisor about an Incident.",
-                    null),
-                AIFunctionFactory.Create(
-                    ([Description("The sentence describing the Incident.")] string sentence) =>
-                    {
-                        tracker.LogIncidentCalled = true;
-                        return "logged";
-                    },
-                    "log_incident",
-                    "Log an Incident to the incident log.",
-                    null),
-            };
 
             var agent = chatClient.AsAIAgent(new ChatClientAgentOptions
             {
                 ChatOptions = new ChatOptions
                 {
-                    Instructions = Instructions,
-                    Tools = tools,
+                    Instructions = IncidentActionTools.Instructions,
+                    Tools = IncidentActionTools.Build(
+                        _ => tracker.NotifySupervisorCalled = true,
+                        _ => tracker.LogIncidentCalled = true),
                     // An Incident's sentence is short; bounding it keeps a CPU-only combo from
                     // wandering into a long generation once it has already answered the turn.
                     MaxOutputTokens = 256,

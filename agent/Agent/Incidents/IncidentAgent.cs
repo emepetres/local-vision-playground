@@ -79,9 +79,10 @@ public sealed class IncidentAgent
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // The Agent itself is shutting down, not the turn failing — let it propagate
-            // rather than folding it into the safety net.
-            throw;
+            // The Agent is shutting down mid-turn. The Incident has already fired and its streak
+            // is spent, so the safety net still speaks for it — the caller logs and notifies it
+            // before the shutdown reaches the follow loop.
+            failureReason = "the Agent shut down during the model turn";
         }
         catch (OperationCanceledException)
         {

@@ -224,6 +224,15 @@ public sealed class FoundryLocalChatClient : IChatClient, IAsyncDisposable, IMod
     private static Request BuildRequest(IEnumerable<ChatMessage> messages, ChatOptions? options)
     {
         var request = new Request();
+
+        // Agent Framework hands an agent's instructions over as ChatOptions.Instructions, never
+        // as a system message in the history — a client that does not turn them into one sends
+        // the model the user message alone.
+        if (!string.IsNullOrEmpty(options?.Instructions))
+        {
+            request.AddItem(MessageItem.System(options.Instructions, string.Empty), takeOwnership: true);
+        }
+
         foreach (var message in messages)
         {
             AddMessage(request, message);

@@ -139,6 +139,46 @@ public class IncidentAgentTests
     }
 
     [Fact]
+    public async Task WhenTheAgentShutsDownMidTurn_TheIncidentIsStillLoggedAndNotified_Once()
+    {
+        await using var fixture = new AgentFixture();
+        fixture.IncidentAgentTimeout = TimeSpan.FromSeconds(30);
+        fixture.ChatClient.EnqueueStall(TimeSpan.FromSeconds(30));
+        fixture.WriteWorkCellWithMissingPartTrigger(n: 1);
+
+        fixture.Start();
+        await fixture.WaitForOutputAsync(o => o.Contains("Watching"));
+
+        fixture.AppendObservations(CadenceLine(1, "2026-09-24T10:30:01+02:00"));
+        await fixture.WaitForOutputAsync(_ => fixture.ChatClient.Calls.Count > 0);
+
+        var exitCode = await fixture.StopAsync();
+
+        Assert.Equal(0, exitCode);
+        Assert.Single(fixture.Notifier.Calls);
+        var entry = Assert.Single(fixture.ReadIncidentLogLines());
+        var root = JsonDocument.Parse(entry).RootElement;
+        Assert.False(root.GetProperty("agent_acted").GetBoolean());
+        Assert.Equal("The widget is missing from the Tray.", root.GetProperty("sentence").GetString());
+        Assert.Contains("shut down", root.GetProperty("agent_acted_reason").GetString());
+    }
+
+    [Fact]
+    public async Task TheInstructionsReachTheChatClientAsChatOptions_NotAsASystemMessage()
+    {
+        // The contract FoundryLocalChatClient relies on when it turns ChatOptions.Instructions
+        // into the request's system message: if Agent Framework ever started sending them as
+        // a system message too, the model would get them twice.
+        await using var fixture = new AgentFixture();
+
+        using var run = await FireOneIncidentAsync(fixture);
+
+        var (messages, options) = fixture.ChatClient.Calls[0];
+        Assert.Contains("notify_supervisor", options?.Instructions);
+        Assert.DoesNotContain(messages, m => m.Role == Microsoft.Extensions.AI.ChatRole.System);
+    }
+
+    [Fact]
     public async Task ClearingTakesNoModelTurn()
     {
         await using var fixture = new AgentFixture();

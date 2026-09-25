@@ -60,7 +60,8 @@ public static class AgentProcess
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                throw;
+                // Ctrl+C while the model was still loading — a clean shutdown, not a refusal.
+                return 0;
             }
             catch (Exception ex)
             {
@@ -85,18 +86,25 @@ public static class AgentProcess
             output.WriteLine($"Watching {options.ObservationsPath} for the present onward...");
 
             var follower = new ObservationsFollower(options.ObservationsPath);
-            await foreach (var evt in follower.FollowAsync(cancellationToken).WithCancellation(cancellationToken))
+            try
             {
-                if (evt.Kind == FollowedEventKind.Recreated)
+                await foreach (var evt in follower.FollowAsync(cancellationToken).WithCancellation(cancellationToken))
                 {
-                    // The new Watch's own watch_start line, parsed just below, is what re-arms
-                    // and reports — recreation on its own carries nothing worth printing twice.
-                    continue;
-                }
+                    if (evt.Kind == FollowedEventKind.Recreated)
+                    {
+                        // The new Watch's own watch_start line, parsed just below, is what re-arms
+                        // and reports — recreation on its own carries nothing worth printing twice.
+                        continue;
+                    }
 
-                await HandleLineAsync(
-                    output, evt.Text!, triggerEngine, incidentLog, notifier, incidentAgent, effectiveClock, cancellationToken)
-                    .ConfigureAwait(false);
+                    await HandleLineAsync(
+                        output, evt.Text!, triggerEngine, incidentLog, notifier, incidentAgent, effectiveClock, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Ctrl+C: the one way the Watching loop is meant to end.
             }
 
             return 0;

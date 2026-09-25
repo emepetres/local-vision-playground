@@ -17,6 +17,9 @@ public sealed class FakeChatClient : IChatClient, IModelDescriptor
 
     public string Description { get; set; } = "fake-model (fake, for tests)";
 
+    /// <summary>What each call received, in order — what the Agent actually hands the chat client.</summary>
+    public List<(IReadOnlyList<ChatMessage> Messages, ChatOptions? Options)> Calls { get; } = [];
+
     /// <summary>Scripts a response where the model calls each named tool with the given sentence.</summary>
     public void EnqueueToolCalls(params (string Name, string Sentence)[] calls) =>
         _script.Enqueue(_ => Task.FromResult(ToolCallResponse(calls)));
@@ -39,6 +42,11 @@ public sealed class FakeChatClient : IChatClient, IModelDescriptor
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
+        lock (Calls)
+        {
+            Calls.Add((messages.ToList(), options));
+        }
+
         if (_script.Count == 0)
         {
             return Task.FromResult(TextResponse("acknowledged"));

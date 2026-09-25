@@ -7,7 +7,7 @@ namespace Agent.Tests;
 public sealed class AgentFixture : IAsyncDisposable
 {
     private readonly string _directory;
-    private Task? _runTask;
+    private Task<int>? _runTask;
     private CancellationTokenSource? _cts;
 
     public AgentFixture()
@@ -114,24 +114,27 @@ public sealed class AgentFixture : IAsyncDisposable
 
     private static string Normalize(string content) => content.Trim() + "\n";
 
-    /// <summary>Starts the Agent on a background task. Disposing the result stops it.</summary>
+    /// <summary>
+    /// Starts the Agent on a background task. Disposing the result stops it. Cancelling is a
+    /// clean shutdown, so an exception escaping the run fails the test when the fixture is
+    /// disposed.
+    /// </summary>
     public IDisposable Start()
     {
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
-        _runTask = Task.Run(async () =>
-        {
-            try
-            {
-                await AgentProcess.RunAsync(Options, Writer, token, Notifier, Clock, ChatClient, IncidentAgentTimeout);
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected: the fixture cancels the run when the test is done with it.
-            }
-        }, CancellationToken.None);
+        _runTask = Task.Run(
+            () => AgentProcess.RunAsync(Options, Writer, token, Notifier, Clock, ChatClient, IncidentAgentTimeout),
+            CancellationToken.None);
 
         return new Stoppable(this);
+    }
+
+    /// <summary>Stops the Agent the way Ctrl+C does and returns its exit code.</summary>
+    public async Task<int> StopAsync()
+    {
+        await _cts!.CancelAsync();
+        return await _runTask!;
     }
 
     public async Task WaitForOutputAsync(Func<string, bool> predicate, TimeSpan? timeout = null)

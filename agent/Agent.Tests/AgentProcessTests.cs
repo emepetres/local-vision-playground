@@ -36,6 +36,18 @@ public class AgentProcessTests
     }
 
     [Fact]
+    public async Task Cancelling_IsACleanShutdown_WithExitCodeZero()
+    {
+        await using var fixture = new AgentFixture();
+        fixture.WriteDefaultWorkCell();
+
+        fixture.Start();
+        await fixture.WaitForOutputAsync(o => o.Contains("Watching"));
+
+        Assert.Equal(0, await fixture.StopAsync());
+    }
+
+    [Fact]
     public async Task Refuses_UnknownTrigger()
     {
         await using var fixture = new AgentFixture();

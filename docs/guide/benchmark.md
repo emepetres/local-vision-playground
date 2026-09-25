@@ -87,9 +87,10 @@ apart. Two things the numbers say plainly, and neither flatters the NPU:
   its own profile, whose case is TTFT and warm-start rather than peak tokens/second (issue
   [#38](https://github.com/emepetres/local-vision-playground/issues/38)), which this
   Benchmark does not measure.
-- **This is not a like-for-like comparison.** The three OpenVINO rows run an **INT4** IR,
-  Foundry Local's row an unquantised build; the INT4 Variants degrade into repetition and run
-  to the 128-token limit (see _What each Variant saw_ in the record), while Foundry Local's
+- **This is not a like-for-like comparison.** Every row is INT4, but not the same INT4: the
+  three OpenVINO rows run the NPU's channel-wise recipe, Foundry Local's row a block-wise one
+  ([the INT4 note](../research/2026-09-25-int4-quantisation.md)). The OpenVINO Variants
+  degrade into repetition and run to the 128-token limit (see _What each Variant saw_ in the record), while Foundry Local's
   stops at 92 tokens with a clean description. Different amounts of work, so Tokens/second is
   the figure to read — and the token-divergence note above says so in the report itself.
 
@@ -195,9 +196,11 @@ Attempted    1st of 2
 Not measured qwen3.5-0.8b-cuda-gpu:3 would not load on GPU / CUDAExecutionProvider — pin a different variant with --variant (run `foundry model list`; a -generic-cpu variant is the safe one). Foundry Local said: …
 ```
 
-That is not hypothetical: `qwen3.5-0.8b-cuda-gpu:3` is published and fails to load with an
-invalid-graph error no caller can work around
-([foundry-local#1075](https://github.com/microsoft/foundry-local/issues/1075)). It says
+That is not hypothetical: `qwen3.5-0.8b-cuda-gpu:3` was published and failed to load with an
+invalid-graph error no caller could work around
+([foundry-local#1075](https://github.com/microsoft/foundry-local/issues/1075)) — until Foundry
+Local republished the Qwen3.5 models as `:4` on 2026-09-11, which is the only thing that fixed
+it. It says
 `Attempted` rather than `Measured` because the turn is still worth recording while the row
 is not a measurement. **The exit status follows the Benchmark, not the Variants**: zero when
 at least one Variant was measured, non-zero only when none was — a partial result reported

@@ -55,6 +55,7 @@ from vision.capture import (
     open_camera_feed,
     save_frame,
 )
+from vision.emit import EmittedWatch, require_structured_for_emit
 from vision.errors import VisionError, one_line
 from vision.inference import (
     DEFAULT_ALIAS,
@@ -66,6 +67,7 @@ from vision.inference import (
     Timings,
     Workload,
     require_a_scene_question,
+    structured_workload,
 )
 from vision.record import Now, Recorded, benchmarks_directory, record, resolve_machine
 from vision.reporting import (
@@ -183,19 +185,26 @@ def benchmark_main(
         # and load every Variant before saying anything. Not asked at all in structured
         # mode: the request is the fixed shape, so --structured overrides --ask and an empty
         # --ask beside it is not the mistake it is on its own — the same rule ``observe`` keeps.
-        prompt = STRUCTURED_PROMPT if args.structured else require_a_scene_question(args.ask)
+        question = None if args.structured else require_a_scene_question(args.ask)
         if camera is None:
             camera = _benchmark_source(args.image)
         router = _resolve_router(router, owned)
         clock = _resolve_clock(clock)
 
         # Read once, and reuse these exact bytes: re-reading the file per repetition would
-        # re-encode it, and a Workload is the Frame's bytes rather than its resolution.
-        # The prompt joins them here and nowhere else, so one Workload stands over the whole
+        # re-encode it, and a Workload is the Frame's bytes rather than its resolution. The
+        # prompt joins them here and nowhere else, so one Workload stands over the whole
         # sitting; what that costs and what it buys is in ``_add_ask``. The fixed shape is a
         # prompt like any other, which is what keeps two structured runs comparable only when
         # they share it, as they must share the Frame and the limits (ADR-0011).
-        workload = Workload(prompt=prompt, frame=camera.capture())
+        # Structured is built by ``structured_workload`` so the prompt and its own wider
+        # 256-token limit (issue #64) cannot drift apart across the three places that send one.
+        frame = camera.capture()
+        workload = (
+            structured_workload(frame)
+            if question is None
+            else Workload(prompt=question, frame=frame)
+        )
         benchmark = measure(
             router=router,
             clock=clock,
@@ -238,6 +247,7 @@ def watch_main(
     router: Router | None = None,
     clock: Clock | None = None,
     sleep: Sleep | None = None,
+    now: Now | None = None,
     questions: Questions | None = None,
     stdin: TextIO | None = None,
     out: TextIO | None = None,
@@ -290,6 +300,7 @@ def watch_main(
         refuse_an_image_file(args.image)
         require_a_cadence(args.every)
         require_an_observation(args.count)
+        require_structured_for_emit(args.emit, structured=args.structured)
         # Asked here with the other invariants of a Watch, and for the sharper version of
         # the reason ``observe`` asks it early: a Watch that took the mistake to the
         # hardware would settle a camera and load the model before saying the question
@@ -302,6 +313,7 @@ def watch_main(
         router = _resolve_router(router, owned)
         clock = _resolve_clock(clock)
         sleep = _resolve_sleep(sleep)
+        now = _resolve_now(now)
 
         model = accept_variant(router, args.model)
         providers = register_execution_providers(router, clock=clock, out=out)
@@ -338,6 +350,11 @@ def watch_main(
                 settling=settling,
                 settling_discards=feed.settling_discards,
             )
+            emitted: EmittedWatch | None = None
+            if args.emit is not None:
+                emitted = EmittedWatch(args.emit)
+                lifetime.callback(emitted.close)
+                emitted.write_start(start, at=now())
             print(render_watch_header(start), file=out, end="", flush=True)
             watched = keep_watch(
                 start=start,
@@ -347,7 +364,7 @@ def watch_main(
                 clock=clock,
                 sleep=sleep,
                 keep_in=frames_dir if args.keep_frames else None,
-                announce=_announcing(out),
+                announce=_announcing(out, emitted=emitted, now=now, variant=start.model.variant),
                 questions=questions,
                 structured=args.structured,
             )
@@ -416,11 +433,18 @@ def _feed_died(provenance: str) -> str:
     )
 
 
-def _announcing(out: TextIO) -> Announce:
-    """Write each Cadence down as it arrives, flushed so an audience sees it arrive."""
+def _announcing(out: TextIO, *, emitted: EmittedWatch | None, now: Now, variant: str) -> Announce:
+    """Write each Cadence down as it arrives, flushed so an audience sees it arrive.
+
+    Also writes it to the emitted file where the Operator asked for one, on the same terms:
+    as it happens, not once the Watch is over — a reader following the file is reading it
+    live, in the other terminal pane.
+    """
 
     def announce(produced: Produced) -> None:
         print(render_watch_line(produced), file=out, end="", flush=True)
+        if emitted is not None:
+            emitted.write_cadence(produced, variant=variant, at=now())
 
     return announce
 
@@ -530,6 +554,26 @@ def _add_structured(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_emit(parser: argparse.ArgumentParser) -> None:
+    """Where a Watch writes every Cadence it reaches as JSON Lines — the whole boundary
+    between ``vision/`` and ``agent/`` (ADR-0014). Valid only alongside ``--structured``:
+    prose has nothing in it a Trigger can act on, and the refusal says so before the camera
+    opens or the model loads.
+    """
+    parser.add_argument(
+        "--emit",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "write every Cadence reached to PATH as JSON Lines, so another process can act"
+            " on what a Watch observes without ever seeing a Frame. Valid only alongside"
+            " --structured. Default: nothing is written; watch.md names the conventional"
+            " path, vision/observations.jsonl, which is git-ignored"
+        ),
+    )
+
+
 def _benchmark_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="benchmark",
@@ -634,6 +678,7 @@ def _watch_parser() -> argparse.ArgumentParser:
         help="refused: a Watch observes a live Feed, and one file would never change",
     )
     _add_structured(parser)
+    _add_emit(parser)
     _add_pinned_variant(parser)
     _add_keep_frames(parser)
     _add_debug(parser)
@@ -779,7 +824,34 @@ def _benchmark_source(image: Path | None) -> Camera:
 
 
 def _streams(out: TextIO | None, err: TextIO | None) -> tuple[TextIO, TextIO]:
-    return (out if out is not None else sys.stdout, err if err is not None else sys.stderr)
+    """The two streams every command writes to, made safe for whatever the model says.
+
+    Reconfigured to UTF-8 with ``errors="replace"`` before anything else runs: the 4B
+    model emits emoji and em dashes an Observation can carry regardless, and on Windows
+    a redirected console defaults to the system code page (cp1252) rather than UTF-8. An
+    Observation the model produced must never be lost to how it is printed (issue #69) —
+    a byte that does not fit becomes ``?`` rather than a ``UnicodeEncodeError``. Applied to
+    whichever stream is actually in use, real or injected, so a test can drive the same
+    reconfiguration a real console gets.
+    """
+    resolved_out = out if out is not None else sys.stdout
+    resolved_err = err if err is not None else sys.stderr
+    _reconfigure_for_utf8(resolved_out)
+    _reconfigure_for_utf8(resolved_err)
+    return resolved_out, resolved_err
+
+
+def _reconfigure_for_utf8(stream: TextIO) -> None:
+    """UTF-8 with ``errors="replace"``, for streams that support reconfiguring at all.
+
+    A real console stream (a ``TextIOWrapper``) does; ``io.StringIO``, which the tests use
+    where the encoding does not matter, does not — and is left alone rather than guarded
+    with a narrower ``isinstance`` check, so any text stream that opts into reconfiguring
+    gets the same treatment.
+    """
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(encoding="utf-8", errors="replace")
 
 
 def _resolve_router(router: Router | None, owned: list[Callable[[], None]]) -> Router:
@@ -915,7 +987,7 @@ def _observe(
     # overrides --ask). The two paths cross the model port through sibling methods, so each
     # returns its own shape and neither type's fields go optional (ADR-0011).
     if question is None:
-        workload = Workload(prompt=STRUCTURED_PROMPT, frame=frame)
+        workload = structured_workload(frame)
         raw_structured, inference = timed(clock, lambda: ready.model.observe_structured(workload))
         structured = StructuredObservation(
             shape=raw_structured.shape,

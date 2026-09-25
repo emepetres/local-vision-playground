@@ -97,6 +97,13 @@ Counting the raw string in the file is **not** evidence of the bug — a name le
 appears twice, once where it is produced and once where it is consumed. The graph has to
 be parsed.
 
+**Fixed upstream [verified 2026-09-25].** On 2026-09-11 Foundry Local republished the Qwen3.5
+models as `:4`, exported without the baked `Memcpy` nodes
+([comment on #1075](https://github.com/microsoft/foundry-local/issues/1075#issuecomment-5639170383)),
+and they load. The catalogue now lists `qwen3.5-*-generic-gpu:4`; the CPU variants are still
+`:3`. The fix came from the publisher, as it had to — nothing a caller did changed it — so the
+lesson below stands.
+
 Two things follow. **An alias can select a variant that cannot run** — Foundry Local picks
 the hardware, and it picked this one — so resolving by alias is not a guarantee that a
 model loads. And **a load failure is an ordinary outcome, not a crash**: the only lever is
@@ -206,7 +213,9 @@ no `generic-gpu`, no NPU build — so through Foundry Local the vision path on t
 machine the demo runs on is **CPU-only**, even though that machine has both an Arc 140V
 iGPU and an `Intel(R) AI Boost` NPU. (`qwen3-vl` having no GPU build at all is already
 visible in Constraint 1's table: its only variants are `-cuda-gpu` and `-generic-cpu`, so a
-machine without CUDA has no GPU option through Foundry Local.) Verified on the demo machine
+machine without CUDA has no GPU option through Foundry Local. The `qwen3.5-*` vision models do
+publish a `-generic-gpu` variant, which is a way onto the Arc iGPU without leaving Foundry
+Local — see [#75](https://github.com/emepetres/local-vision-playground/issues/75).) Verified on the demo machine
 2026-09-16 (CLI 0.8.103): its catalogue does list NPU variants, but all `openvino-npu` and
 all of task `chat-completion` — zero `vision-language-chat` models have one. The catalogue
 is hardware-filtered per device, so a different machine may be offered other builds.
@@ -219,6 +228,13 @@ The demonstrable Execution Provider axis is no longer "CUDA-GPU vs CPU" alone: i
 Benchmark of four rows across two Runtimes (FL-CPU, OV-CPU, OV-GPU, OV-NPU). The NPU is a
 third Execution Provider with its own profile — on a model this small it leads on TTFT, not
 on decode throughput — not a faster replacement for the GPU.
+
+**Both Runtimes run INT4 [verified 2026-09-25].** Foundry Local's `qwen3-vl` builds are not
+full precision — their catalogue sizes (1.34 GB for the 2B, 2.73 GB for the 4B) only fit 4-bit
+weights, and its other CPU builds are named `cpu-int4-rtn-block-32`. Our OpenVINO IR is INT4
+too, but channel-wise and symmetric on every layer, the shape the NPU wants, which is a much
+coarser recipe. The quality gap between the Runtimes is that difference, not quantised against
+unquantised. See [the INT4 note](./research/2026-09-25-int4-quantisation.md).
 
 For reference, per the Windows ML supported-EP table — the one page that carries the actual
 `EpName` strings, and which three Microsoft pages disagree about:

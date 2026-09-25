@@ -591,10 +591,16 @@ def test_a_structured_record_carries_the_object_list_as_machine_readable_data(
     gpu, cpu = kept.record["variants"]
 
     assert kept.code == 0
-    assert gpu["objects"] == [{"name": "cup", "count": 2}, {"name": "laptop", "count": 1}]
+    assert gpu["objects"] == [
+        {"name": "cup", "count": 2, "where": "zone"},
+        {"name": "laptop", "count": 1, "where": "zone"},
+    ]
     assert gpu["no_shape"] is None
     assert "observation" not in gpu
-    assert cpu["objects"] == [{"name": "cup", "count": 2}, {"name": "book", "count": 3}]
+    assert cpu["objects"] == [
+        {"name": "cup", "count": 2, "where": "zone"},
+        {"name": "book", "count": 3, "where": "zone"},
+    ]
 
 
 def test_a_structured_markdown_shows_the_objects_as_a_list(benchmarks: Path) -> None:
@@ -603,8 +609,13 @@ def test_a_structured_markdown_shows_the_objects_as_a_list(benchmarks: Path) -> 
     document = keep_structured(benchmarks).document
 
     assert "## What each Variant saw" in document
-    assert "**qwen3-vl-2b-instruct-cuda-gpu:2**\n\n- 2 × cup\n- 1 × laptop\n" in document
-    assert "**qwen3-vl-2b-instruct-generic-cpu:2**\n\n- 2 × cup\n- 3 × book\n" in document
+    assert (
+        "**qwen3-vl-2b-instruct-cuda-gpu:2**\n\n- 2 × cup (zone)\n- 1 × laptop (zone)\n" in document
+    )
+    assert (
+        "**qwen3-vl-2b-instruct-generic-cpu:2**\n\n- 2 × cup (zone)\n- 3 × book (zone)\n"
+        in document
+    )
 
 
 def test_a_structured_no_shape_run_is_recorded_and_shown_as_its_reason(
@@ -650,7 +661,10 @@ def test_an_unmeasured_variant_in_a_structured_sitting_carries_the_structured_an
     assert gpu["no_shape"] is None
     assert "observation" not in gpu
     assert cpu["loaded"] is True
-    assert cpu["objects"] == [{"name": "cup", "count": 2}, {"name": "book", "count": 3}]
+    assert cpu["objects"] == [
+        {"name": "cup", "count": 2, "where": "zone"},
+        {"name": "book", "count": 3, "where": "zone"},
+    ]
 
 
 def test_a_prose_record_is_unchanged_by_the_structured_answer_keys(benchmarks: Path) -> None:

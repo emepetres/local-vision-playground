@@ -258,6 +258,16 @@ or which produced nothing at all.
   Cadence, and an empty line at the keyboard goes back to the plain description.
 - `--structured` — ask every Cadence for the list of objects present instead of prose.
   Overrides `--ask`; see [the Structured Observations guide](./structured.md).
+- `--emit PATH` — write every Cadence reached to PATH as JSON Lines, so another process —
+  `agent/` — can act on what was observed without ever seeing a Frame
+  ([ADR-0014](../adr/0014-observations-cross-as-a-json-lines-file.md)). Valid only
+  alongside `--structured`: prose has nothing in it a Trigger can act on, and the
+  combination is refused before the camera opens or the model loads. The file is deleted
+  and recreated at the start of every Watch, one line per Cadence flushed as it is
+  reached. Default: nothing is written; the conventional path is `vision/observations.jsonl`,
+  git-ignored like `vision/frames/`. See
+  [`docs/fixtures/watch-emit-contract.jsonl`](../fixtures/watch-emit-contract.jsonl)
+  for a worked example of the format.
 - `--variant ID` — pin the Variant, and with it the Execution Provider, exactly as for
   `observe`. Default: resolve the alias `qwen3-vl-2b-instruct` and let Foundry Local pick
   the hardware. This is the lever the demo above turns.

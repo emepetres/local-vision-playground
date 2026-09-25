@@ -1,0 +1,78 @@
+{
+  "name": "work cell",
+  "tray": {
+    "expected_parts": [
+      {
+        "name": "soldering iron",
+        "synonyms": [
+          "soldering tool",
+          "soldering station",
+          "soldering pen",
+          "soldering iron tip",
+          "soldering iron handle",
+          "soldering tip",
+          "soldering iron holder",
+          "handle",
+          "cable",
+          "stand",
+          "body"
+        ]
+      },
+      {
+        "name": "solder",
+        "synonyms": ["solder spool", "spool", "solder wire", "soldering wire", "spool of wire"]
+      },
+      { "name": "brush", "synonyms": ["pen", "pencil"] },
+      { "name": "tweezers", "synonyms": ["pliers", "soldering tongs"] },
+      { "name": "jumper wires", "synonyms": ["wire", "wires"] },
+      {
+        "name": "circuit board",
+        "synonyms": ["arduino board", "arduino", "microcontroller", "microcontroller board"]
+      }
+    ]
+  },
+  "zone": {
+    "allowed_objects": [
+      {
+        "name": "soldering iron",
+        "synonyms": [
+          "soldering tool",
+          "soldering station",
+          "soldering pen",
+          "soldering iron tip",
+          "soldering iron handle",
+          "soldering tip",
+          "soldering iron holder",
+          "handle",
+          "cable",
+          "stand",
+          "body"
+        ]
+      },
+      {
+        "name": "solder",
+        "synonyms": ["solder spool", "spool", "solder wire", "soldering wire", "spool of wire"]
+      },
+      { "name": "brush", "synonyms": ["pen", "pencil"] },
+      { "name": "tweezers", "synonyms": ["pliers", "soldering tongs"] },
+      { "name": "jumper wires", "synonyms": ["wire", "wires"] },
+      {
+        "name": "circuit board",
+        "synonyms": ["arduino board", "arduino", "microcontroller", "microcontroller board"]
+      }
+    ]
+  },
+  "hands": {
+    "bare": ["bare hand"],
+    "gloved": ["gloved hand", "white glove", "glove"],
+    "plain": ["hand"]
+  },
+  "triggers": {
+    "no_gloves": { "n": 2 }
+  },
+  "notes": [
+    "Only no_gloves is on in this demo file. missing_part (A2) was refuted on the 4B iGPU export and stays off, though the code and its tests still cover it. foreign_object is split out to its own ticket and deferred. See issue #58 (docs/research/2026-09-24-work-cell-spike.md) and issue #66.",
+    "The 4B iGPU export names a bare hand on the live Work Cell a plain \"hand\" (the 2026-09-25 D5 rehearsal: 0/4 said \"bare hand\"), so \"hand\" is listed as plain: it counts as bare unless a gloved hand is named in the same Observation. Leave plain empty for the 2B, where counting \"hand\" as bare added false Triggers (issue #58).",
+    "Only white gloves (grey palm coating) were photographed in the spike; grey electrical gloves are untested and left out of the gloved-hand list above."
+  ]
+}

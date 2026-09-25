@@ -1,0 +1,695 @@
+[
+  {
+    "Candidate": "qwen3-1.7b",
+    "ExecutionProvider": "CPU",
+    "VariantId": "qwen3-1.7b-generic-cpu:2",
+    "Runs": [
+      {
+        "IncidentId": "missing-gasket",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s break down this user query. The user provided a detailed Incident description, and they want me to generate a short sentence describing the Incident for a Supervisor to read. Then, I need to call the notify_supervisor and log_incident tools with that sentence.\n\nFirst, I need to parse the provided Incident details. The Trigger is \u0022Part missing from the Tray\u0022, and the Condition is that a required part is absent from the Tray for 2 consecutive Observations.\n\nThe Observation data is a JSON object with a \u0022cadence\u0022 field of 12, and a \u0022time\u0022 of 2026-09-24T10:31:04\u002B02:00\u0022.\n\nSo, the Incident has a Trigger, Condition, Observation, and Time.\n\nNow, the user wants a short sentence describing this Incident for a Supervisor to read. Then, call the notify_supervisor and log_incident tools with that sentence.\n\nSo, first, I need to create a sentence that describes the Incident. The sentence should include the Trigger name, the Condition, the Observation line, and the time.\n\nOnce the sentence is created, the next step is to call the notify_supervisor and log_incident tools with that sentence",
+        "Elapsed": "00:00:53.4659047",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-screwdriver",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s break down this user query. The user provided a detailed description of an incident involving a Work Cell. \n\nFirst, I need to understand the structure of the incident. The Trigger is \u0022Part missing from the Tray\u0022, and the condition is that a required part is absent from the Tray for 2 consecutive observations.\n\nThe observation data includes a CADENCE of 5, a time of 2026-09-24T11:02:19\u002B02:00, and some variant details.\n\nSo the user wants me to generate a short sentence describing the Incident for a Supervisor to read, then call notify_supervisor with that sentence and call log_incident with that same sentence.\n\nWait, the user\u0027s instructions are a bit complex. Let me parse it again.\n\nThe user provided a detailed description of an incident involving a Work Cell. The task is to generate a short sentence describing the incident for a supervisor to read, then call notify_supervisor with that sentence and call log_incident with that same sentence.\n\nSo the user wants me to generate a sentence, then call the two functions.\n\nBut the user also wants me to make sure that I call both functions exactly once each, and never only describe them",
+        "Elapsed": "00:00:45.2967953",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-first",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s break down what the user is asking for. \n\nFirst, the user provided a detailed description of an Incident. The Incident involves a Trigger named \u0022Working without gloves.\u0022 The condition is that any object matching the bare-hand set is reported. The observation line is a specific CADENCE with a cadence value of 8, a variant of \u0022qwen3-vl-2b-instruct-cuda-gpu:2\u0022, outcome \u0022objects\u0022, and objects containing a name \u0022bare hand\u0022 with count 1 and where \u0022zone\u0022, and another object with name \u0022gasket\u0022, count 1, where \u0022zone\u0022.\n\nThe time provided is \u00222026-09-24T11:15:47\u002B02:00\u0022.\n\nNow, the user wants me to write a short sentence describing the Incident for a Supervisor to read, then call both notify_supervisor and log_incident with that same sentence. \n\nSo, first, I need to parse the provided information and create a concise sentence that describes the Incident. \n\nThe Incident involves a Trigger named \u0022Working without gloves\u0022. The condition is that any object matching the bare-hand set is reported, wherever it is. The observation line is a specific CADENCE",
+        "Elapsed": "00:00:51.5783261",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "",
+        "Elapsed": "00:00:45.4967373",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-phone",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s see. The user provided a detailed Incident description. My task is to generate a short sentence describing the Incident for a Supervisor. Then, call the notify_supervisor and log_incident tools with that sentence.\n\nFirst, I need to parse the given Incident details. The Trigger is \u0022Foreign Object in the Zone\u0022, and the Condition is a list of conditions. The Observation is a CADENCE with specific parameters.\n\nBut the user wants a short sentence describing the Incident for a Supervisor. So I need to condense the given details into a concise sentence.\n\nLet me try to rephrase the given details. The Trigger is a foreign object in the zone. The condition is that the object is not in the allowed list, not in the tray\u0027s expected parts, and not a hand. The observation is a CADENCE with specific parameters.\n\nSo the sentence needs to capture the Trigger, the Condition, the Observation, and the Time.\n\nPutting it all together, the sentence would be something like:\n\n\u0022The Incident involves a foreign object in the zone, which is not in the allowed list, not in the tray\u0027s expected parts, and not a hand. The observation is a CADENCE with specific parameters, and the time is 2026-09-",
+        "Elapsed": "00:00:42.5906689",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-cup",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s break this down. The user provided a scenario involving a Work Cell and an Incident. The task is to generate a short sentence describing the Incident for a Supervisor, then call the notify_supervisor and log_incident tools with that sentence.\n\nFirst, I need to parse the given information. The Trigger is \u0022Foreign Object in the Zone\u0022. The Condition is that the object on the Zone is not in the Zone\u0027s allowed list, not in the Tray\u0027s expected parts, and is not a hand.\n\nThe Observation is a CADENCE with a cadence of 33, time in 2026-09-24T15:04:55\u002B02:00.\n\nSo the Incident is that a foreign object (like a cup or bracket) is observed in the zone, which is not allowed. The observation is a CADENCE with a cadence of 33, time in 2026-09-24T15:04:55\u002B02:00.\n\nNow, the task is to generate a short sentence describing the Incident for a Supervisor. Then call the notify_supervisor and log_incident tools with that sentence.\n\nSo, the first step",
+        "Elapsed": "00:00:46.1827170",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-bracket-truncated",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "",
+        "Elapsed": "00:00:38.5743997",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-elsewhere",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s tackle this. The user provided a detailed Incident description, and they want me to generate a sentence describing the Incident for a Supervisor, then call the notify_supervisor and log_incident tools with that sentence.\n\nFirst, I need to parse the given text. The Trigger is \u0022Working without gloves\u0022, Condition is \u0022Any object matching the bare-hand set is reported, wherever it is.\u0022, Observation is a CADENCE with a cadence of 44, time of 2026-09-24T16:22:31\u002B02:00.\n\nSo the main components are Trigger, Condition, Observation.\n\nNow, the user wants me to generate a sentence describing this Incident for a Supervisor.\n\nThen, call the notify_supervisor and log_incident tools with that same sentence.\n\nSo first, I need to create a sentence that captures the Incident as described.\n\nLet me break down the components:\n\nTrigger: Working without gloves\n\nCondition: Any object matching the bare-hand set is reported, wherever it is.\n\nObservation: {\u0022type\u0022: \u0022cadence\u0022, \u0022cadence\u0022: 44, \u0022time\u0022: \u00222026-09-24T16:22:31",
+        "Elapsed": "00:00:37.3879125",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-scissors",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let me try to figure out what the user is asking for. \n\nFirst, the user provided a detailed description of an incident. The Trigger is \u0022Foreign Object in the Zone,\u0022 and the condition is a bit complex. \n\nThe observation part is a CADENCE object with specific details. The time is given as 2026-09-24T12:38:03\u002B02:00. \n\nThe user wants me to write a short sentence describing the incident for a supervisor to read. Then, call the notify_supervisor and log_incident tools with the same sentence. \n\nWait, but the user also provided the time and other details. So the main task is to generate a sentence that describes the incident as per the provided details. \n\nThen, the user wants to call the notify_supervisor and log_incident tools with the same sentence. \n\nSo the first step is to create a sentence that describes the incident. \n\nThe trigger is \u0022Foreign Object in the Zone,\u0022 and the condition is that an object on the Zone is not in the Zone\u0027s allowed list, not in the Tray\u0027s expected parts, and is not a hand. \n\nThe observation is a CADENCE object with cadence 1",
+        "Elapsed": "00:00:38.4883885",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-gasket-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s tackle this problem. The user provided a detailed scenario involving a Work Cell, an Incident, and specific parameters.\n\nFirst, I need to understand what exactly is being described here. The Trigger is \u0022Part missing from the Tray,\u0022 and the Condition is that a required part is absent from the Tray for 2 consecutive Observations.\n\nThe Observation line provided is a detailed CADENCE measurement with specific values. The time is also given as a specific timestamp.\n\nNow, the user wants me to write a short sentence describing the Incident for a Supervisor to read, then call notify_supervisor with that sentence and call log_incident with that same sentence.\n\nSo, the first step is to parse the given information into a coherent Incident description.\n\nThe Trigger is \u0022Part missing from the Tray,\u0022 which is the key event here.\n\nThe Condition is that a required part is absent from the Tray for 2 consecutive Observations.\n\nSo, the Incident is triggered when a required part is missing from the Tray for two consecutive observations.\n\nThe Observation line provided is a detailed CADENCE measurement with specific values. The time is also given as a specific timestamp.\n\nSo, putting this all together, the Incident description would be something like:\n\n\u0022The Trigger \u0027Part missing from the Tray\u0027 was observed",
+        "Elapsed": "00:00:39.0142831",
+        "Error": null,
+        "BothToolsCalled": false
+      }
+    ],
+    "ReliableCount": 0,
+    "Total": 10
+  },
+  {
+    "Candidate": "qwen3-1.7b",
+    "ExecutionProvider": "GPU",
+    "VariantId": "qwen3-1.7b-generic-gpu:2",
+    "Runs": [
+      {
+        "IncidentId": "missing-gasket",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0259853",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-screwdriver",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0020053",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-first",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0017045",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0011759",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-phone",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0011769",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-cup",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0012086",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-bracket-truncated",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0010764",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-elsewhere",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0013477",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-scissors",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0011477",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-gasket-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0014290",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-1.7b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      }
+    ],
+    "ReliableCount": 0,
+    "Total": 10
+  },
+  {
+    "Candidate": "qwen2.5-1.5b-instruct",
+    "ExecutionProvider": "CPU",
+    "VariantId": "qwen2.5-1.5b-instruct-generic-cpu:4",
+    "Runs": [
+      {
+        "IncidentId": "missing-gasket",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "**Incident:** The **Part Missing from the Tray** occurred at **2026-09-24T10:31:04\u002B02:00**, when **A required part was absent from the Tray** for **2 consecutive Observations**.",
+        "Elapsed": "00:00:19.0266470",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-screwdriver",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "**Incident:** The **Part Missing from the Tray** condition occurred at **2026-09-24T11:02:19\u002B02:00**, resulting in **\u0022A required part is absent from the Tray for 2 consecutive Observations.\u0022**. This was observed during cadence **5** on variant **qwen3-vl-2b-instruct-cuda-gpu:2** where **\u0022soldering iron\u0022** was present while **\u0022bare hand\u0022** was not. No **\u0022shortfall\u0022** was noted.",
+        "Elapsed": "00:00:16.2581208",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-first",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A trigger involving working without gloves has been activated due to any object matching the bare-hand set being reported at zone. This observation indicates potential contamination risk. \n\n{\u0022name\u0022: \u0022notify_supervisor\u0022, \u0022arguments\u0022: {\u0022sentence\u0022: \u0022A trigger involving working without gloves has been activated due to any object matching the bare-hand set being reported at zone. This observation indicates potential contamination risk.\u0022}}\n{\u0022name\u0022: \u0022log_incident\u0022, \u0022arguments\u0022: {\u0022sentence\u0022: \u0022A trigger involving working without gloves has been activated due to any object matching the bare-hand set being reported at zone. This observation indicates potential contamination risk.\u0022}}",
+        "Elapsed": "00:00:16.2075170",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A cadence of 21 was observed without gloves at 2026-09-24T13:47:02\u002B02:00 while working bare-handed. This observation indicates potential risk due to lack of protective gear. \n\nNotify supervisor about this incident:\n\n{\u0022name\u0022: \u0022notify_supervisor\u0022, \u0022arguments\u0022: {\u0022sentence\u0022: \u0022A cadence of 21 was observed without gloves at 2026-09-24T13:47:02\u002B02:00 while working bare-handed. This observation indicates potential risk due to lack of protective gear.\u0022}}\n\nLog the incident:\n\n{\u0022name\u0022: \u0022log_incident\u0022, \u0022arguments\u0022: {\u0022sentence\u0022: \u0022A cadence of 21 was observed without gloves at 2026-09-24T13:47:02\u002B02:00 while working bare-handed. This observation indicates potential risk due to lack of protective gear.\u0022}}",
+        "Elapsed": "00:00:23.2036621",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-phone",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A foreign object was detected in the zone despite being outside the allowed list and tray. The observation shows two cadences were skipped and five frames became stale. This occurred at 2026-09-24T10:30:09\u002B02:00. \n\nNotify supervisor about this incident:\n\n{\n    \u0022sentence\u0022: \u0022A foreign object was detected in the zone despite being outside the allowed list and tray. The observation shows two cadences were skipped and five frames became stale.\u0022\n}",
+        "Elapsed": "00:00:15.2966472",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-cup",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A foreign object was detected in the zone during cadence 33 at 2026-09-24T15:04:55\u002B02:00. The objects found were a cup and a bracket outside of the allowed list and tray\u0027s expected parts. \n\n{\u0022name\u0022: \u0022log_incident\u0022, \u0022arguments\u0022: {\u0022sentence\u0022: \u0022A foreign object was detected in the zone during cadence 33 at 2026-09-24T15:04:55\u002B02:00. The objects found were a cup and a bracket outside of the allowed list and tray\u0027s expected parts.\u0022}}\n{\u0022name\u0022: \u0022notify_supervisor\u0022, \u0022arguments\u0022: {\u0022sentence\u0022: \u0022A foreign object was detected in the zone during cadence 33 at 2026-09-24T15:04:55\u002B02:00. The objects found were a cup and a bracket outside of the allowed list and tray\u0027s expected parts.\u0022}}",
+        "Elapsed": "00:00:25.1222881",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-bracket-truncated",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "**Incident:** The **Part Missing from the Tray** occurred at **2026-09-24T10:30:15\u002B02:00**, when **A required part was absent from the Tray for 2 consecutive Observations**.",
+        "Elapsed": "00:00:11.7940259",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-elsewhere",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A trigger involving working without gloves has been observed at 2026-09-24T16:22:31\u002B02:00 due to any object matching the bare-hand set being reported elsewhere. This aligns with the Condition of \u0027Any object matching the bare-hand set is reported, wherever it is.\u0027 The Observation shows objects found by cadence count 44. \n\nNotify supervisor about this Incident:\n\n{\n\u0022sentence\u0022: \u0022A trigger involving working without gloves was observed at 2026-09-24T16:22:31\u002B02:00. Any object matching the bare-hand set is reported, wherever it is.\u0022\n}",
+        "Elapsed": "00:00:19.3758263",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-scissors",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A foreign object has been detected in the zone, specifically scissors found outside the allowed list and tray. This observation occurred at 2026-09-24T12:38:03\u002B02:00. \n\nNotify supervisor about this incident.\n{\u0022name\u0022: \u0022notify_supervisor\u0022, \u0022arguments\u0022: {\u0022sentence\u0022: \u0022A foreign object has been detected in the zone, specifically scissors found outside the allowed list and tray. This observation occurred at 2026-09-24T12:38:03\u002B02:00.\u0022}}\nNotify supervisor about this incident.\n{\u0022name\u0022: \u0022log_incident\u0022, \u0022arguments\u0022: {\u0022sentence\u0022: \u0022A foreign object has been detected in the zone, specifically scissors found outside the allowed list and tray. This observation occurred at 2026-09-24T12:38:03\u002B02:00.\u0022}}",
+        "Elapsed": "00:00:18.6430567",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-gasket-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "**Incident:** The tray lacks a required part (bracket) after two consecutive observations. **(2026-09-24T17:51:40\u002B02:00)**",
+        "Elapsed": "00:00:13.2358653",
+        "Error": null,
+        "BothToolsCalled": false
+      }
+    ],
+    "ReliableCount": 0,
+    "Total": 10
+  },
+  {
+    "Candidate": "qwen2.5-1.5b-instruct",
+    "ExecutionProvider": "GPU",
+    "VariantId": "qwen2.5-1.5b-instruct-openvino-gpu:2",
+    "Runs": [
+      {
+        "IncidentId": "missing-gasket",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A required part is missing from the Tray for 2 consecutive Observations, indicating a potential issue with part availability in the Work Cell.",
+        "Elapsed": "00:00:20.7401403",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-screwdriver",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A required part is missing from the Tray for 2 consecutive Observations, with a soldering iron and a bare hand present.",
+        "Elapsed": "00:00:00.6911028",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-first",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A bare hand was observed without gloves in the zone, matching the trigger condition.",
+        "Elapsed": "00:00:00.4782421",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A bare hand was observed 2 times without gloves in the Work Cell at 2026-09-24T13:47:02\u002B02:00.",
+        "Elapsed": "00:00:01.2503277",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-phone",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A foreign object was detected in the Work Cell\u0027s zone, not on the allowed list or in the Tray\u0027s expected parts, and was not a hand. This incident has been logged and will be reviewed by the safety team.",
+        "Elapsed": "00:00:01.6225768",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-cup",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A foreign object was detected in the Work Cell\u0027s zone, consisting of a cup and a bracket, which are not allowed or expected in the current setup.",
+        "Elapsed": "00:00:01.1160284",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-bracket-truncated",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A required part is missing from the Tray for 2 consecutive Observations, indicating a potential shortage.",
+        "Elapsed": "00:00:00.8184919",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-elsewhere",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A bare hand was observed without gloves in another location.",
+        "Elapsed": "00:00:00.5113145",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-scissors",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A foreign object was detected in the Work Cell\u0027s zone, not on the allowed list or in the Tray\u0027s expected parts, and was not a hand. This incident has been logged and will be reviewed.",
+        "Elapsed": "00:00:01.3529250",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-gasket-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A required part is missing from the Tray for 2 consecutive Observations, with 2 brackets and 1 gloved hand present.",
+        "Elapsed": "00:00:00.9704276",
+        "Error": null,
+        "BothToolsCalled": false
+      }
+    ],
+    "ReliableCount": 0,
+    "Total": 10
+  },
+  {
+    "Candidate": "qwen2.5-1.5b-instruct",
+    "ExecutionProvider": "NPU",
+    "VariantId": "qwen2.5-1.5b-instruct-openvino-npu:5",
+    "Runs": [
+      {
+        "IncidentId": "missing-gasket",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "The part missing from the Tray has been absent for 2 consecutive Observations.",
+        "Elapsed": "00:01:12.1210645",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-screwdriver",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "The soldering iron is missing from the tray for the second time in a row.",
+        "Elapsed": "00:00:01.4000188",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-first",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "Notify supervisor about the Incident: Working without gloves, Triggered by bare hand objects being reported in the zone at 2026-09-24T11:15:47\u002B02:00.",
+        "Elapsed": "00:00:02.5451219",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "Notify supervisor about the Incident: \u0022Worker is working without gloves, observed 2 bare hands at hand.\u0022",
+        "Elapsed": "00:00:01.5016083",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-phone",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A phone was detected in the zone, not allowed or expected, and cadence is insufficient.",
+        "Elapsed": "00:00:01.4874202",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-cup",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "An object not in the Zone\u0027s allowed list, not in the Tray\u0027s expected parts, and not a hand was found in the Zone.",
+        "Elapsed": "00:00:01.8086618",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-bracket-truncated",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "The soldering iron is missing from the tray for the second time in a row.",
+        "Elapsed": "00:00:01.3565770",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-elsewhere",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "Notify supervisor about the Incident: \u0022Working without gloves at cadence 44 on September 24, 2026, elsewhere.\u0022",
+        "Elapsed": "00:00:01.8834925",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-scissors",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "A foreign object, specifically a pair of scissors, was found in the zone without permission.",
+        "Elapsed": "00:00:01.4492006",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-gasket-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "The part missing from the Tray has been observed for 2 consecutive times.",
+        "Elapsed": "00:00:01.2805978",
+        "Error": null,
+        "BothToolsCalled": false
+      }
+    ],
+    "ReliableCount": 0,
+    "Total": 10
+  },
+  {
+    "Candidate": "qwen3-4b",
+    "ExecutionProvider": "CPU",
+    "VariantId": "qwen3-4b-generic-cpu:3",
+    "Runs": [
+      {
+        "IncidentId": "missing-gasket",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s see. The user provided an Incident with specific details. My task is to generate a short sentence describing the Incident for a Supervisor. Then, I need to call two tools: notify_supervisor and log_incident, each with the same sentence.\n\nFirst, I need to parse the Incident details provided. The Trigger is \u0022Part missing from the Tray\u0022. The Condition is that a required part is absent from the Tray for 2 consecutive Observations. The Observation given is part of the incident, indicating that the part (bracket) is missing from the tray.\n\nSo the Incident is that a required part (bracket) is missing from the tray, which has been observed for two consecutive observations.\n\nNow, I need to create a concise sentence that captures this incident. The sentence should be suitable for a Supervisor to read, so it needs to be clear and to the point.\n\nSo, the sentence could be: \u0022A required part (bracket) is missing from the tray, violating the condition of two consecutive observations.\u0022\n\nBut maybe that\u0027s a bit long. Let me check the original data again.\n\nThe Observation line that crossed it: The Observation is part of the incident, indicating that the part is missing. The time is given, but the exact",
+        "Elapsed": "00:02:01.1155878",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-screwdriver",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s tackle this. The user provided an Incident with specific details. My job is to generate a short sentence describing the Incident for a Supervisor. Then, I need to call two tools: notify_supervisor and log_incident, each with the same sentence.\n\nFirst, I need to parse the Incident details provided. The Trigger is \u0022Part missing from the Tray\u0022. The Condition is that a required part is absent from the Tray for 2 consecutive Observations. \n\nThe Observation provided is a JSON object. The key points from the Observation are: the type is \u0022cadence\u0022, cadence is 5, time is given, variant is specified, outcome is \u0022objects\u0022, and the objects list includes \u0022soldering iron\u0022 with count 1 and where \u0022tray\u0022, and \u0022bare hand\u0022 with count 1 and where \u0022hand\u0022.\n\nThe Observation also has \u0022truncated\u0022: false, \u0022shortfall\u0022: null.\n\nSo, the Observation indicates that in the Tray, there is a \u0022soldering iron\u0022 with count 1, but it\u0027s missing. Wait, the Observation\u0027s objects list includes \u0022soldering iron\u0022 with count 1 and where \u0022tray\u0022. But the Trigger is \u0022Part missing from the Tray\u0022. So,",
+        "Elapsed": "00:01:24.1886252",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-first",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s see. The user provided an Incident report with specific details. My task is to generate a short sentence describing this Incident for a supervisor. Then, I need to call two tools: notify_supervisor and log_incident, each with the same sentence.\n\nFirst, I need to parse the Incident details. The Trigger is \u0022Working without gloves\u0022. The Condition states that any object matching the bare-hand set is reported. \n\nThe Observation part is a JSON object. It mentions \u0022objects\u0022 in the outcome. The objects listed are \u0022bare hand\u0022 with count 1 in \u0022zone\u0022, and \u0022gasket\u0022 with count 1 in \u0022zone\u0022.\n\nThe Time given is 2026-09-24T11:15:47\u002B02:00.\n\nSo, the Incident is triggered by the presence of bare hands (without gloves) in the zone. The observation includes a bare hand and a gasket, both in the same zone.\n\nNow, I need to condense this information into a concise sentence for the supervisor. The sentence should mention the trigger, the condition, the observation (objects found), and the time.\n\nSo, the sentence could be: \u0022At 11:15:",
+        "Elapsed": "00:01:19.7572220",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s see. The user provided an incident report with specific details. My task is to process this information and trigger the necessary tools.\n\nFirst, I need to understand the structure of the incident. The trigger is \u0022Working without gloves,\u0022 which is a safety concern. The condition states that any object matching the bare-hand set is reported, regardless of location.\n\nThe observation line provided a detailed JSON object. It includes the type of observation (cadence), the cadence value (21), the time of the observation, and a list of objects. The objects include a \u0022bare hand\u0022 with a count of 2 and a location of \u0022hand.\u0022\n\nThe time provided is 2026-09-24T13:47:02\u002B02:00, which is in the UTC\u002B2 time zone.\n\nNow, I need to process this information and generate the appropriate response. The user\u0027s instruction is to write one short sentence describing the Incident for a Supervisor to read, then call notify_supervisor with that sentence and call log_incident with that same sentence.\n\nSo, the first step is to create a concise sentence that captures the essence of the incident. The sentence should be brief, yet informative enough for",
+        "Elapsed": "00:01:20.0165745",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-phone",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s break this down. The user provided a detailed incident report. The task is to generate a short sentence summarizing the incident for a supervisor. Then, call both notify_supervisor and log_incident with that sentence.\n\nFirst, I need to parse the incident details. The trigger is \u0022Foreign Object in the Zone\u0022. The condition is that an object in the Zone is not on the allowed list, not in the Tray\u0027s expected parts, and not a hand.\n\nThe observation indicates that there\u0027s a phone in the Zone. The time is given as 2026-09-24T10:30:09\u002B02:00.\n\nSo the incident is a foreign object (a phone) found in the Zone, which is not allowed based on the conditions provided.\n\nNow, I need to condense this into a single sentence for the supervisor. The sentence should mention the trigger, the presence of the foreign object (phone), and the time.\n\nSo, the sentence would be something like: \u0022Foreign Object in the Zone: A phone was found in the Zone, which is not allowed, at 2026-09-24T10:30:09\u002B0",
+        "Elapsed": "00:01:26.1477886",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-cup",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "",
+        "Elapsed": "00:01:22.3280932",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-bracket-truncated",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let me try to figure this out. The user provided a detailed incident report. The trigger is \u0022Part missing from the Tray\u0022. The condition is that a required part is absent from the Tray for 2 consecutive Observations.\n\nNow, the Observation line given is a JSON object. The key points here are that the \u0022soldering iron\u0022 is present in the tray with a count of 1. However, the Observation line is truncated, and there\u0027s a shortfall noted as null.\n\nWait, the trigger is about a part missing from the tray. But in the Observation, the soldering iron is present. However, the Observation line is truncated, and the shortfall is null. Hmm, maybe the Observation is incomplete, so the system is checking if there\u0027s a shortfall in the parts present.\n\nBut the trigger is that a required part is missing. However, in the Observation, the soldering iron is present. So why is there a trigger? Maybe the Observation is not fully captured. The Observation line is truncated, so maybe the system is checking if there\u0027s a shortfall in the parts that should be present. \n\nIn this case, the trigger is that a required part is missing. The Observation line shows that the soldering iron is present. However",
+        "Elapsed": "00:01:23.1309607",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-elsewhere",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s see. The user provided an incident report. The trigger is \u0022Working without gloves,\u0022 and the condition is that any object matching the bare-hand set is reported.\n\nThe observation line crossed this trigger. The observation includes a cadence with a count of 44, and the time is given. The objects detected are a bare hand with a count of 1, located elsewhere.\n\nSo, the incident is that a bare hand was observed without gloves. The time is 2026-09-24T16:22:31\u002B02:00.\n\nNow, I need to write a short sentence describing the Incident for a Supervisor to read. Then call notify_supervisor with that sentence and call log_incident with that same sentence.\n\nSo the sentence should be concise, stating the trigger, the observation, and the time. For example: \u0022Incident: Working without gloves detected at 16:22:31 on 2026-09-24.\u0022\n\nThen, I need to call notify_supervisor with that sentence and log_incident with the same sentence.\n\nSo the final answer should be two tool calls, each with the same sentence as the argument.\n",
+        "Elapsed": "00:01:24.0260037",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-scissors",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s tackle this. The user provided an Incident with specific details. My job is to generate a short sentence describing the Incident, then call both notify_supervisor and log_incident with that sentence.\n\nFirst, I need to parse the Incident details. The Trigger is \u0022Foreign Object in the Zone\u0022. The Condition states that an object in the Zone is not on the allowed list, not in the Tray\u0027s expected parts, and not a hand. \n\nThe Observation shows that there\u0027s an object named \u0022scissors\u0022 counted as 1 in the Zone. The time is given as 2026-09-24T12:38:03\u002B02:00.\n\nSo, the Incident is a Foreign Object in the Zone. The object found is a pair of scissors, which is not on the allowed list, not in the Tray\u0027s expected parts, and is not a hand. \n\nNow, I need to condense this into a single, concise sentence. The sentence should mention the trigger, the object found, and the fact that it\u0027s not allowed. \n\nSo, the sentence could be: \u0022A foreign object (scissors) was detected in the Zone, which is not on the allowed list,",
+        "Elapsed": "00:01:38.0024897",
+        "Error": null,
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-gasket-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": "\nOkay, let\u0027s see. The user provided an incident report. The trigger is \u0022Part missing from the Tray\u0022. The condition is that a required part is absent from the Tray for 2 consecutive Observations.\n\nNow, the observation given is from the cadence type, with a cadence of 61. The time is 2026-09-24T17:51:40\u002B02:00. The observation mentions that there are 2 brackets on the tray and 1 gloved hand in the hand. The truncated is false, and the shortfall is null.\n\nSo, the incident is that a required part is missing from the Tray. The observation shows that there are 2 brackets on the tray, but the required part is missing. However, the observation\u0027s \u0022shortfall\u0022 is null, which might indicate that the part is present. Wait, but the trigger is that a part is missing. The observation\u0027s \u0022objects\u0022 list includes a \u0022bracket\u0022 with count 2 on the tray. But the trigger condition is that a required part is absent for 2 consecutive observations. So, the observation here shows that the part is present (2 brackets). But the trigger is that the part",
+        "Elapsed": "00:01:28.6095494",
+        "Error": null,
+        "BothToolsCalled": false
+      }
+    ],
+    "ReliableCount": 0,
+    "Total": 10
+  },
+  {
+    "Candidate": "qwen3-4b",
+    "ExecutionProvider": "GPU",
+    "VariantId": "qwen3-4b-generic-gpu:2",
+    "Runs": [
+      {
+        "IncidentId": "missing-gasket",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0331759",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-screwdriver",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0020350",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-first",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0017367",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0017691",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-phone",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0037535",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-cup",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0025928",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-bracket-truncated",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0023957",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "no-gloves-elsewhere",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0058936",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "foreign-scissors",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0025886",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      },
+      {
+        "IncidentId": "missing-gasket-second",
+        "NotifySupervisorCalled": false,
+        "LogIncidentCalled": false,
+        "AssistantText": null,
+        "Elapsed": "00:00:00.0041224",
+        "Error": "genai_model_instance.cc:59 fl::GenAIModelInstance::GenAIModelInstance failed to load model qwen3-4b-generic-gpu:2: WebGPU execution provider is not supported in this build. ",
+        "BothToolsCalled": false
+      }
+    ],
+    "ReliableCount": 0,
+    "Total": 10
+  }
+]

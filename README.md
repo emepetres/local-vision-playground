@@ -19,10 +19,12 @@ watched all shift — is argued in [`docs/business-value.md`](./docs/business-va
 - **Foundry Local's catalogue here serves vision on the CPU only.** No GPU build, no NPU
   build — so the machine's own accelerators are reached through a second runtime, OpenVINO
   GenAI. → [`docs/stack.md`](./docs/stack.md), Constraint 3
-- **INT4 quantisation buys the accelerator, not the accuracy.** The same 2B model degrades
-  into repetition once quantised, while the unquantised CPU build answers cleanly.
-  → [the second runtime](./docs/guide/runtimes.md#the-honest-caveat)
-- **A published model variant can simply be broken**, and no caller can fix it — which is
+- **The NPU's quantisation recipe buys the accelerator, not the accuracy.** Both runtimes
+  run INT4, but the OpenVINO export is quantised channel-wise, the shape the NPU wants, and
+  the same 2B model degrades into repetition under it, while Foundry Local's block-wise INT4
+  build answers cleanly. → [the INT4 note](./docs/research/2026-09-25-int4-quantisation.md)
+- **A published model variant can simply be broken**, and no caller can fix it — only the
+  publisher, as Foundry Local did five days later with a new version — which is
   why pinning a variant by hand is the lever the whole demo rests on.
   → [`docs/stack.md`](./docs/stack.md)
 - **This model never honours a forced tool call with an image** — 0 of 11 trials — so a
@@ -42,8 +44,8 @@ reached two ways, which is the calibration between them:
 | Arc iGPU | OpenVINO GenAI |           2.29 s |      **56.0** |
 | NPU      | OpenVINO GenAI |           5.89 s |          21.8 |
 
-The OpenVINO rows run an INT4 build and the Foundry Local row does not, so they did not do
-the same amount of work: tokens/second is the figure that survives that, and latency is not a
+Every row is INT4, but the OpenVINO rows run a coarser recipe that loops to the token limit,
+so they did not do the same amount of work as the Foundry Local row: tokens/second is the figure that survives that, and latency is not a
 hardware comparison here. The full record is in
 [`docs/benchmarks/`](./docs/benchmarks/asus-zenbook-s14-intel-core-ultra-7-258v-20260922-090814.md),
 and how to take your own is in [the benchmark guide](./docs/guide/benchmark.md).
@@ -114,6 +116,8 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
   to name the hardware you want.
 - [`vision/tools/convert/README.md`](./vision/tools/convert/README.md) — exporting the model
   to an OpenVINO IR: prerequisites, the recipe, and the trap it defends against.
+- [`agent`](./docs/guide/agent.md) — running the Agent next to the Watch: Triggers,
+  Incidents, and the safety net when the model does not act.
 
 **Why it is the way it is — the decisions**
 
@@ -143,6 +147,8 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
   are two runtimes; Foundry Local is not the only source.
 - [ADR-0013](./docs/adr/0013-the-second-runtime-is-an-adapter-behind-an-unchanged-model-port.md)
   — the second runtime is an adapter behind an unchanged model port.
+- [ADR-0014](./docs/adr/0014-observations-cross-as-a-json-lines-file.md) — observations
+  cross to the agent as a JSON Lines file, not an endpoint.
 
 **What was verified, and when**
 
@@ -150,6 +156,9 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
 - [2026-09-15 — forcing a tool call with an image](./docs/research/2026-09-15-forced-tool-call-with-image.md)
 - [2026-09-22 — value scenarios for local multimodal vision](./docs/research/2026-09-22-local-multimodal-vision-value-scenarios.md)
 - [2026-09-23 — Intel NPU edge devices](./docs/research/2026-09-23-intel-npu-edge-devices.md)
+- [2026-09-24 — can the 2B model see the Work Cell?](./docs/research/2026-09-24-work-cell-spike.md)
+- [2026-09-24 — which Scene Questions the 4B model can answer on the Work Cell](./docs/research/2026-09-24-d2-scene-questions.md)
+- [2026-09-25 — both runtimes run INT4; the recipe is what differs](./docs/research/2026-09-25-int4-quantisation.md)
 
 **What was measured**
 

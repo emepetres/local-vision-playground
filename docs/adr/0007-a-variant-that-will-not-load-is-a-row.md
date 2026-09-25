@@ -9,6 +9,10 @@ An Operator who names that Variant alongside a working one has asked a question 
 machine run these builds, and what do they cost?* — and "no, and here is nothing else" is a
 worse answer than the table.
 
+(Foundry Local republished the Qwen3.5 models as `:4` on 2026-09-11 and that variant now
+loads. The decision does not depend on it: the fix came from the publisher, never from the
+caller, and the next broken build will be a row on the same terms.)
+
 So a Variant that will not go onto the hardware becomes an **Unmeasured Variant**: a row in
 the report carrying the reason, in the turn it would have taken, and the sitting carries on
 to the next Variant. **The exit status follows the Benchmark, not the Variants**: zero when

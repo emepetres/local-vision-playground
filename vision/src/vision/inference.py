@@ -40,19 +40,31 @@ Workload in the same one place, and nothing else about the request moves.
 """
 
 STRUCTURED_PROMPT = (
-    "List every distinct object you can see in this image. Reply with ONLY a JSON array,"
-    ' where each element is an object {"name": <string>, "count": <integer >= 1>}.'
-    ' Example: [{"name": "cup", "count": 2}, {"name": "book", "count": 1}].'
-    " If the image is empty, reply with []."
+    "This is a work bench seen from above. The work zone is the green cutting mat. The tray"
+    " is the white mesh tray beside it. List every distinct object you can see, and where it"
+    ' is: "tray" if it lies in the white tray, "zone" if it lies on the green mat, "hand" if a'
+    ' hand is holding it, "elsewhere" for anything else. Hands are objects too: name each'
+    ' visible hand "bare hand" (skin showing) or "gloved hand". Reply with ONLY a JSON array,'
+    ' where each element is an object {"name": <string>, "count": <integer >= 1>, "where":'
+    ' <one of "tray", "zone", "hand", "elsewhere">}. Example: [{"name": "cup", "count": 1,'
+    ' "where": "zone"}, {"name": "bare hand", "count": 1, "where": "zone"}]. If nothing is'
+    " there, reply with []."
 )
 """The fixed shape a Structured Observation asks for, put in the prompt and parsed back.
 
 Not a Scene Question and not the Operator's to change: ``--structured`` sends *this*, which
 is why it overrides ``--ask``. ADR-0011 first reached the shape by a forced tool call; the
 spike behind issue #30 found `qwen3-vl-2b-instruct` never honours one and instead answers a
-JSON-in-prompt request exactly, so the shape is spelled out here — ``name`` and ``count``
-with a worked example, because the model defaults to an array of bare strings without it —
-and read back out of the reply (see ``parse_objects_present``).
+JSON-in-prompt request exactly, so the shape is spelled out here — ``name``, ``count`` and
+``where`` with a worked example, because the model defaults to an array of bare strings
+without it — and read back out of the reply (see ``parse_objects_present``).
+
+This is the spike behind issue #58/#64's ``described`` prompt, verbatim: it names the demo's
+own Work Cell — the green cutting mat, the white mesh tray — rather than staying scenario-
+agnostic, because that is what got the 4B model naming hands correctly and answering with a
+valid ``where`` (docs/research/2026-09-24-work-cell-spike.md, A1/A3). Naming this project's
+own fixture in a prompt every Operator's Frame is sent through is a deliberate, recorded
+debt: ADR-0016 has the reasoning and the way out (a future ``--scene TEXT``), not built now.
 """
 
 # The generation limits a Workload takes when a caller does not say otherwise. They are
@@ -60,6 +72,17 @@ and read back out of the reply (see ``parse_objects_present``).
 # measuring one Workload against another can see — and record — what it ran under (ADR-0005).
 MAX_OUTPUT_TOKENS = 128
 TEMPERATURE = 0.0
+
+STRUCTURED_MAX_OUTPUT_TOKENS = 256
+"""The output limit a structured Workload runs under, rather than the prose ``MAX_OUTPUT_TOKENS``.
+
+Prose stays at 128 — the length bound the ``PROMPT`` above already asks for two or three
+sentences within. A Structured Observation's reply is longer: it names every object *and*
+places each one, and the 4B Variant's replies mostly do not fit in 128 — the spike found only
+12 of 32 4B replies closed the array at 128 tokens, against 29 of 32 at 256, with the
+remaining 3 truncated and salvaged rather than lost outright
+(docs/research/2026-09-24-work-cell-spike.md, A1).
+"""
 
 DEFAULT_ALIAS = "qwen3-vl-2b-instruct"
 """Resolved when no variant is pinned, so Foundry Local picks the hardware."""
@@ -104,6 +127,24 @@ class FinishReason(StrEnum):
     COMPLETE = "complete"
     TRUNCATED = "truncated"
     OTHER = "other"
+
+
+class Where(StrEnum):
+    """The one closed set of places a present object can be, per the Work Cell prompt.
+
+    Exactly the four words ``STRUCTURED_PROMPT`` asks the model to answer with — spelled
+    lower-case as the prompt spells them, because the model is asked to reply with these
+    words verbatim rather than something this adapter maps onto them. A model that returns
+    anything else names no member of this set and is not coerced onto the nearest one: see
+    ``_present_object``, where a value outside this set makes that element invalid rather
+    than guessed at. Whether an object being present *matters* is a Trigger's question, not
+    this one's (CONTEXT.md, "Structured Observation") — this only says where it was.
+    """
+
+    TRAY = "tray"
+    ZONE = "zone"
+    HAND = "hand"
+    ELSEWHERE = "elsewhere"
 
 
 @dataclass(frozen=True)
@@ -206,6 +247,23 @@ class Workload:
     temperature: float = TEMPERATURE
 
 
+def structured_workload(frame: Frame) -> Workload:
+    """The one Workload every ``--structured`` request sends: the fixed prompt, at its own limit.
+
+    Built here rather than left to the three call sites that need one (``observe``'s single
+    shot, ``benchmark``'s sitting, a Watch's structured Cadence) so that ``STRUCTURED_PROMPT``
+    and ``STRUCTURED_MAX_OUTPUT_TOKENS`` cannot drift apart. Pairing them by convention across
+    three files is three places that pairing can silently break — and the cost of it breaking
+    is not academic: the spike found only 12 of 32 4B replies close the array at 128 tokens,
+    against 29 of 32 at 256, so a call site that quietly reverted to the Workload's own default
+    would mostly be sending truncated replies to the salvage path rather than the wider limit
+    this shape needs.
+    """
+    return Workload(
+        prompt=STRUCTURED_PROMPT, frame=frame, max_output_tokens=STRUCTURED_MAX_OUTPUT_TOKENS
+    )
+
+
 @dataclass(frozen=True)
 class RawObservation:
     """What the model reports about a Frame, already copied out of the native response.
@@ -222,15 +280,20 @@ class RawObservation:
 
 @dataclass(frozen=True)
 class PresentObject:
-    """One object the model reports present in a Frame: what it is, and how many there are.
+    """One object the model reports present in a Frame: what it is, how many, and where.
 
     The count is a whole number of at least one — a Structured Observation lists what is
-    *present*, so an object with a count of zero is not present and has no row. A name and a
-    count together, because either alone is nothing an Operator can act on.
+    *present*, so an object with a count of zero is not present and has no row. ``where`` is
+    one of the closed ``Where`` set the prompt asks for, never guessed at: an element whose
+    ``where`` is missing or names something outside that set is not a ``PresentObject`` at
+    all (see ``_present_object``), because a Trigger that reads ``where`` needs the field to
+    mean what it says or to not be there. A name, a count and a place together, because any
+    one alone is nothing an Operator — or a Trigger — can act on.
     """
 
     name: str
     count: int
+    where: Where
 
 
 @dataclass(frozen=True)
@@ -251,9 +314,9 @@ class NoShape:
 
     An ordinary outcome, not a fall-back and not a crash (ADR-0011): the model answered in
     prose, wrapped a truncated array it never closed, or returned something that does not
-    validate as a list of ``{name, count}``. It carries its reason as one line an Operator
-    reads, and it never silently degrades to a prose Observation — a Watch or a Benchmark
-    that quietly mixed shapes would report a comparison it cannot vouch for.
+    validate as a list of ``{name, count, where}``. It carries its reason as one line an
+    Operator reads, and it never silently degrades to a prose Observation — a Watch or a
+    Benchmark that quietly mixed shapes would report a comparison it cannot vouch for.
     """
 
     reason: str
@@ -520,7 +583,17 @@ def _disable_runtime_telemetry() -> None:
     os.environ.setdefault("ORT_TELEMETRY_DISABLED", "1")
 
 
-def _foundry_configuration(app_name: str) -> Configuration:
+_CACHE_ONLY_SERVICE_URL = "http://127.0.0.1:5273"
+"""The external service URL that puts Foundry Local's catalogue in cache-only mode.
+
+Nothing is listening there and nothing is sent to it: on 2.0.1 an external service URL only
+switches the catalogue to reading its disk cache, and model load stays in-process
+**[verified 2026-09-25]**. The SDK reserves it for delegating load to that service one day,
+which is the thing to check here when the SDK is upgraded.
+"""
+
+
+def _foundry_configuration(app_name: str, *, cache_only: bool = False) -> Configuration:
     """The ``Configuration`` every ``FoundryLocalManager`` in this process is built from.
 
     ``disable_nonessential_telemetry=True`` is not a flag an Operator chooses: Local-First
@@ -528,10 +601,41 @@ def _foundry_configuration(app_name: str) -> Configuration:
     telemetry too (CONTEXT.md, "Local-First"). Kept apart from ``_manager`` so a test can
     build one without starting the Foundry Local service that constructing a
     ``FoundryLocalManager`` would.
+
+    ``cache_only`` reads the catalogue from its disk cache and never from the network — the
+    second manager ``InProcessFoundryLocal`` starts when the first could not reach the
+    catalogue (``_reached_the_catalogue``).
+
+    The manager that reaches for the network logs errors only. With the network gone it
+    prints a warning for every region it tries — some twenty lines before the command says
+    anything — and those have been the only warnings it ever gave on the demo machine
+    **[verified 2026-09-25]**, so what is lost is the noise and not a signal. The cache-only
+    manager keeps the SDK's default, having no regions to try.
     """
     from foundry_local_sdk import Configuration
+    from foundry_local_sdk.logging_helper import LogLevel
 
-    return Configuration(app_name=app_name, disable_nonessential_telemetry=True)
+    return Configuration(
+        app_name=app_name,
+        disable_nonessential_telemetry=True,
+        log_level=LogLevel.WARNING if cache_only else LogLevel.ERROR,
+        web=Configuration.WebService(external_url=_CACHE_ONLY_SERVICE_URL) if cache_only else None,
+    )
+
+
+def _reached_the_catalogue(manager: FoundryLocalManager) -> bool:
+    """Whether this manager's catalogue holds anything but what a scan of the disk found.
+
+    A model the catalogue describes declares a task; a model found only by scanning the
+    downloaded weights declares none **[verified 2026-09-25]**. So a catalogue where no model
+    declares a task is one that could not be reached — including an empty one, which is a
+    machine with nothing downloaded and no network.
+    """
+    return any(
+        variant.info.task is not None
+        for model in manager.catalog.list_models()
+        for variant in model.variants
+    )
 
 
 class InProcessFoundryLocal:
@@ -555,10 +659,28 @@ class InProcessFoundryLocal:
     @property
     def _manager(self) -> FoundryLocalManager:
         if self._started is None:
-            from foundry_local_sdk import FoundryLocalManager
-
-            self._started = FoundryLocalManager(_foundry_configuration(self._app_name))
+            self._started = self._start(cache_only=False)
+            if not _reached_the_catalogue(self._started):
+                self._started.close()
+                self._started = self._start(cache_only=True)
         return self._started
+
+    def _start(self, *, cache_only: bool) -> FoundryLocalManager:
+        """Start a manager — one per process, so the previous one must be closed first.
+
+        With the network gone, the catalogue cannot be refreshed, and on 2.0.1 Foundry Local
+        then throws its disk cache away along with the refresh **[verified 2026-09-25]**:
+        every region fails, and the catalogue is left with only what a scan of the downloaded
+        models finds — none of which declares a task, so none could see a Frame. That is why
+        ``_manager`` starts a second one reading the disk cache alone, and what lets a
+        prepared machine observe with the network gone (CONTEXT.md, "Local-First"). It does
+        so before anything has been resolved or registered, so no model is left holding the
+        closed one. With the network there, the first manager stands and the catalogue goes
+        on refreshing as it always has.
+        """
+        from foundry_local_sdk import FoundryLocalManager
+
+        return FoundryLocalManager(_foundry_configuration(self._app_name, cache_only=cache_only))
 
     def register_execution_providers(self, announce: Callable[[str], None]) -> None:
         """Register every Execution Provider this machine can offer.
@@ -782,7 +904,7 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
     """Read the objects present out of a model's reply, or say why there is no shape.
 
     The fall-back the spike behind issue #30 landed on: `qwen3-vl-2b-instruct` never honours
-    a forced tool call but answers a JSON-in-prompt request in the exact ``{name, count}``
+    a forced tool call but answers a JSON-in-prompt request in the exact ``{name, count, where}``
     shape, wrapped in a markdown code fence and sometimes truncated mid-array when the output
     limit stops generation. So the fence is stripped, the first complete JSON array is decoded
     from the opening ``[`` — anything the model runs on with past the closing ``]`` is ignored
@@ -798,7 +920,10 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
     lot away. What comes back is the recovered list — the caller's ``finish_reason`` still says
     whether it was truncated, which is what has the report note it may be short. Nothing
     salvageable is a ``NoShape``: the limit named where truncation left an empty prefix, the
-    ``{name, count}`` shape named where a complete reply's every element missed it.
+    ``{name, count, where}`` shape named where a complete reply's every element missed it —
+    an element whose ``where`` is missing or names something outside the closed ``Where`` set
+    is exactly as non-conforming as one with no ``name`` or a bad ``count``, and is never
+    coerced onto the nearest member of that set (see ``_present_object``).
     """
     cut_off = "the model's list of objects was cut off by the output limit before it closed"
 
@@ -843,7 +968,7 @@ def parse_objects_present(text: str, *, truncated: bool = False) -> Shape:
         return ObjectsPresent(tuple(objects))
     if truncated:
         return NoShape(cut_off)
-    return NoShape("the model's reply did not match the expected {name, count} shape")
+    return NoShape("the model's reply did not match the expected {name, count, where} shape")
 
 
 def _salvage(text: str, start: int, cut_off: str) -> Shape:
@@ -863,7 +988,7 @@ def _salvage(text: str, start: int, cut_off: str) -> Shape:
 
 
 def _salvage_present(fragment: str) -> list[PresentObject]:
-    """Decode the complete ``{name, count}`` objects at the front of a truncated array.
+    """Decode the complete ``{name, count, where}`` objects at the front of a truncated array.
 
     One value at a time from just after the opening ``[``, skipping the commas and whitespace
     between them, and stopping at the first thing that will not decode or does not match the
@@ -893,16 +1018,27 @@ def _present_object(element: object) -> PresentObject | None:
 
     A whole-number count of at least one is part of the shape, not a nicety: a bool is an
     ``int`` in Python and is rejected here so that ``true`` cannot be read as a count of one.
+    ``where`` is checked the same strict way: it must be a string matching one of the closed
+    ``Where`` values exactly as the prompt spells them, or the element is not a PresentObject
+    at all — a missing or unrecognised ``where`` is never guessed at or coerced onto the
+    nearest member of the set, it simply fails to match the shape like a missing name would.
     """
     if not isinstance(element, dict):
         return None
     name = element.get("name")
     count = element.get("count")
+    where = element.get("where")
     if not isinstance(name, str) or not name:
         return None
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
         return None
-    return PresentObject(name=name, count=count)
+    if not isinstance(where, str):
+        return None
+    try:
+        parsed_where = Where(where)
+    except ValueError:
+        return None
+    return PresentObject(name=name, count=count, where=parsed_where)
 
 
 def _version_key(version: object) -> tuple[int, int, str]:

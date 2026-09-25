@@ -37,7 +37,7 @@ type: section
 # Demo: one look
 
 ::: notes
-D1. `uv run observe` on Foundry Local, CPU. Read the sentence it writes aloud.
+D1. `uv run observe --camera 0 --variant qwen3-vl-2b-instruct-generic-cpu:2`. Read the sentence it writes aloud.
 :::
 
 ---
@@ -121,14 +121,45 @@ The third fact is the one that matters for cost later.
 ---
 
 type: image
-src: !todo "the desk-scale work cell as seen from above: a parts tray with one slot empty, a pair of work gloves, a camera on a small arm pointing down at them"
-alt: desk-scale work cell with a parts tray, gloves and a camera
+src: !todo "the desk-scale work cell as seen from above: a green cutting mat on the left with a circuit board on it, a white mesh tray on the right holding a soldering iron, a solder spool, a brush, tweezers and jumper wires, a pair of white work gloves with grey palms, a camera on a tripod pointing down at them"
+alt: desk-scale work cell with a green mat, a parts tray, gloves and a camera
 
 the work cell, at desk scale
 
 ::: notes
-The supervisor wants to know when a part is missing, when someone works without gloves, when something is left in the zone.
-Only the first one is live today.
+The green mat is the Zone, the white tray holds the six parts.
+The supervisor wants to know three things: a part goes missing, someone works without gloves, something is left on the mat.
+Only gloves are live today. The spike, later, says why.
+:::
+
+---
+
+type: image
+src: !todo "the whole system inside one laptop outline with an airplane-mode icon in its corner: a camera, then a box labelled vision (Python, Qwen3-VL), then a single sheet labelled observations.jsonl, then a box labelled Agent (C#, Agent Framework), then a notification bell and a log file; a dashed boundary around the camera and the vision box marks where the image stops; only text flows past it"
+alt: camera, vision, a JSON Lines file, the agent, a toast and a log, all on one laptop
+
+the whole system, on one laptop
+
+::: script
+This is the whole system. Two processes on one laptop.
+The first one sees: it turns a camera frame into text. The second one decides and acts.
+Between them there is a file. Remember where the dashed line is: the image never crosses it.
+:::
+
+---
+
+type: bullets
+
+## The stack
+- Qwen3-VL, 2B and 4B, the model that sees
+- Foundry Local 2.0.1, in-process
+- OpenVINO GenAI 2026.3, for the GPU and the NPU
+- Microsoft Agent Framework 1.22, on .NET 10
+- Python for vision, C# for the Agent
+
+::: notes
+Every piece is a released version, nothing preview. Agent Framework is on its stable 1.x line.
+Qwen3-VL, not Phi-4-multimodal: ADR-0001. Two runtimes: ADR-0012.
 :::
 
 ---
@@ -148,22 +179,36 @@ Error: Duplicate definition of name (pad_CUDAExecutionProvider).
 
 ::: notes
 qwen3.5-0.8b-cuda-gpu:3 on my desktop. The defect is in the published artifact, not in the caller.
-Reported as microsoft/foundry-local#1075.
+Reported as microsoft/foundry-local#1075. If asked: fixed by the publisher five days later, as a new version (:4). Nothing the caller did fixed it.
+:::
+
+::: script
+I asked for a model by its alias, and Foundry Local chose the build for my hardware.
+It chose one that cannot load, and nothing I could do as a caller fixed it.
+The model you ask for is not the model you get. So name the exact Variant. The whole demo rests on that.
 :::
 
 ---
 
 type: bullets
 
-## The model you ask for is not the model you get
-- An alias lets Foundry Local pick the hardware
-- It picked a published build that does not load
-- [+] Pin the Variant by name
+## Foundry Local 2.0, in-process
+- no service, no HTTP hop
+- the image as a typed item, not base64 smuggled in
+- one package, no `-winml` split
+- telemetry you can switch off
+- [+] a pinned Variant starts with no network
+
+::: notes
+2.0.1 shipped on 1 September. In 1.x the image went as untyped base64 inside extra_body; now it is an ImageItem, bytes plus a codec hint, in every SDK including C#.
+Learn still documents 1.2.x, and no first-party sample combines ChatSession with ImageItem. ADR-0004.
+Trap if asked: a ChatSession accumulates turns, so we rebuild it for every request.
+:::
 
 ::: script
-I asked for a model by its alias, and Foundry Local chose the build for my hardware.
-It chose one that cannot load, and nothing I could do as a caller fixed it.
-The lever is to name the exact Variant. The whole demo rests on that.
+Most of what you will find online is Foundry Local 1.x. This is 2.0, and it changes the shape.
+It runs inside my process. The image is a typed object, not a string hidden in a field.
+And the last line is the one that matters today: pin the Variant, and it starts in airplane mode.
 :::
 
 ---
@@ -186,8 +231,10 @@ type: section
 # Demo: ask the watch
 
 ::: notes
-D2. `uv run watch`, then type "is the left tray empty?" while it runs.
-The question takes effect at the next Cadence and stays until replaced.
+D2. `uv run watch --camera 2 --variant qwen3-vl-4b-instruct-int4-sym-gpu`. This is the 4B on the iGPU: "you will see why".
+Type "Is there a phone or a cup on the green mat? Answer in one or two sentences." Cup beside the mat first: the "no" says where the cup is, which is the reasoning moment. Then onto the mat.
+Then "What is the person doing? Answer in one sentence."
+A question takes effect at the next Cadence. Say so rather than waiting in silence.
 :::
 
 ---
@@ -206,8 +253,24 @@ type: comparison
 
 ::: script
 Production today runs detectors, trained for a fixed list and retrained when it changes.
-Here the line lead typed a new question, with no new model and no data scientist.
+Here I typed a new question, with no new model and no data scientist.
 That flexibility is the reason to run a VLM at all. It is also why its accuracy must be measured.
+:::
+
+---
+
+type: statement
+
+# "Answer in one sentence."
+
+::: notes
+The cup question: 13 of 13 photos right, 1.3 to 2.3 s per answer on the 4B iGPU. docs/research/2026-09-24-d2-scene-questions.md.
+Discarded, notes only: "Is it safe to solder like this?" answers "No" to every photo, with a lecture on eye protection.
+:::
+
+::: script
+Every question I type ends the same way. Without that bound, a small model keeps talking.
+It truncates, it loops, it invents. Bound the answer, and it stays on the photo.
 :::
 
 ---
@@ -228,13 +291,13 @@ type: section
 type: bullets
 
 ## What the catalogue offers this laptop
-- `qwen3-vl-2b-instruct` on the CPU
+- `qwen3-vl` on the CPU
 - no GPU build
 - no NPU build
 
 ::: notes
 Verified with `foundry model list` on this machine. The catalogue is filtered per device.
-The laptop has an Arc 140V iGPU and an Intel AI Boost NPU. Foundry Local reaches neither for vision today.
+The laptop has an Arc 140V iGPU and an Intel AI Boost NPU. Foundry Local's NPU builds here are all chat models, none with vision.
 :::
 
 ::: script
@@ -255,22 +318,21 @@ optimum-cli export openvino \
 ```
 
 ::: notes
-The recipe verified on this laptop, not a general rule. It runs once, on the CPU, and needs no NPU.
-If asked: NNCF does the compression; symmetric, channel-wise INT4 is what ran first try on the NPU;
-transformers must stay >=4.57,<5.0; convert.py scrubs a system-wide OpenVINO install that shadows the right one;
-provenance.json records the recipe beside the IR.
+The recipe verified on this laptop, not a general rule. Two exports with the same recipe: the 2B and the 4B.
+It runs once, on the CPU, and needs no NPU. OpenVINO is told its device, so one IR serves CPU, GPU and NPU.
+If asked: transformers must stay >=4.57,<5.0; convert.py scrubs a system-wide OpenVINO install that shadows the right one; provenance.json records the recipe beside the IR; CACHE_DIR takes the NPU's first compile from ~32 s to ~2 s.
 :::
 
 ---
 
 type: image
-src: !todo "one model weight drawn as a row of 16 bits shrinking to a row of 4 bits, with a large box labelled ~5 GB becoming a small box labelled ~1.7 GB that feeds three chips: CPU, GPU, NPU"
+src: !todo "one model weight drawn as a row of 16 bits shrinking to a row of 4 bits, then a single file labelled IR feeding three chips side by side: CPU, GPU, NPU"
 alt: 16-bit weights compressed to 4-bit, one file for three engines
 
-~5 GB downloaded, ~1.7 GB on disk, one file for three engines
+sixteen bits to four, one file for three engines
 
 ::: script
-Each weight goes from sixteen bits to four. The model shrinks to about a third.
+Each weight goes from sixteen bits to four.
 One exported file serves the CPU, the GPU and the NPU through OpenVINO.
 :::
 
@@ -287,16 +349,43 @@ type: comparison
 :::
 
 ::: notes
-Same image, same prompt, from the Benchmark of 2026-09-22. Every INT4 row repeats like this, on every engine.
-The price belongs to the quantisation, not to any one chip.
+Same image, same prompt, from the Benchmark of 2026-09-22. Every OpenVINO row repeats like this, on every engine.
+Greedy decoding is the setting most prone to loops. On the spike's checklist prompt, 16 of 32 OpenVINO replies looped against 2 of 32 on Foundry Local.
 :::
 
 ---
 
 type: statement
 
-# Quantising buys the accelerator
-[+] not the accuracy
+# The recipe sets the price
+[+] not INT4
+
+::: notes
+Foundry Local's build is INT4 too: 1.34 GB for the 2B, block-wise, one scale per 32 weights. docs/research/2026-09-25-int4-quantisation.md.
+Ours is the coarsest INT4 there is: channel-wise (group-size -1), symmetric, and no INT8 layers (ratio 1.0; optimum keeps 20% by default). ~1.7 GB, larger and still worse.
+:::
+
+::: script
+Both of these are four bits per weight. So four bits is not the problem. The recipe is.
+Ours is the coarsest there is, because the NPU asks for that shape.
+And one file serves all three engines, so the GPU and the CPU pay a price only the NPU demands.
+:::
+
+---
+
+type: bullets
+
+## Quantising better
+- [+] one IR per engine, not one for all
+- [+] group-wise INT4 or INT8 for the GPU and the CPU
+- [+] group-wise, or AWQ and scale estimation, for the NPU
+- [+] a repetition penalty at decode time
+- [+] count the loops, not only the tokens per second
+
+::: notes
+Each one is a ticket in the repo: #72 (GPU and CPU IR), #73 (NPU recipe), #74 (repetition penalty). #75 looks at reaching the iGPU through Foundry Local's own GPU builds.
+How AWQ and scale estimation work stays out of the talk.
+:::
 
 ---
 
@@ -321,13 +410,14 @@ type: section
 type: code
 
 ```bash
-uv run watch --variant qwen3-vl-2b-instruct-generic-cpu
+uv run watch --variant qwen3-vl-2b-instruct-generic-cpu:2
 uv run watch --variant qwen3-vl-2b-instruct-int4-sym-gpu
 uv run watch --variant qwen3-vl-2b-instruct-int4-sym-npu
 ```
 
 ::: notes
-D3. Same watch, three engines. Only the Variant name changes. Point at the timings as they come in.
+D3, on the 2B and the webcam, each with --ask "What is the person doing? Answer in one sentence."
+Same watch, three engines. Only the Variant name changes. Point at the timings as they come in.
 :::
 
 ---
@@ -386,17 +476,6 @@ Earlier spike, a different model (Qwen2.5-VL-3B INT4, issue #38): NPU 6.0 s to f
 
 ---
 
-type: quote
-
-> The fourth-generation NPU is up to 4x more powerful than the previous generation and is ideal for running sustained AI workloads while remaining energy-efficient.
-— Intel, Core Ultra 200V launch
-
-::: notes
-Intel's words about this chip generation. A claim about the platform, not a measurement of this app.
-:::
-
----
-
 type: stat
 
 # 2.8x
@@ -405,24 +484,14 @@ performance per watt of the NPU over the GPU, measured by Intel on Panther Lake
 ::: notes
 Intel's own lab: Gemma 4 E2B on Core Ultra 7 355, power measured with SocWatch. There the NPU was also faster than the GPU.
 Next generation, different model, not this app. Say all three.
+For this chip generation Intel's claim is qualitative: sustained AI workloads while remaining energy-efficient.
 :::
 
 ::: script
 Intel has measured where this is going. On Panther Lake, the next generation, the NPU does 2.8 times the work per watt of the GPU.
 Different chip, different model, not my app. But that is the direction.
-:::
-
----
-
-type: statement
-
-# I did not measure energy for this app
-[+] and I will not pretend I did
-
-::: script
-Last year I gave a talk together with Intel. We measured energy on this very laptop.
-Then a driver update made that measurement impossible, and it still is.
-So today you get Intel's figures, labelled as Intel's, and my honesty about the gap.
+I did not measure energy for this app. Last year, in a talk with Intel, we measured it on this very laptop.
+Then a driver update made that impossible, and it still is. So you get Intel's figure, labelled as Intel's.
 :::
 
 ---
@@ -436,7 +505,7 @@ type: statement
 
 type: section
 
-# 5. The shape
+# 5. The seam
 
 ---
 
@@ -450,25 +519,125 @@ Spike of 2026-09-15. The model never honoured a forced tool call when the reques
 ADR-0011 records the mechanism that did not survive.
 :::
 
+::: script
+The Agent needs more than prose. It needs a shape it can test.
+I first asked the vision model to call a tool with that shape. It never did, not once in eleven.
+So I stopped forcing it. I ask for the shape in the prompt, and parse what comes back.
+:::
+
 ---
 
 type: code
+file: vision/src/vision/inference.py
 
 ```
-12  book
- 2  cup
- 1  chair
- 1  door
+This is a work bench seen from above. The work zone is the green
+cutting mat. The tray is the white mesh tray beside it.
+List every distinct object you can see, and where it is:
+"tray", "zone", "hand" or "elsewhere".
+Name each visible hand "bare hand" (skin showing) or "gloved hand".
+Reply with ONLY a JSON array of {"name", "count", "where"}.
 ```
 
 ::: notes
-`observe --structured`. The prompt asks for ONLY a JSON array of {name, count}, with a worked example.
-Three outcomes, never a silent fallback to prose: the list, nothing present, or no shape with its reason.
+The `described` prompt, cut to its key sentences. The full text carries a worked example and "If nothing is there, reply with []".
+It names this mat and this tray. That is a debt, recorded in ADR-0016; a --scene flag is the way out.
+Structured output gets 256 tokens, prose 128, temperature 0. At 128, only 12 of 32 4B lists fitted.
+:::
+
+---
+
+type: comparison
+
+::: Asked in prose
+- "Is each visible hand bare or gloved?"
+- "bare" on 4 of 6 photos with no hands at all
+:::
+
+::: Asked for a shape
+- a list of objects and where each one is
+- 0 false Triggers on 17 photos with no bare hand
+:::
+
+::: notes
+Both on the 4B iGPU, the same photos. Prose: 7 of 13 right overall. docs/research/2026-09-24-d2-scene-questions.md.
 :::
 
 ::: script
-So I stopped forcing it. I ask for the shape in the prompt, with an example, and parse what comes back.
-When the model answers in prose, the app says so. It never pretends a paragraph is a list.
+A question is flexible, and you saw that in the demo. But a Trigger cannot rest on it.
+Asked in prose about hands, the model found bare hands in photos that had no hands.
+Asked for a list, it made no false Trigger at all. Asking is for people. A Trigger needs the shape.
+:::
+
+---
+
+type: code
+file: docs/fixtures/watch-emit-contract.jsonl
+
+```json
+{"type": "cadence", "cadence": 1,
+ "time": "2026-09-24T10:30:02+02:00",
+ "variant": "qwen3-vl-2b-instruct-cuda-gpu:2",
+ "outcome": "objects",
+ "objects": [
+   {"name": "soldering iron", "count": 1, "where": "tray"},
+   {"name": "bare hand", "count": 1, "where": "hand"}],
+ "truncated": false, "shortfall": null}
+```
+
+::: notes
+One line of the contract fixture, wrapped for the slide. Both sides test against this file. ADR-0014.
+Outcome is exactly one of: objects, no_shape with its reason, failed with its error. The first line of each file describes the Watch.
+The file is recreated at every Watch start. Never a Frame, never a path to one, even under --keep-frames.
+:::
+
+::: script
+This is everything that crosses from vision to the Agent. One line of JSON per Cadence, in a file.
+No socket, no shared endpoint. Each process loads its own model.
+You can open this file and read everything the Agent ever received. I will, in the demo.
+:::
+
+---
+
+type: code
+file: agent/work-cell.json
+
+```json
+"hands": {
+  "bare":   ["bare hand"],
+  "gloved": ["gloved hand", "white glove", "glove"],
+  "plain":  ["hand"]
+},
+"triggers": {
+  "no_gloves": { "n": 2 }
+}
+```
+
+::: notes
+Excerpt. The file also lists the six parts of the Tray and the Zone, each with the synonyms the model uses: "solder spool", "spool", "solder wire".
+A plain "hand" counts as bare unless a gloved hand is named in the same Observation: live, the 4B says "hand", almost never "bare hand".
+missing_part is off (refuted), foreign_object deferred (#70). An unknown Trigger or an N below one is refused at start.
+:::
+
+::: script
+The scenario lives in a text file. What the tray holds, what may lie on the mat, the names the model uses for each.
+And which Triggers are on. Today, one: working without gloves, confirmed twice.
+Change the scenario, and you edit this file. You do not touch the code.
+:::
+
+---
+
+type: bullets
+
+## When a Trigger fires
+- [+] its condition holds on N Observations in a row
+- [+] it re-arms after N in a row without it
+- [+] an Observation with no shape counts neither way
+- [+] each firing is one Incident
+
+::: notes
+A small model is wrong on single Frames. N consecutive is what keeps its noise off a worker's record.
+A failed inference or a reply in prose is never read as evidence either way.
 :::
 
 ---
@@ -476,7 +645,7 @@ When the model answers in prose, the app says so. It never pretends a paragraph 
 type: statement
 
 # What crosses the wire?
-[+] A sentence with a shape
+[+] One line of JSON
 
 ---
 
@@ -486,27 +655,99 @@ type: section
 
 ---
 
-type: section
+type: statement
 
-# Demo: a part goes missing
+# I measured it before I promised it
 
 ::: notes
-D5, with the Structured Observation on screen. Take a part out of the tray.
-The Trigger fires, the C# Agent notifies the supervisor and writes the log entry.
-Fallback if the Agent is not stable: the recording.
+Spike #58: 32 photos, three Variants, four prompts. docs/research/2026-09-24-work-cell-spike.md.
+The 2B never says "bare hand" on OpenVINO. The 4B, with the described prompt: 8 of 9 bare hands, 5 of 5 mixed, 0 false.
+A missing part: at best 2 of 6 caught, with 9 to 16 false "missing" on 16 photos. The brush and the tweezers are missed systematically.
+:::
+
+::: script
+This is why the demo runs the 4B. The 2B could not see the work cell.
+And I planned the demo on a part going missing from the tray. No local model this size sees that.
+So the Trigger is working without gloves. I measured it before I promised it on this stage.
 :::
 
 ---
 
 type: image
-src: !todo "left to right: camera, a Python box labelled vision, a speech-bubble with a sentence, a C# box labelled Agent Framework, then a notification bell and a log file; a dashed boundary around the camera and the vision box marks where the image stops"
-alt: the image stops at the vision boundary; only text reaches the agent
+src: !todo "the same laptop outline as the system map, zoomed in: on the left the vision process running on a chip labelled Arc iGPU (OpenVINO), on the right the Agent process running on a chip labelled CPU (Foundry Local), a JSON Lines sheet passing between them, and a third chip labelled NPU greyed out with a note 'demo 3'"
+alt: vision on the iGPU, the agent on the CPU, a JSON Lines file between them
 
-the image stops here; the agent gets a sentence
+two processes, two engines
 
 ::: notes
-Two processes, joined at the OpenAI-compatible endpoint Foundry Local serves on localhost.
-The Agent is C# on Microsoft Agent Framework, through a hand-written IChatClient adapter, as Bruno Capuano did.
+The Watch and the Agent never share an Execution Provider by default. The Watch: 4B on the iGPU, ~8 s per structured Frame, a 10 s Cadence.
+The Agent: qwen2.5-1.5b-instruct-generic-cpu:4. It is consulted only when a Trigger fires, never per Observation.
+:::
+
+---
+
+type: image
+src: !todo "three stacked layers as blocks: at the top 'Microsoft Agent Framework 1.x', in the middle a small highlighted block 'our IChatClient', at the bottom 'Foundry Local 2.0.1'; beside the middle block a faded outline labelled 'the pattern: Bruno Capuano's adapter'"
+alt: Agent Framework over our own IChatClient over Foundry Local 2.0.1
+
+Agent Framework, on Foundry Local 2.0.1
+
+::: notes
+ADR-0015. Bruno's ElBruno.MAF.FoundryLocal set the pattern: an IChatClient bridge where no first-party one exists. Credit him.
+Why we wrote our own: his pins Foundry Local 1.2.1, has no telemetry switch, and drops tool calls when streaming.
+Ours: tools map to Foundry Local's tool definitions and back to function-call contents, a fresh ChatSession per call, telemetry off. It is the only class that knows Foundry Local.
+In 2.0.1, GetChatClientAsync returns an OpenAI client that implements no IChatClient.
+:::
+
+::: script
+Agent Framework speaks IChatClient. Foundry Local 2.0 does not give you one in .NET.
+Bruno Capuano solved this for 1.x with an adapter, and I followed his pattern.
+But 1.x sends telemetry you cannot switch off, and it loses tool calls. So I wrote the same bridge for 2.0.1.
+:::
+
+---
+
+type: stat
+
+# 10 of 10
+Incidents where the 1.5B model called both tools, on the CPU. On the GPU and the NPU: 0 of 10.
+
+::: notes
+docs/benchmarks/tool-call-reliability-zenbook-20260925-114415.md. The GPU build called only log_incident, the NPU build only notify_supervisor.
+qwen3-1.7b on the CPU: empty replies. qwen3-4b: prose reasoning, 50 to 100 s. ~15 to 25 s per Incident on the winner.
+:::
+
+::: script
+The model that sees is not the model that acts.
+The vision model runs on the GPU. The model that calls tools reliably only did it on the CPU.
+So each one runs where it works, and the laptop uses two engines at once.
+:::
+
+---
+
+type: statement
+
+# No system prompt scored best
+
+::: notes
+Every system prompt tried scored 0 to 8 of 10. No instructions at all: 10 of 10. The tool descriptions carry the intent.
+:::
+
+::: script
+I wrote the Agent careful instructions. Every version made it worse.
+With no system prompt at all, it called both tools every time. Measure before you polish a prompt.
+:::
+
+---
+
+type: section
+
+# Demo: gloves off
+
+::: notes
+D5, three panes: the Agent, the Watch with --structured --emit, and the emitted file.
+Gloves off, bare hands on the mat. no gloves 1/2, then the Incident, the toast and the log. ~40 s: narrate over the file, never wait in silence.
+Fallback: the recording.
 :::
 
 ---
@@ -516,8 +757,14 @@ type: bullets
 ## The incident log
 - the Trigger that fired
 - the Observation that fired it
-- the time
+- the model's sentence and the time
+- whether the model acted
 - [+] never a Frame
+
+::: notes
+Point at agent_acted. If the model does not call both tools, throws or takes over 60 s, a template sentence goes through the same two Actions: agent_acted false, with the reason.
+An Incident is never lost, and the model's failure is visible, not hidden. Gloves back on: two Cadences, then "Incident cleared", no model turn.
+:::
 
 ---
 
@@ -528,6 +775,23 @@ type: statement
 
 ::: script
 The Agent cannot leak a picture it was never given. That is not a promise. It is the architecture.
+:::
+
+---
+
+type: bullets
+
+## What this laptop taught me
+- pin the Variant
+- measure the NPU with its own ruler
+- the recipe sets the price
+- bound every answer
+- a Trigger needs a shape, not a question
+- the model that sees is not the model that acts
+
+::: script
+Six things I did not know when I started, all measured on this machine.
+None of them is on a spec sheet. Each one cost me a wrong assumption first.
 :::
 
 ---
@@ -555,46 +819,27 @@ And only text leaves.
 type: stat
 
 # 4 cameras
-at most, served by this laptop's iGPU at one Observation every 10 seconds
+at most, on this laptop's iGPU, with the 2B at one Observation every 10 seconds
 
 ::: notes
 10 s divided by a 2.3 s median, rounded down. An upper bound, one model serving the Feeds in series, for this Hardware Profile only.
-:::
-
----
-
-type: comparison
-
-::: At the edge
-- ~$2.50 per camera per month
-:::
-
-::: Rented cloud GPU
-- ~$29 per camera per month
-:::
-
-::: Per-minute video API
-- ~$4,320 per camera per month
-:::
-
-::: notes
-Order-of-magnitude model by Fora Soft on AWS list prices, for a continuously watched camera. Not an invoice.
-Continuous load is the shape a per-call API bills worst. For bursty load, the cloud is cheaper and simpler.
+With the 4B the demo runs, ~8 s per structured Frame: one camera.
 :::
 
 ---
 
 type: bullets
 
-## Where it runs in production
-- the PC already at the station
-- an industrial Intel edge box beside the camera
-- an on-premises server for many stations
+## Where it runs, and what it costs
+- the PC already at the station, an edge box, an on-premises server
+- at the edge: ~$2.50 per camera per month
+- rented cloud GPU: ~$29
+- per-minute video API: ~$4,320
 
 ::: notes
-Edge boxes from Advantech, OnLogic, ASRock Industrial, Lenovo, Neousys, Vecow ship today with Windows IoT or Ubuntu.
-There the runtime that travels is OpenVINO GenAI. Their Series 1 and 2 NPUs are 11 to 13 TOPS against this laptop's 48; Series 3 edge parts reach 50.
-Laptop figures do not transfer to those boxes. Measure the box.
+Costs: order-of-magnitude model by Fora Soft on AWS list prices, for a continuously watched camera. Not an invoice.
+Continuous load is the shape a per-call API bills worst. For bursty load, the cloud is cheaper and simpler.
+Edge boxes from Advantech, OnLogic, ASRock Industrial, Lenovo, Neousys, Vecow run OpenVINO GenAI. Their Series 1 and 2 NPUs are 11 to 13 TOPS against this laptop's 48; Series 3 edge parts reach 50. Laptop figures do not transfer. Measure the box.
 :::
 
 ---

@@ -311,7 +311,10 @@ def _shape(shape: Shape) -> dict[str, Any]:
     if isinstance(shape, NoShape):
         return {"objects": None, "no_shape": shape.reason}
     return {
-        "objects": [{"name": present.name, "count": present.count} for present in shape.objects],
+        "objects": [
+            {"name": present.name, "count": present.count, "where": present.where}
+            for present in shape.objects
+        ],
         "no_shape": None,
     }
 

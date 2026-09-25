@@ -29,7 +29,14 @@ from tests.fakes import (
 )
 from vision.capture import SETTLING_FRAMES, WORKING_RESOLUTION
 from vision.cli import main
-from vision.inference import STRUCTURED_PROMPT, FinishReason, NoShape, ObjectsPresent, PresentObject
+from vision.inference import (
+    STRUCTURED_PROMPT,
+    FinishReason,
+    NoShape,
+    ObjectsPresent,
+    PresentObject,
+    Where,
+)
 from vision.router import Router
 
 SETUP_READINGS = (0.0, 0.5)
@@ -488,7 +495,12 @@ def test_structured_lists_the_objects_present_under_the_unchanged_facts_block() 
         [],
         structured=[
             make_structured_observation(
-                ObjectsPresent((PresentObject("cup", 2), PresentObject("laptop", 1)))
+                ObjectsPresent(
+                    (
+                        PresentObject("cup", 2, Where.ZONE),
+                        PresentObject("laptop", 1, Where.ZONE),
+                    )
+                )
             )
         ],
     )
@@ -496,7 +508,7 @@ def test_structured_lists_the_objects_present_under_the_unchanged_facts_block() 
 
     assert result.code == 0
     assert result.err == ""
-    assert result.out == f"{REPORT}\n2  cup\n1  laptop\n"
+    assert result.out == f"{REPORT}\n2  cup  (zone)\n1  laptop  (zone)\n"
     assert result.model.observed == []
 
 
@@ -507,13 +519,18 @@ def test_structured_right_aligns_the_counts_into_a_column() -> None:
         [],
         structured=[
             make_structured_observation(
-                ObjectsPresent((PresentObject("book", 12), PresentObject("lamp", 1)))
+                ObjectsPresent(
+                    (
+                        PresentObject("book", 12, Where.TRAY),
+                        PresentObject("lamp", 1, Where.ELSEWHERE),
+                    )
+                )
             )
         ],
     )
     result = run(["--image", "a.jpg", "--structured"], model=model)
 
-    assert result.out == f"{REPORT}\n12  book\n 1  lamp\n"
+    assert result.out == f"{REPORT}\n12  book  (tray)\n 1  lamp  (elsewhere)\n"
 
 
 def test_structured_renders_an_empty_list_as_nothing_present() -> None:
@@ -548,7 +565,7 @@ def test_structured_notes_a_list_cut_short_by_the_output_limit() -> None:
         [],
         structured=[
             make_structured_observation(
-                ObjectsPresent((PresentObject("cup", 2),)), FinishReason.TRUNCATED
+                ObjectsPresent((PresentObject("cup", 2, Where.ZONE),)), FinishReason.TRUNCATED
             )
         ],
     )
@@ -558,9 +575,9 @@ def test_structured_notes_a_list_cut_short_by_the_output_limit() -> None:
     assert result.out == (
         f"{REPORT}"
         "\n"
-        "2  cup\n"
+        "2  cup  (zone)\n"
         "\n"
-        "(truncated: the list may be incomplete — the Observation hit the 128-token output limit)\n"
+        "(truncated: the list may be incomplete — the Observation hit the 256-token output limit)\n"
     )
 
 
@@ -866,7 +883,9 @@ def test_structured_observation_crosses_the_second_runtime() -> None:
     model = FakeVisionModel(
         make_provenance_identity(),
         [],
-        structured=[make_structured_observation(ObjectsPresent((PresentObject("cup", 2),)))],
+        structured=[
+            make_structured_observation(ObjectsPresent((PresentObject("cup", 2, Where.ZONE),)))
+        ],
     )
 
     code, out, err, foundry = observe_openvino(
@@ -875,7 +894,7 @@ def test_structured_observation_crosses_the_second_runtime() -> None:
 
     assert code == 0
     assert f"Model      {OV_SLUG} (NPU)\n" in out
-    assert "2  cup\n" in out
+    assert "2  cup  (zone)\n" in out
     (workload,) = model.observed_structured
     assert workload.prompt == STRUCTURED_PROMPT
     assert foundry.events == []
@@ -892,3 +911,37 @@ def test_keep_frames_works_across_the_second_runtime(tmp_path: Path) -> None:
     (saved,) = sorted(tmp_path.glob("*.jpg"))
     assert f"Saved      {saved}\n" in out
     assert saved.read_bytes() == model.observed[0].frame.data
+
+
+def test_never_crashes_printing_an_observation_to_a_non_utf8_console(tmp_path: Path) -> None:
+    """The regression issue #69 exists for: a model's emoji and em dashes must not crash
+    a run whose ``stdout`` is a redirected Windows console — ``cp1252`` by default rather
+    than UTF-8. Driven with a real ``TextIOWrapper`` over a buffer opened as ``cp1252``,
+    which is what a redirected console gives a process, rather than the ``io.StringIO``
+    the rest of this module uses: only a stream with a real encoding can prove the bytes
+    it received were replaced instead of raising ``UnicodeEncodeError``.
+    """
+    model = FakeVisionModel(
+        make_identity(), [make_observation(text="✅ done — nothing else in frame")]
+    )
+    camera = FakeCamera([make_frame()])
+    foundry = FakeFoundry.resolving_everything_to(model)
+    out_buffer = io.BytesIO()
+    out = io.TextIOWrapper(out_buffer, encoding="cp1252", errors="strict")
+    err = io.StringIO()
+
+    code = main(
+        [],
+        camera=camera,
+        router=Router(foundry),
+        clock=FakeClock(CACHED_READINGS),
+        out=out,
+        err=err,
+    )
+    out.flush()
+
+    assert code == 0
+    # Reconfigured to UTF-8, so the emoji and the em dash round-trip whole rather than
+    # being replaced — replacement only has to cover what UTF-8 itself cannot carry.
+    written = out_buffer.getvalue().decode("utf-8")
+    assert "✅ done — nothing else in frame" in written

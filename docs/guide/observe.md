@@ -107,8 +107,8 @@ camera at that index — which points at `--image` — and a camera another appl
 holding, which opens and then yields nothing.
 
 Pinning is also the answer when a model will not load at all. An alias picks the hardware,
-and it can pick a variant that cannot run — `qwen3.5-0.8b-cuda-gpu:3` ships a graph ONNX
-Runtime refuses to load, and no caller can fix that
+and it can pick a variant that cannot run — `qwen3.5-0.8b-cuda-gpu:3` shipped a graph ONNX
+Runtime refused to load, and no caller could fix that; only a republished `:4` did
 ([microsoft/foundry-local#1075](https://github.com/microsoft/foundry-local/issues/1075)).
 `observe` says which variant failed and why in one line, exits non-zero, and tells you to
 name another; a `-generic-cpu` one is the safe bet.

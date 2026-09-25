@@ -1,8 +1,9 @@
-# `--structured` — the objects present, instead of prose
+# `--structured` — the objects present, and where, instead of prose
 
 A **Structured Observation** asks the model for a fixed shape — the list of objects present
-in a Frame, each with a count — rather than a paragraph. It is the same Observation asked
-for differently, so it is a flag on all three commands rather than a command of its own.
+in a Frame, each with a count and a place — rather than a paragraph. It is the same
+Observation asked for differently, so it is a flag on all three commands rather than a
+command of its own.
 
 ```bash
 cd vision
@@ -10,23 +11,22 @@ uv run observe --structured
 ```
 
 ```
-Model      qwen3-vl-2b-instruct-cuda-gpu:2 (alias qwen3-vl-2b-instruct, GPU / CUDAExecutionProvider)
+Model      qwen3-vl-4b-instruct-int4-sym-gpu (GPU / OpenVINOExecutionProvider)
 Frame      640x480 jpeg, fit to 640x480, from camera 0
 Providers  4.138 s
 Load       3.251 s
 Capture    5.125 s (including 5 Frames discarded while the Feed settled)
-Inference  0.907 s
+Inference  4.512 s
 
-12  book
- 2  cup
- 1  chair
- 1  door
+1  soldering iron  (tray)
+1  bare hand  (zone)
+1  circuit board  (zone)
 ```
 
 The facts block is the prose Observation's, unchanged — Model, Frame, the set-up costs and
 the latencies — because getting the Frame onto the hardware cost the same whichever shape
-was asked of it. Only what sits below it changes: an aligned list of count and name, with
-the counts right-aligned so a column of them can be read down.
+was asked of it. Only what sits below it changes: an aligned list of count, name and `where`,
+with the counts right-aligned so a column of them can be read down.
 
 ## It overrides `--ask`
 
@@ -34,10 +34,19 @@ A Structured Observation has **no free-text Scene Question**: the request _is_ t
 `--structured` overrides `--ask` rather than combining with it, and under `--structured` an
 empty `--ask` is not even rejected, because it is not read.
 
-The shape is not the Operator's to change either. It is one fixed prompt — "list every
-distinct object you can see in this image, reply with ONLY a JSON array of
-`{"name": <string>, "count": <integer >= 1>}`" — spelled out with a worked example, because
-without one the model answers with an array of bare strings.
+The shape is not the Operator's to change either. It is one fixed prompt, and it now describes
+this project's own **Work Cell** — the green cutting mat and the white mesh tray — because
+that is the wording a spike found necessary to get a small local model naming hands and
+placing objects reliably (see [Why it behaves this way](#why-it-behaves-this-way) below):
+
+> This is a work bench seen from above. The work zone is the green cutting mat. The tray is
+> the white mesh tray beside it. List every distinct object you can see, and where it is:
+> "tray" if it lies in the white tray, "zone" if it lies on the green mat, "hand" if a hand is
+> holding it, "elsewhere" for anything else. Hands are objects too: name each visible hand
+> "bare hand" (skin showing) or "gloved hand". Reply with ONLY a JSON array, where each
+> element is an object {"name": <string>, "count": <integer >= 1>, "where": <one of "tray",
+> "zone", "hand", "elsewhere">}. Example: [{"name": "cup", "count": 1, "where": "zone"},
+> {"name": "bare hand", "count": 1, "where": "zone"}]. If nothing is there, reply with [].
 
 ## What comes back is always the list or the reason there is none
 
@@ -48,9 +57,12 @@ Three outcomes, and **never a silent degrade to prose**
 - **Nothing present.** An empty list is a success, and says so in those words rather than as
   a blank the Operator has to read as either an answer or a failure.
 - **No shape.** The model answered in prose, returned JSON that was not well-formed, returned
-  something that was not a list of objects, or was cut off by the output limit before the
-  array closed. That is an _ordinary outcome carrying its reason_, printed where the list
-  would have been:
+  something that was not a list of objects, left an object's `where` missing or naming
+  something outside `tray | zone | hand | elsewhere`, or was cut off by the output limit
+  before the array closed. A missing or unrecognised `where` is never guessed at or coerced
+  onto the nearest of the four — it makes that element invalid, exactly as a missing `name`
+  or a bad `count` does. Any of this is an _ordinary outcome carrying its reason_, printed
+  where the list would have been:
 
   ```
   the model answered in prose instead of the list of objects the shape asks for
@@ -64,15 +76,22 @@ goes on generating until the limit stops it — so a shown list that hit the lim
 note of its own:
 
 ```
-(truncated: the list may be incomplete — the Observation hit the 128-token output limit)
+(truncated: the list may be incomplete — the Observation hit the 256-token output limit)
 ```
 
-The note is owed only where objects were actually listed: an empty list means _nothing
+Structured requests run at **256 output tokens**, twice prose's 128: a Structured Observation
+names and places every object rather than describing the Frame in two or three sentences, and
+the 4B Variant's replies mostly did not fit in 128 — only 12 of 32 closed the array at 128
+tokens in the spike behind [#64], against 29 of 32 at 256
+([docs/research/2026-09-24-work-cell-spike.md](../research/2026-09-24-work-cell-spike.md), A1).
+Prose is unaffected and stays at 128.
+
+The note above is owed only where objects were actually listed: an empty list means _nothing
 present_, which the note would flatly contradict, and a "no shape" already carries the limit
 inside its own reason.
 
 An array the limit cut mid-object still carries **the objects it closed before that**, so a
-truncated reply is salvaged down to the last complete `{name, count}` rather than thrown
+truncated reply is salvaged down to the last complete `{name, count, where}` rather than thrown
 away. Only when nothing at all closed is it a "no shape".
 
 ## In a Watch
@@ -86,14 +105,14 @@ inference, the lateness if the Cadence was reached late, the saved path under
 `--keep-frames` — and the list sits below it where the text would:
 
 ```
-#1  inference 0.914 s
-12  book
- 2  cup
+#1  inference 4.310 s
+1  soldering iron  (tray)
+1  bare hand  (zone)
 
-#2  inference 0.902 s, truncated — the list may be incomplete, it hit the 128-token output limit
-12  book
- 3  cup
- 1  laptop
+#2  inference 4.870 s, truncated — the list may be incomplete, it hit the 256-token output limit
+1  soldering iron  (tray)
+1  gloved hand  (zone)
+1  circuit board  (elsewhere)
 ```
 
 A Cadence that came to **no shape is produced, reported, and gone on from** — it is an
@@ -112,6 +131,13 @@ so the rows stay comparable. Two structured Benchmarks are comparable only when 
 the fixed shape _as well as_ the Frame — and a structured Benchmark is not comparable with a
 prose one, for the same reason two Benchmarks asked different questions are not.
 
+**A structured Benchmark recorded before this ticket (#64) is not comparable with one taken
+after it.** The shape gained `where`, the prompt moved from a generic phrasing to one naming
+this project's own Work Cell, and the output limit moved from 128 to 256 tokens — three
+changes to the Workload at once, the same way a Benchmark asked a different question is not
+comparable to one asked before it. A record in `docs/benchmarks/` from before this change is a
+measurement of a different Workload outright.
+
 Token accounting is unchanged in principle and different in substance: completion tokens,
 truncation and the Token Divergence warning are all measured over **the JSON reply** rather
 than over prose. A run that came to no shape is a **measured run like any other** — it was
@@ -123,8 +149,8 @@ no-shape run carries `no_shape` with its reason instead. The Markdown shows the 
 under _What each Variant saw_:
 
 ```
-- 12 × book
-- 2 × cup
+- 1 × soldering iron (tray)
+- 1 × bare hand (zone)
 ```
 
 or, where there was none:
@@ -161,3 +187,16 @@ whose single return type suits the strict-typing house style.
 **The model's own failure mode shaped the parser.** It wraps the JSON in a markdown code
 fence and over-enumerates, so the parser strips the fence and treats a truncated array as
 salvageable down to its last complete element.
+
+**The prompt describes the demo's own Work Cell.** [#58]'s spike found that only a prompt
+naming the green cutting mat and the white mesh tray outright — not a scenario-agnostic
+phrasing, and not a checklist of the Work Cell's parts — got a small local model placing
+objects into `where` reliably and naming a bare hand as `bare hand` rather than just `hand`.
+This is a deliberate, recorded debt: an Operator pointing `observe --structured` at a scene
+that is not this project's demo bench gets a prompt describing a bench that is not there.
+[ADR-0016](../adr/0016-the-structured-prompt-describes-the-work-cell.md) records why, what it
+costs, and the way out held for later — a `--scene TEXT` an Operator could supply their own
+scenario through — not built now.
+
+[#64]: https://github.com/emepetres/local-vision-playground/issues/64
+[#58]: https://github.com/emepetres/local-vision-playground/issues/58

@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <!-- picture / frame thumbnail -->
+    <g id="frame">
+      <rect x="0" y="0" width="76" height="56" rx="7" fill="#DBEFF9" stroke="#001344" stroke-width="3"/>
+      <circle cx="56" cy="17" r="7" fill="#F2C94C"/>
+      <path d="M8 48 L28 24 L42 38 L50 30 L68 48 Z" fill="#0078D4"/>
+    </g>
+
+    <!-- one station, local coords: boundary box 0..370 x 0..340 -->
+    <g id="station">
+      <!-- local boundary -->
+      <rect x="0" y="0" width="370" height="340" rx="24" fill="#0A2A6B" fill-opacity="0.55"
+            stroke="#0BD0D9" stroke-width="4" stroke-dasharray="16 11"/>
+
+      <!-- camera on a pole -->
+      <line x1="72" y1="100" x2="72" y2="236" stroke="#8FA3BF" stroke-width="6" stroke-linecap="round"/>
+      <g transform="rotate(22 72 84)">
+        <rect x="38" y="64" width="72" height="42" rx="9" fill="#DBEFF9"/>
+        <rect x="108" y="72" width="16" height="26" rx="4" fill="#DBEFF9"/>
+        <circle cx="124" cy="85" r="11" fill="#0BD0D9"/>
+      </g>
+      <!-- view cone down onto the workpiece -->
+      <path d="M118 118 L100 200 L160 200 Z" fill="#0BD0D9" fill-opacity="0.12"/>
+
+      <!-- workbench -->
+      <rect x="36" y="236" width="298" height="18" rx="6" fill="#13357F" stroke="#DBEFF9" stroke-width="3"/>
+      <rect x="58" y="254" width="12" height="58" rx="3" fill="#8FA3BF"/>
+      <rect x="300" y="254" width="12" height="58" rx="3" fill="#8FA3BF"/>
+      <!-- workpiece on bench -->
+      <rect x="100" y="204" width="56" height="32" rx="5" fill="#8FA3BF"/>
+      <rect x="110" y="196" width="36" height="8" rx="3" fill="#8FA3BF"/>
+
+      <!-- edge box / monitor -->
+      <rect x="140" y="112" width="90" height="62" rx="9" fill="#13357F" stroke="#DBEFF9" stroke-width="3"/>
+      <circle cx="185" cy="143" r="6" fill="#10CF9B"/>
+      <rect x="180" y="174" width="10" height="24" fill="#DBEFF9"/>
+      <rect x="164" y="196" width="42" height="7" rx="3" fill="#DBEFF9"/>
+
+      <!-- stack of frames that stay inside -->
+      <use xlink:href="#frame" x="268" y="92"/>
+      <use xlink:href="#frame" x="258" y="112"/>
+      <use xlink:href="#frame" x="248" y="132"/>
+
+      <!-- a frame trying to leave is blocked at the boundary -->
+      <g transform="translate(284 -22) scale(0.6)" opacity="0.9">
+        <rect x="0" y="0" width="76" height="56" rx="7" fill="#001344" stroke="#8FA3BF" stroke-width="5"/>
+        <circle cx="56" cy="17" r="7" fill="#8FA3BF"/>
+        <path d="M8 48 L28 24 L42 38 L50 30 L68 48 Z" fill="#8FA3BF"/>
+        <line x1="-8" y1="64" x2="84" y2="-8" stroke="#F2C94C" stroke-width="8" stroke-linecap="round"/>
+      </g>
+
+      <!-- text leaves: line from edge box up through the boundary -->
+      <line x1="185" y1="112" x2="185" y2="-34" stroke="#10CF9B" stroke-width="4" stroke-linecap="round"/>
+      <!-- speech bubble with a sentence -->
+      <path d="M131 -110 h108 a14 14 0 0 1 14 14 v36 a14 14 0 0 1 -14 14 h-42 l-12 14 l-12 -14 h-42 a14 14 0 0 1 -14 -14 v-36 a14 14 0 0 1 14 -14 z"
+            fill="#001344" stroke="#10CF9B" stroke-width="4" stroke-linejoin="round"/>
+      <line x1="136" y1="-88" x2="176" y2="-88" stroke="#10CF9B" stroke-width="6" stroke-linecap="round"/>
+      <line x1="188" y1="-88" x2="202" y2="-88" stroke="#10CF9B" stroke-width="6" stroke-linecap="round"/>
+      <line x1="214" y1="-88" x2="236" y2="-88" stroke="#10CF9B" stroke-width="6" stroke-linecap="round"/>
+      <line x1="136" y1="-70" x2="160" y2="-70" stroke="#10CF9B" stroke-width="6" stroke-linecap="round"/>
+      <line x1="172" y1="-70" x2="214" y2="-70" stroke="#10CF9B" stroke-width="6" stroke-linecap="round"/>
+    </g>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#001344"/>
+
+  <!-- links from bubbles up to the cloud -->
+  <g fill="none" stroke="#10CF9B" stroke-width="4" stroke-linecap="round" stroke-opacity="0.85">
+    <path d="M330 530 C 330 430, 820 470, 870 392"/>
+    <path d="M750 530 C 750 460, 920 470, 930 398"/>
+    <path d="M1170 530 C 1170 460, 1000 470, 990 398"/>
+    <path d="M1590 530 C 1590 430, 1100 470, 1050 392"/>
+  </g>
+
+  <!-- cloud -->
+  <g>
+    <g fill="#009DD9" transform="translate(14 12)">
+      <circle cx="875" cy="285" r="92"/>
+      <circle cx="985" cy="232" r="115"/>
+      <circle cx="1085" cy="292" r="84"/>
+      <rect x="790" y="280" width="340" height="112" rx="56"/>
+    </g>
+    <g fill="#0078D4">
+      <circle cx="875" cy="285" r="92"/>
+      <circle cx="985" cy="232" r="115"/>
+      <circle cx="1085" cy="292" r="84"/>
+      <rect x="790" y="280" width="340" height="112" rx="56"/>
+    </g>
+    <!-- agent bot -->
+    <line x1="960" y1="206" x2="960" y2="178" stroke="#DBEFF9" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="960" cy="172" r="11" fill="#0BD0D9"/>
+    <rect x="890" y="206" width="140" height="108" rx="30" fill="#DBEFF9"/>
+    <rect x="878" y="240" width="14" height="36" rx="6" fill="#DBEFF9"/>
+    <rect x="1028" y="240" width="14" height="36" rx="6" fill="#DBEFF9"/>
+    <circle cx="930" cy="252" r="12" fill="#001344"/>
+    <circle cx="990" cy="252" r="12" fill="#001344"/>
+    <path d="M934 284 Q960 302 986 284" fill="none" stroke="#001344" stroke-width="6" stroke-linecap="round"/>
+    <text x="960" y="366" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="600" fill="#DBEFF9">Azure</text>
+  </g>
+
+  <!-- four stations -->
+  <use xlink:href="#station" x="145" y="640"/>
+  <use xlink:href="#station" x="565" y="640"/>
+  <use xlink:href="#station" x="985" y="640"/>
+  <use xlink:href="#station" x="1405" y="640"/>
+</svg>

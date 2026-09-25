@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 18 18" refX="4" refY="9" markerWidth="18" markerHeight="18" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M0,0 L18,9 L0,18 z" fill="#0BD0D9"/>
+    </marker>
+    <g id="bit0"><rect width="56" height="56" rx="10" fill="#13357F" stroke="#8FA3BF" stroke-width="3"/><text x="28" y="38" text-anchor="middle" font-size="28" fill="#8FA3BF">0</text></g>
+    <g id="bit1"><rect width="56" height="56" rx="10" fill="#13357F" stroke="#8FA3BF" stroke-width="3"/><text x="28" y="38" text-anchor="middle" font-size="28" fill="#DBEFF9">1</text></g>
+    <g id="q0"><rect width="56" height="56" rx="10" fill="#0BD0D9"/><text x="28" y="38" text-anchor="middle" font-size="28" font-weight="700" fill="#001344">0</text></g>
+    <g id="q1"><rect width="56" height="56" rx="10" fill="#0BD0D9"/><text x="28" y="38" text-anchor="middle" font-size="28" font-weight="700" fill="#001344">1</text></g>
+    <g id="chip">
+      <!-- pins: 4 per side, body 150x150 at 0,0 -->
+      <g stroke="#8FA3BF" stroke-width="5" stroke-linecap="round">
+        <line x1="30" y1="-4" x2="30" y2="-20"/><line x1="60" y1="-4" x2="60" y2="-20"/><line x1="90" y1="-4" x2="90" y2="-20"/><line x1="120" y1="-4" x2="120" y2="-20"/>
+        <line x1="30" y1="154" x2="30" y2="170"/><line x1="60" y1="154" x2="60" y2="170"/><line x1="90" y1="154" x2="90" y2="170"/><line x1="120" y1="154" x2="120" y2="170"/>
+        <line x1="-4" y1="30" x2="-20" y2="30"/><line x1="-4" y1="60" x2="-20" y2="60"/><line x1="-4" y1="90" x2="-20" y2="90"/><line x1="-4" y1="120" x2="-20" y2="120"/>
+        <line x1="154" y1="30" x2="170" y2="30"/><line x1="154" y1="60" x2="170" y2="60"/><line x1="154" y1="90" x2="170" y2="90"/><line x1="154" y1="120" x2="170" y2="120"/>
+      </g>
+      <rect width="150" height="150" rx="18" fill="#0A2A6B" stroke="#DBEFF9" stroke-width="4"/>
+      <rect x="22" y="22" width="106" height="106" rx="10" fill="none" stroke="#0078D4" stroke-width="3"/>
+    </g>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#001344"/>
+
+  <!-- Stage 1: 16 bits -->
+  <text x="405" y="170" text-anchor="end" font-size="36" font-weight="600" fill="#8FA3BF">16</text>
+  <g transform="translate(437,130)">
+    <use href="#bit0" x="0"/><use href="#bit1" x="66"/><use href="#bit0" x="132"/><use href="#bit0" x="198"/>
+    <use href="#bit0" x="264"/><use href="#bit0" x="330"/><use href="#bit0" x="396"/><use href="#bit1" x="462"/>
+    <use href="#bit1" x="528"/><use href="#bit0" x="594"/><use href="#bit1" x="660"/><use href="#bit1" x="726"/>
+    <use href="#bit0" x="792"/><use href="#bit1" x="858"/><use href="#bit1" x="924"/><use href="#bit0" x="990"/>
+  </g>
+
+  <!-- Funnel -->
+  <polygon points="437,204 1483,204 1087,294 833,294" fill="#0A2A6B" opacity="0.85"/>
+  <polyline points="930,228 960,254 990,228" fill="none" stroke="#0BD0D9" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- 4 bits -->
+  <text x="801" y="350" text-anchor="end" font-size="36" font-weight="600" fill="#0BD0D9">4</text>
+  <g transform="translate(833,310)">
+    <use href="#q1" x="0"/><use href="#q0" x="66"/><use href="#q1" x="132"/><use href="#q1" x="198"/>
+  </g>
+
+  <!-- Link to IR -->
+  <line x1="960" y1="384" x2="960" y2="420" stroke="#0BD0D9" stroke-width="5" marker-end="url(#ah)"/>
+
+  <!-- Stage 2: IR file -->
+  <g transform="translate(885,440)">
+    <path d="M18,0 H110 L150,40 V162 a18,18 0 0 1 -18,18 H18 a18,18 0 0 1 -18,-18 V18 a18,18 0 0 1 18,-18 z" fill="#13357F" stroke="#0BD0D9" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M110,0 V40 H150" fill="none" stroke="#0BD0D9" stroke-width="5" stroke-linejoin="round"/>
+    <text x="75" y="118" text-anchor="middle" font-size="44" font-weight="700" fill="#DBEFF9">IR</text>
+  </g>
+
+  <!-- Branching arrows -->
+  <g fill="none" stroke="#0BD0D9" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M960,620 V685"/>
+    <path d="M560,685 H1360"/>
+    <path d="M560,685 V742" marker-end="url(#ah)"/>
+    <path d="M960,685 V742" marker-end="url(#ah)"/>
+    <path d="M1360,685 V742" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- Chips -->
+  <g transform="translate(485,780)"><use href="#chip"/><text x="75" y="88" text-anchor="middle" font-size="34" font-weight="700" fill="#DBEFF9">CPU</text></g>
+  <g transform="translate(885,780)"><use href="#chip"/><text x="75" y="88" text-anchor="middle" font-size="34" font-weight="700" fill="#DBEFF9">GPU</text></g>
+  <g transform="translate(1285,780)"><use href="#chip"/><text x="75" y="88" text-anchor="middle" font-size="34" font-weight="700" fill="#DBEFF9">NPU</text></g>
+</svg>

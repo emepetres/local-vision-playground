@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arr" viewBox="0 0 20 20" refX="16" refY="10" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M2,2 L16,10 L2,18" fill="none" stroke="#DBEFF9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <!-- shared sheet icon: 140 x 180, origin top-left (same as system-map) -->
+    <g id="sheet">
+      <path d="M0,20 Q0,0 20,0 L100,0 L140,40 L140,160 Q140,180 120,180 L20,180 Q0,180 0,160 Z" fill="#13357F" stroke="#0BD0D9" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M100,0 L100,40 L140,40" fill="none" stroke="#0BD0D9" stroke-width="5" stroke-linejoin="round"/>
+      <g stroke="#DBEFF9" stroke-width="7" stroke-linecap="round">
+        <line x1="26" y1="72" x2="112" y2="72"/>
+        <line x1="26" y1="100" x2="96" y2="100"/>
+        <line x1="26" y1="128" x2="112" y2="128"/>
+        <line x1="26" y1="156" x2="80" y2="156"/>
+      </g>
+    </g>
+    <g id="textglyph" stroke="#0BD0D9" stroke-width="6" stroke-linecap="round">
+      <line x1="0" y1="0" x2="22" y2="0"/><line x1="34" y1="0" x2="56" y2="0"/>
+      <line x1="0" y1="14" x2="14" y2="14"/><line x1="26" y1="14" x2="56" y2="14"/>
+    </g>
+    <!-- pins for a 260 chip, origin at chip top-left -->
+    <g id="pins260" stroke-width="20" fill="none">
+      <line x1="45" y1="-10" x2="215" y2="-10" stroke-dasharray="14 25"/>
+      <line x1="45" y1="270" x2="215" y2="270" stroke-dasharray="14 25"/>
+      <line x1="-10" y1="45" x2="-10" y2="215" stroke-dasharray="14 25"/>
+      <line x1="270" y1="45" x2="270" y2="215" stroke-dasharray="14 25"/>
+    </g>
+    <g id="pins200" stroke-width="18" fill="none">
+      <line x1="37" y1="-9" x2="163" y2="-9" stroke-dasharray="14 23.33"/>
+      <line x1="37" y1="209" x2="163" y2="209" stroke-dasharray="14 23.33"/>
+      <line x1="-9" y1="37" x2="-9" y2="163" stroke-dasharray="14 23.33"/>
+      <line x1="209" y1="37" x2="209" y2="163" stroke-dasharray="14 23.33"/>
+    </g>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#001344"/>
+
+  <!-- laptop screen, zoomed in: the bottom runs off the canvas -->
+  <rect x="60" y="56" width="1800" height="1120" rx="30" fill="#001a55" stroke="#DBEFF9" stroke-width="6"/>
+
+  <!-- airplane-mode badge (same glyph as system-map) -->
+  <g transform="translate(1762,152)">
+    <rect x="-48" y="-48" width="96" height="96" rx="22" fill="#0A2A6B" stroke="#F2C94C" stroke-width="4"/>
+    <path transform="rotate(45) scale(0.95)" fill="#F2C94C" d="M0,-40 C5,-40 7,-34 7,-28 L7,-8 L40,12 L40,21 L7,11 L7,27 L17,35 L17,42 L0,37 L-17,42 L-17,35 L-7,27 L-7,11 L-40,21 L-40,12 L-7,-8 L-7,-28 C-7,-34 -5,-40 0,-40 Z"/>
+  </g>
+
+  <g transform="translate(0,44)">
+  <!-- runs-on connectors -->
+  <line x1="420" y1="420" x2="420" y2="510" stroke="#DBEFF9" stroke-width="4" opacity="0.55"/>
+  <line x1="1500" y1="420" x2="1500" y2="510" stroke="#DBEFF9" stroke-width="4" opacity="0.55"/>
+
+  <!-- vision process -->
+  <rect x="230" y="230" width="380" height="190" rx="22" fill="#0A2A6B" stroke="#009DD9" stroke-width="5"/>
+  <text x="420" y="316" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="600" fill="#DBEFF9">vision</text>
+  <text x="420" y="360" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#8FA3BF">Python · Qwen3-VL</text>
+
+  <!-- Arc iGPU chip -->
+  <g transform="translate(290,530)">
+    <use href="#pins260" stroke="#009DD9"/>
+    <rect x="0" y="0" width="260" height="260" rx="20" fill="#0A2A6B" stroke="#009DD9" stroke-width="5"/>
+    <rect x="26" y="26" width="208" height="208" rx="12" fill="none" stroke="#009DD9" stroke-width="3" opacity="0.6"/>
+    <text x="130" y="128" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="600" fill="#DBEFF9">Arc iGPU</text>
+    <text x="130" y="170" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="26" fill="#8FA3BF">OpenVINO</text>
+  </g>
+
+  <!-- vision -> sheet -> agent -->
+  <line x1="620" y1="325" x2="872" y2="325" stroke="#DBEFF9" stroke-width="4" marker-end="url(#arr)"/>
+  <use href="#textglyph" x="718" y="281"/>
+  <g filter="url(#glow)"><use href="#sheet" x="890" y="235"/></g>
+  <text x="960" y="466" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="600" fill="#DBEFF9">observations.jsonl</text>
+  <line x1="1048" y1="325" x2="1298" y2="325" stroke="#DBEFF9" stroke-width="4" marker-end="url(#arr)"/>
+  <use href="#textglyph" x="1146" y="281"/>
+
+  <!-- Agent process -->
+  <rect x="1310" y="230" width="380" height="190" rx="22" fill="#13357F" stroke="#0078D4" stroke-width="5"/>
+  <text x="1500" y="316" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="600" fill="#DBEFF9">Agent</text>
+  <text x="1500" y="360" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#8FA3BF">C# · Agent Framework</text>
+
+  <!-- CPU chip -->
+  <g transform="translate(1370,530)">
+    <use href="#pins260" stroke="#0078D4"/>
+    <rect x="0" y="0" width="260" height="260" rx="20" fill="#13357F" stroke="#0078D4" stroke-width="5"/>
+    <rect x="26" y="26" width="208" height="208" rx="12" fill="none" stroke="#0078D4" stroke-width="3" opacity="0.7"/>
+    <text x="130" y="128" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="600" fill="#DBEFF9">CPU</text>
+    <text x="130" y="170" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="26" fill="#8FA3BF">Foundry Local</text>
+  </g>
+
+  <!-- NPU chip, greyed out -->
+  <g transform="translate(860,590)" opacity="0.75">
+    <use href="#pins200" stroke="#8FA3BF" opacity="0.6"/>
+    <rect x="0" y="0" width="200" height="200" rx="18" fill="#001a55" stroke="#8FA3BF" stroke-width="4" stroke-dasharray="14 10"/>
+    <text x="100" y="114" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="36" font-weight="600" fill="#8FA3BF">NPU</text>
+  </g>
+  <rect x="900" y="846" width="120" height="44" rx="22" fill="none" stroke="#8FA3BF" stroke-width="3"/>
+  <text x="960" y="877" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#8FA3BF">demo 3</text>
+  </g>
+</svg>

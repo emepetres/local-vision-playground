@@ -1,0 +1,212 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <pattern id="matGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#DBEFF9" stroke-opacity="0.13" stroke-width="1.5"/>
+    </pattern>
+    <pattern id="matGridMajor" width="200" height="200" patternUnits="userSpaceOnUse">
+      <path d="M200 0H0V200" fill="none" stroke="#DBEFF9" stroke-opacity="0.28" stroke-width="2.5"/>
+    </pattern>
+    <pattern id="mesh" width="18" height="18" patternUnits="userSpaceOnUse">
+      <rect width="18" height="18" fill="#F4F8FB"/>
+      <rect x="4" y="4" width="10" height="10" rx="2" fill="#D3DEE8"/>
+    </pattern>
+    <pattern id="wood" width="1720" height="110" patternUnits="userSpaceOnUse">
+      <path d="M0 108H1720" stroke="#0E2C6E" stroke-width="3"/>
+      <path d="M0 40C300 30 600 52 900 40S1500 30 1720 44" fill="none" stroke="#1A3F8C" stroke-width="2" stroke-opacity="0.6"/>
+      <path d="M0 76C400 84 700 66 1100 78S1600 86 1720 72" fill="none" stroke="#1A3F8C" stroke-width="2" stroke-opacity="0.4"/>
+    </pattern>
+    <clipPath id="deskClip"><rect x="100" y="100" width="1720" height="880" rx="24"/></clipPath>
+  </defs>
+
+  <!-- background -->
+  <rect width="1920" height="1080" fill="#001344"/>
+
+  <!-- desk surface -->
+  <rect x="100" y="100" width="1720" height="880" rx="24" fill="#13357F"/>
+  <rect x="100" y="100" width="1720" height="880" rx="24" fill="url(#wood)" clip-path="url(#deskClip)"/>
+
+  <!-- ========== cutting mat ========== -->
+  <g>
+    <rect x="190" y="300" width="740" height="600" rx="18" fill="#1F7A4D"/>
+    <g clip-path="url(#matClip)">
+      <clipPath id="matClip"><rect x="190" y="300" width="740" height="600" rx="18"/></clipPath>
+      <rect x="190" y="300" width="740" height="600" fill="url(#matGrid)" transform="translate(0 0)"/>
+    </g>
+    <!-- major grid lines -->
+    <g stroke="#DBEFF9" stroke-opacity="0.28" stroke-width="2.5">
+      <path d="M390 300V900M590 300V900M790 300V900"/>
+      <path d="M190 500H930M190 700H930"/>
+    </g>
+    <!-- 45 degree guide -->
+    <path d="M230 860L470 620" stroke="#DBEFF9" stroke-opacity="0.2" stroke-width="2" stroke-dasharray="10 8"/>
+    <!-- ruler ticks top & left -->
+    <g stroke="#DBEFF9" stroke-opacity="0.55" stroke-width="2">
+      <path d="M230 300v14M270 300v22M310 300v14M350 300v22M390 300v30M430 300v14M470 300v22M510 300v14M550 300v22M590 300v30M630 300v14M670 300v22M710 300v14M750 300v22M790 300v30M830 300v14M870 300v22M910 300v14"/>
+      <path d="M190 340h14M190 380h22M190 420h14M190 460h22M190 500h30M190 540h14M190 580h22M190 620h14M190 660h22M190 700h30M190 740h14M190 780h22M190 820h14M190 860h22"/>
+    </g>
+    <rect x="190" y="300" width="740" height="600" rx="18" fill="none" stroke="#DBEFF9" stroke-opacity="0.35" stroke-width="3"/>
+  </g>
+
+  <!-- ========== PCB ========== -->
+  <g transform="rotate(-6 560 600)">
+    <rect x="345" y="455" width="430" height="300" rx="16" fill="#0C5A37" stroke="#10CF9B" stroke-width="4"/>
+    <!-- mounting holes -->
+    <g fill="#001344" stroke="#F2C94C" stroke-width="3">
+      <circle cx="370" cy="480" r="9"/><circle cx="750" cy="480" r="9"/>
+      <circle cx="370" cy="730" r="9"/><circle cx="750" cy="730" r="9"/>
+    </g>
+    <!-- traces -->
+    <g fill="none" stroke="#3FBF83" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.85">
+      <path d="M470 600H560L590 570H640"/>
+      <path d="M470 630H570L600 660H700"/>
+      <path d="M520 530V560H470"/>
+      <path d="M640 700V670"/>
+      <path d="M400 560H440M400 660H440"/>
+      <path d="M700 540V600H680"/>
+    </g>
+    <!-- main chip -->
+    <rect x="455" y="560" width="110" height="110" rx="8" fill="#141B2B" transform="translate(0 -20)"/>
+    <g stroke="#B8C4D3" stroke-width="4" transform="translate(0 -20)">
+      <path d="M470 560v-12M490 560v-12M510 560v-12M530 560v-12M550 560v-12"/>
+      <path d="M470 670v12M490 670v12M510 670v12M530 670v12M550 670v12"/>
+      <path d="M455 575h-12M455 595h-12M455 615h-12M455 635h-12M455 655h-12"/>
+      <path d="M565 575h12M565 595h12M565 615h12M565 635h12M565 655h12"/>
+    </g>
+    <circle cx="472" cy="557" r="5" fill="#8FA3BF"/>
+    <!-- small chips -->
+    <rect x="620" y="530" width="70" height="44" rx="6" fill="#141B2B"/>
+    <rect x="610" y="640" width="60" height="40" rx="6" fill="#141B2B"/>
+    <!-- header pins -->
+    <g fill="#141B2B"><rect x="385" y="700" width="220" height="26" rx="4"/></g>
+    <g fill="#F2C94C">
+      <circle cx="400" cy="713" r="4.5"/><circle cx="422" cy="713" r="4.5"/><circle cx="444" cy="713" r="4.5"/><circle cx="466" cy="713" r="4.5"/><circle cx="488" cy="713" r="4.5"/><circle cx="510" cy="713" r="4.5"/><circle cx="532" cy="713" r="4.5"/><circle cx="554" cy="713" r="4.5"/><circle cx="576" cy="713" r="4.5"/><circle cx="592" cy="713" r="0"/>
+    </g>
+    <!-- capacitors -->
+    <circle cx="410" cy="600" r="16" fill="#0078D4" stroke="#DBEFF9" stroke-width="3"/>
+    <circle cx="720" cy="700" r="14" fill="#0078D4" stroke="#DBEFF9" stroke-width="3"/>
+    <!-- LED -->
+    <rect x="712" y="600" width="18" height="12" rx="3" fill="#0BD0D9"/>
+  </g>
+
+  <!-- ========== mesh tray ========== -->
+  <g>
+    <rect x="1010" y="290" width="500" height="520" rx="22" fill="#FFFFFF"/>
+    <rect x="1030" y="310" width="460" height="480" rx="14" fill="url(#mesh)"/>
+    <rect x="1010" y="290" width="500" height="520" rx="22" fill="none" stroke="#DBEFF9" stroke-width="5"/>
+    <rect x="1030" y="310" width="460" height="480" rx="14" fill="none" stroke="#B8C4D3" stroke-width="3"/>
+  </g>
+
+  <!-- soldering iron -->
+  <g transform="rotate(-10 1260 380)">
+    <!-- cord -->
+    <path d="M1462 380C1510 380 1540 350 1575 300S1650 230 1720 250" fill="none" stroke="#2A3346" stroke-width="10" stroke-linecap="round"/>
+    <!-- tip + shaft -->
+    <path d="M1060 380L1090 373V387Z" fill="#6D7B90"/>
+    <rect x="1090" y="372" width="120" height="16" rx="4" fill="#B8C4D3"/>
+    <rect x="1205" y="366" width="26" height="28" rx="4" fill="#8FA3BF"/>
+    <!-- grip -->
+    <rect x="1228" y="358" width="150" height="44" rx="20" fill="#0078D4"/>
+    <g stroke="#005A9E" stroke-width="4" stroke-linecap="round">
+      <path d="M1255 362v36M1275 362v36M1295 362v36M1315 362v36"/>
+    </g>
+    <rect x="1374" y="364" width="90" height="32" rx="14" fill="#2A3346"/>
+  </g>
+
+  <!-- solder spool -->
+  <g>
+    <circle cx="1140" cy="530" r="80" fill="#0078D4"/>
+    <circle cx="1140" cy="530" r="64" fill="#C9D3DE"/>
+    <g fill="none" stroke="#9EACBD" stroke-width="3">
+      <circle cx="1140" cy="530" r="56"/><circle cx="1140" cy="530" r="46"/><circle cx="1140" cy="530" r="36"/>
+    </g>
+    <circle cx="1140" cy="530" r="26" fill="#0078D4"/>
+    <circle cx="1140" cy="530" r="13" fill="#F4F8FB"/>
+    <path d="M1200 500C1225 470 1250 480 1262 455" fill="none" stroke="#C9D3DE" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <!-- brush -->
+  <g transform="rotate(35 1370 560)">
+    <rect x="1250" y="547" width="150" height="26" rx="13" fill="#009DD9"/>
+    <rect x="1395" y="544" width="40" height="32" rx="4" fill="#8FA3BF"/>
+    <path d="M1433 542H1480C1490 548 1492 572 1480 578H1433Z" fill="#2A3346"/>
+    <g stroke="#4A5468" stroke-width="2"><path d="M1440 550H1484M1440 560H1488M1440 570H1484"/></g>
+  </g>
+
+  <!-- tweezers -->
+  <g fill="none" stroke="#8FA3BF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M1070 690L1290 672"/>
+    <path d="M1070 690L1288 712"/>
+  </g>
+  <rect x="1062" y="680" width="34" height="20" rx="8" fill="#6D7B90"/>
+
+  <!-- jumper wires -->
+  <g fill="none" stroke-width="7" stroke-linecap="round">
+    <path d="M1320 660C1360 630 1400 700 1450 660" stroke="#F2C94C"/>
+    <path d="M1320 690C1370 720 1400 660 1455 700" stroke="#10CF9B"/>
+    <path d="M1325 725C1370 700 1410 760 1455 735" stroke="#E5484D"/>
+    <path d="M1330 758C1380 780 1410 740 1450 765" stroke="#009DD9"/>
+  </g>
+  <g fill="#1B2233">
+    <rect x="1300" y="650" width="24" height="16" rx="3"/><rect x="1446" y="652" width="24" height="16" rx="3"/>
+    <rect x="1300" y="682" width="24" height="16" rx="3"/><rect x="1451" y="692" width="24" height="16" rx="3"/>
+    <rect x="1305" y="717" width="24" height="16" rx="3"/><rect x="1451" y="727" width="24" height="16" rx="3"/>
+    <rect x="1310" y="750" width="24" height="16" rx="3"/><rect x="1446" y="757" width="24" height="16" rx="3"/>
+  </g>
+
+  <!-- ========== gloves ========== -->
+  <!-- glove A: back of hand (all white) -->
+  <g transform="translate(1650 560) rotate(-8) scale(0.85)">
+    <rect x="-44" y="150" width="88" height="80" rx="16" fill="#E6EDF3" stroke="#B8C4D3" stroke-width="3"/>
+    <g fill="#FFFFFF" stroke="#B8C4D3" stroke-width="3">
+      <rect x="-50" y="-100" width="24" height="96" rx="12"/>
+      <rect x="-24" y="-126" width="24" height="120" rx="12"/>
+      <rect x="2" y="-120" width="24" height="114" rx="12"/>
+      <rect x="28" y="-92" width="22" height="86" rx="11"/>
+      <rect x="-54" y="-30" width="108" height="190" rx="36"/>
+      <rect x="-64" y="10" width="30" height="110" rx="15" transform="rotate(-24 -49 120)"/>
+    </g>
+    <path d="M-40 170H40M-40 190H40M-40 210H40" stroke="#C3CFDB" stroke-width="2"/>
+  </g>
+  <!-- glove B: palm up (grey palm, white cuff) -->
+  <g transform="translate(1738 630) rotate(8) scale(0.85)">
+    <rect x="-44" y="150" width="88" height="80" rx="16" fill="#E6EDF3" stroke="#B8C4D3" stroke-width="3"/>
+    <g fill="#6D7B90" stroke="#4A5468" stroke-width="3">
+      <rect x="-50" y="-92" width="22" height="86" rx="11"/>
+      <rect x="-26" y="-120" width="24" height="114" rx="12"/>
+      <rect x="0" y="-126" width="24" height="120" rx="12"/>
+      <rect x="26" y="-100" width="24" height="96" rx="12"/>
+      <rect x="-54" y="-30" width="108" height="190" rx="36"/>
+      <rect x="34" y="10" width="30" height="110" rx="15" transform="rotate(24 49 120)"/>
+    </g>
+    <path d="M-40 170H40M-40 190H40M-40 210H40" stroke="#C3CFDB" stroke-width="2"/>
+  </g>
+
+  <!-- ========== camera view footprint (frustum) ========== -->
+  <g>
+    <path d="M940 222L180 284H1540L980 222Z" fill="#0BD0D9" fill-opacity="0.10"/>
+    <rect x="170" y="284" width="1380" height="636" rx="20" fill="#0BD0D9" fill-opacity="0.07" stroke="#0BD0D9" stroke-width="4" stroke-dasharray="18 12"/>
+    <path d="M940 222L180 290M980 222L1540 290" stroke="#0BD0D9" stroke-width="3" stroke-opacity="0.8" stroke-dasharray="10 10"/>
+    <!-- corner brackets -->
+    <g fill="none" stroke="#0BD0D9" stroke-width="6" stroke-linecap="round">
+      <path d="M170 334V284H220"/><path d="M1500 284H1550V334"/>
+      <path d="M170 870V920H220"/><path d="M1500 920H1550V870"/>
+    </g>
+  </g>
+
+  <!-- ========== tripod + camera (top-down) ========== -->
+  <g>
+    <g stroke="#8FA3BF" stroke-width="10" stroke-linecap="round">
+      <path d="M960 180L820 118"/>
+      <path d="M960 180L1100 118"/>
+      <path d="M960 180L960 118"/>
+    </g>
+    <g fill="#2A3346"><circle cx="820" cy="118" r="10"/><circle cx="1100" cy="118" r="10"/><circle cx="960" cy="118" r="10"/></g>
+    <circle cx="960" cy="180" r="22" fill="#4A5468"/>
+    <!-- camera body -->
+    <rect x="900" y="150" width="120" height="70" rx="16" fill="#DBEFF9"/>
+    <rect x="918" y="140" width="34" height="14" rx="5" fill="#8FA3BF"/>
+    <circle cx="960" cy="200" r="20" fill="#0A2A6B" stroke="#0BD0D9" stroke-width="5"/>
+    <circle cx="960" cy="200" r="7" fill="#0BD0D9"/>
+    <circle cx="1002" cy="166" r="6" fill="#F2C94C"/>
+  </g>
+</svg>

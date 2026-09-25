@@ -121,7 +121,8 @@ The third fact is the one that matters for cost later.
 ---
 
 type: image
-src: !todo "the desk-scale work cell as seen from above: a green cutting mat on the left with a circuit board on it, a white mesh tray on the right holding a soldering iron, a solder spool, a brush, tweezers and jumper wires, a pair of white work gloves with grey palms, a camera on a tripod pointing down at them"
+src: images/work-cell.png
+description: "the desk-scale work cell as seen from above: a green cutting mat on the left with a circuit board on it, a white mesh tray on the right holding a soldering iron, a solder spool, a brush, tweezers and jumper wires, a pair of white work gloves with grey palms, a camera on a tripod pointing down at them"
 alt: desk-scale work cell with a green mat, a parts tray, gloves and a camera
 
 the work cell, at desk scale
@@ -135,7 +136,8 @@ Only gloves are live today. The spike, later, says why.
 ---
 
 type: image
-src: !todo "the whole system inside one laptop outline with an airplane-mode icon in its corner: a camera, then a box labelled vision (Python, Qwen3-VL), then a single sheet labelled observations.jsonl, then a box labelled Agent (C#, Agent Framework), then a notification bell and a log file; a dashed boundary around the camera and the vision box marks where the image stops; only text flows past it"
+src: images/system-map.png
+description: "the whole system inside one laptop outline with an airplane-mode icon in its corner: a camera, then a box labelled vision (Python, Qwen3-VL), then a single sheet labelled observations.jsonl, then a box labelled Agent (C#, Agent Framework), then a notification bell and a log file; a dashed boundary around the camera and the vision box marks where the image stops; only text flows past it"
 alt: camera, vision, a JSON Lines file, the agent, a toast and a log, all on one laptop
 
 the whole system, on one laptop
@@ -326,7 +328,8 @@ If asked: transformers must stay >=4.57,<5.0; convert.py scrubs a system-wide Op
 ---
 
 type: image
-src: !todo "one model weight drawn as a row of 16 bits shrinking to a row of 4 bits, then a single file labelled IR feeding three chips side by side: CPU, GPU, NPU"
+src: images/int4-one-ir.png
+description: "one model weight drawn as a row of 16 bits shrinking to a row of 4 bits, then a single file labelled IR feeding three chips side by side: CPU, GPU, NPU"
 alt: 16-bit weights compressed to 4-bit, one file for three engines
 
 sixteen bits to four, one file for three engines
@@ -674,7 +677,8 @@ So the Trigger is working without gloves. I measured it before I promised it on 
 ---
 
 type: image
-src: !todo "the same laptop outline as the system map, zoomed in: on the left the vision process running on a chip labelled Arc iGPU (OpenVINO), on the right the Agent process running on a chip labelled CPU (Foundry Local), a JSON Lines sheet passing between them, and a third chip labelled NPU greyed out with a note 'demo 3'"
+src: images/two-engines.png
+description: "the same laptop outline as the system map, zoomed in: on the left the vision process running on a chip labelled Arc iGPU (OpenVINO), on the right the Agent process running on a chip labelled CPU (Foundry Local), a JSON Lines sheet passing between them, and a third chip labelled NPU greyed out with a note 'demo 3'"
 alt: vision on the iGPU, the agent on the CPU, a JSON Lines file between them
 
 two processes, two engines
@@ -687,7 +691,8 @@ The Agent: qwen2.5-1.5b-instruct-generic-cpu:4. It is consulted only when a Trig
 ---
 
 type: image
-src: !todo "three stacked layers as blocks: at the top 'Microsoft Agent Framework 1.x', in the middle a small highlighted block 'our IChatClient', at the bottom 'Foundry Local 2.0.1'; beside the middle block a faded outline labelled 'the pattern: Bruno Capuano's adapter'"
+src: images/maf-bridge.png
+description: "three stacked layers as blocks: at the top 'Microsoft Agent Framework 1.x', in the middle a small highlighted block 'our IChatClient', at the bottom 'Foundry Local 2.0.1'; beside the middle block a faded outline labelled 'the pattern: Bruno Capuano's adapter'"
 alt: Agent Framework over our own IChatClient over Foundry Local 2.0.1
 
 Agent Framework, on Foundry Local 2.0.1
@@ -856,7 +861,8 @@ So the question was never local or cloud. It was what crosses the wire.
 ---
 
 type: image
-src: !todo "several factory stations, each keeping its camera images inside a small local boundary, sending only short text sentences up to a single agent in Azure"
+src: images/stations-to-azure.png
+description: "several factory stations, each keeping its camera images inside a small local boundary, sending only short text sentences up to a single agent in Azure"
 alt: stations keep their frames and send sentences to a cloud agent
 
 the agent you saw at 11:35, fed sentences, never frames

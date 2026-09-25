@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arr" viewBox="0 0 20 20" refX="16" refY="10" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M2,2 L16,10 L2,18" fill="none" stroke="#DBEFF9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <!-- shared sheet icon: 140 x 180, origin top-left -->
+    <g id="sheet">
+      <path d="M0,20 Q0,0 20,0 L100,0 L140,40 L140,160 Q140,180 120,180 L20,180 Q0,180 0,160 Z" fill="#13357F" stroke="#0BD0D9" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M100,0 L100,40 L140,40" fill="none" stroke="#0BD0D9" stroke-width="5" stroke-linejoin="round"/>
+      <g stroke="#DBEFF9" stroke-width="7" stroke-linecap="round">
+        <line x1="26" y1="72" x2="112" y2="72"/>
+        <line x1="26" y1="100" x2="96" y2="100"/>
+        <line x1="26" y1="128" x2="112" y2="128"/>
+        <line x1="26" y1="156" x2="80" y2="156"/>
+      </g>
+    </g>
+    <!-- text-lines glyph: only text crosses -->
+    <g id="textglyph" stroke="#0BD0D9" stroke-width="6" stroke-linecap="round">
+      <line x1="0" y1="0" x2="22" y2="0"/><line x1="34" y1="0" x2="56" y2="0"/>
+      <line x1="0" y1="14" x2="14" y2="14"/><line x1="26" y1="14" x2="56" y2="14"/>
+    </g>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#001344"/>
+
+  <!-- laptop outline -->
+  <rect x="170" y="110" width="1580" height="770" rx="24" fill="#001a55" stroke="#DBEFF9" stroke-width="5"/>
+  <path d="M110,880 L1810,880 L1780,940 Q1774,952 1760,952 L160,952 Q146,952 140,940 Z" fill="#0A2A6B" stroke="#DBEFF9" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="860" y="880" width="200" height="16" rx="8" fill="#DBEFF9" opacity="0.35"/>
+
+  <!-- airplane-mode badge -->
+  <g transform="translate(1646,214)">
+    <rect x="-48" y="-48" width="96" height="96" rx="22" fill="#0A2A6B" stroke="#F2C94C" stroke-width="4"/>
+    <path transform="rotate(45) scale(0.95)" fill="#F2C94C" d="M0,-40 C5,-40 7,-34 7,-28 L7,-8 L40,12 L40,21 L7,11 L7,27 L17,35 L17,42 L0,37 L-17,42 L-17,35 L-7,27 L-7,11 L-40,21 L-40,12 L-7,-8 L-7,-28 C-7,-34 -5,-40 0,-40 Z"/>
+  </g>
+
+  <!-- where the image stops: dashed boundary -->
+  <rect x="220" y="330" width="580" height="320" rx="24" fill="none" stroke="#0BD0D9" stroke-width="4" stroke-dasharray="18 12"/>
+
+  <!-- camera -->
+  <g transform="translate(306,490)">
+    <path d="M-38,-44 L-26,-60 L26,-60 L38,-44" fill="#0A2A6B" stroke="#DBEFF9" stroke-width="5" stroke-linejoin="round"/>
+    <rect x="-62" y="-44" width="124" height="90" rx="16" fill="#0A2A6B" stroke="#DBEFF9" stroke-width="5"/>
+    <circle cx="0" cy="1" r="27" fill="#001344" stroke="#009DD9" stroke-width="5"/>
+    <circle cx="0" cy="1" r="10" fill="#009DD9"/>
+  </g>
+
+  <!-- camera -> vision: a frame -->
+  <line x1="380" y1="490" x2="470" y2="490" stroke="#DBEFF9" stroke-width="4" marker-end="url(#arr)"/>
+  <g transform="translate(399,430)">
+    <rect x="0" y="0" width="52" height="38" rx="5" fill="#0A2A6B" stroke="#DBEFF9" stroke-width="3"/>
+    <path d="M5,33 L19,17 L29,27 L36,20 L47,33 Z" fill="#009DD9"/>
+    <circle cx="39" cy="10" r="5" fill="#DBEFF9"/>
+  </g>
+
+  <!-- vision box -->
+  <rect x="482" y="400" width="290" height="180" rx="22" fill="#0A2A6B" stroke="#009DD9" stroke-width="5"/>
+  <text x="627" y="482" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="600" fill="#DBEFF9">vision</text>
+  <text x="627" y="526" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#8FA3BF">Python · Qwen3-VL</text>
+
+  <!-- vision -> sheet: text only -->
+  <line x1="782" y1="490" x2="902" y2="490" stroke="#DBEFF9" stroke-width="4" marker-end="url(#arr)"/>
+  <use href="#textglyph" x="836" y="446"/>
+
+  <!-- observations.jsonl sheet -->
+  <g filter="url(#glow)"><use href="#sheet" x="916" y="400"/></g>
+  <text x="986" y="632" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="600" fill="#DBEFF9">observations.jsonl</text>
+
+  <!-- sheet -> agent: text only -->
+  <line x1="1070" y1="490" x2="1176" y2="490" stroke="#DBEFF9" stroke-width="4" marker-end="url(#arr)"/>
+  <use href="#textglyph" x="1100" y="446"/>
+
+  <!-- Agent box -->
+  <rect x="1188" y="400" width="310" height="180" rx="22" fill="#13357F" stroke="#0078D4" stroke-width="5"/>
+  <text x="1343" y="482" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="600" fill="#DBEFF9">Agent</text>
+  <text x="1343" y="526" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#8FA3BF">C# · Agent Framework</text>
+
+  <!-- agent -> actions -->
+  <path d="M1508,470 C1550,470 1556,410 1592,410" fill="none" stroke="#DBEFF9" stroke-width="4" marker-end="url(#arr)"/>
+  <path d="M1508,510 C1550,510 1556,570 1592,570" fill="none" stroke="#DBEFF9" stroke-width="4" marker-end="url(#arr)"/>
+
+  <!-- bell -->
+  <g transform="translate(1650,412)" fill="none" stroke="#10CF9B" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M-38,26 C-30,18 -30,4 -30,-8 C-30,-30 -17,-42 0,-42 C17,-42 30,-30 30,-8 C30,4 30,18 38,26 Z" fill="#0A2A6B"/>
+    <path d="M-9,34 A9,9 0 0 0 9,34"/>
+    <line x1="0" y1="-42" x2="0" y2="-50"/>
+  </g>
+
+  <!-- log file -->
+  <g transform="translate(1616,522)">
+    <path d="M0,12 Q0,0 12,0 L50,0 L70,20 L70,86 Q70,98 58,98 L12,98 Q0,98 0,86 Z" fill="#0A2A6B" stroke="#10CF9B" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M50,0 L50,20 L70,20" fill="none" stroke="#10CF9B" stroke-width="5" stroke-linejoin="round"/>
+    <g stroke="#DBEFF9" stroke-width="5" stroke-linecap="round">
+      <line x1="14" y1="40" x2="16" y2="40"/><line x1="26" y1="40" x2="56" y2="40"/>
+      <line x1="14" y1="58" x2="16" y2="58"/><line x1="26" y1="58" x2="48" y2="58"/>
+      <line x1="14" y1="76" x2="16" y2="76"/><line x1="26" y1="76" x2="56" y2="76"/>
+    </g>
+  </g>
+</svg>

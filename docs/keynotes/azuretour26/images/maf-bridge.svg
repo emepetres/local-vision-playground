@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <filter id="glow" x="-30%" y="-40%" width="160%" height="180%">
+      <feGaussianBlur stdDeviation="18" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arr" viewBox="0 0 20 20" refX="16" refY="10" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M2,2 L16,10 L2,18" fill="none" stroke="#8FA3BF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <rect width="1920" height="1080" fill="#001344"/>
+
+  <!-- connectors between layers -->
+  <line x1="600" y1="370" x2="600" y2="440" stroke="#DBEFF9" stroke-width="4" opacity="0.55"/>
+  <line x1="600" y1="640" x2="600" y2="710" stroke="#DBEFF9" stroke-width="4" opacity="0.55"/>
+
+  <!-- top: Agent Framework -->
+  <rect x="120" y="170" width="960" height="200" rx="22" fill="#13357F" stroke="#0078D4" stroke-width="4"/>
+  <text x="600" y="284" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="44" font-weight="600" fill="#DBEFF9">Microsoft Agent Framework 1.x</text>
+
+  <!-- middle: our IChatClient (focal) -->
+  <rect x="330" y="440" width="540" height="200" rx="22" fill="#0BD0D9" filter="url(#glow)"/>
+  <text x="600" y="555" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="46" font-weight="700" fill="#001344">our IChatClient</text>
+
+  <!-- bottom: Foundry Local -->
+  <rect x="120" y="710" width="960" height="200" rx="22" fill="#0A2A6B" stroke="#009DD9" stroke-width="4"/>
+  <text x="600" y="824" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="44" font-weight="600" fill="#DBEFF9">Foundry Local 2.0.1</text>
+
+  <!-- faded pattern block -->
+  <rect x="1260" y="440" width="540" height="200" rx="22" fill="none" stroke="#8FA3BF" stroke-width="4" stroke-dasharray="16 12" opacity="0.8"/>
+  <text x="1530" y="525" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="34" fill="#8FA3BF">the pattern:</text>
+  <text x="1530" y="578" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="34" fill="#8FA3BF">Bruno Capuano's adapter</text>
+
+  <!-- inspired-by connector -->
+  <line x1="1250" y1="540" x2="900" y2="540" stroke="#8FA3BF" stroke-width="3" stroke-dasharray="10 10" marker-end="url(#arr)" opacity="0.85"/>
+</svg>

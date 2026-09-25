@@ -104,12 +104,12 @@ public static class AgentProcess
         switch (trigger.Kind)
         {
             case TriggerEventKind.StreakBuilding:
-                output.WriteLine($"missing: {trigger.InstanceKey} {trigger.Count}/{trigger.N}");
+                output.WriteLine(descriptor.StreakBuildingMessage(trigger.InstanceKey, trigger.Count, trigger.N));
                 break;
 
             case TriggerEventKind.Fired:
             {
-                var sentence = IncidentSentence.ForMissingPart(trigger.InstanceKey);
+                var sentence = descriptor.Sentence(trigger.InstanceKey);
                 incidentLog.RecordFired(
                     trigger.IncidentId!, descriptor, trigger.InstanceKey, trigger.RawObservation!, sentence,
                     agentActed: false, agentActedReason: NoModelReason);
@@ -132,7 +132,7 @@ public static class AgentProcess
 
             case TriggerEventKind.Cleared:
                 incidentLog.RecordCleared(trigger.IncidentId!, descriptor);
-                output.WriteLine($"Incident cleared — {trigger.InstanceKey} is back.");
+                output.WriteLine(descriptor.ClearedMessage(trigger.InstanceKey));
                 break;
         }
     }

@@ -64,11 +64,13 @@
   },
   "hands": {
     "bare": ["bare hand"],
-    "gloved": ["gloved hand", "white glove", "grey glove", "glove"]
+    "gloved": ["gloved hand", "white glove", "glove"]
   },
   "triggers": {
-    "missing_part": { "n": 2 },
-    "no_gloves": { "n": 2 },
-    "foreign_object": { "n": 2 }
-  }
+    "no_gloves": { "n": 2 }
+  },
+  "notes": [
+    "Only no_gloves is on in this demo file. missing_part (A2) was refuted on the 4B iGPU export and stays off, though the code and its tests still cover it. foreign_object is split out to its own ticket and deferred. See issue #58 (docs/research/2026-09-24-work-cell-spike.md) and issue #66.",
+    "Only white gloves (grey palm coating) were photographed in the spike; grey electrical gloves are untested and left out of the gloved-hand list above."
+  ]
 }

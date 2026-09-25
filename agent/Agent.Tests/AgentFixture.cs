@@ -53,6 +53,16 @@ public sealed class AgentFixture : IAsyncDisposable
         }
         """);
 
+    /// <summary>A Work Cell with the no-gloves Trigger on, for issue #66's Incident tests.</summary>
+    public void WriteWorkCellWithNoGlovesTrigger(int n = 2) => WriteWorkCell($$"""
+        {
+          "tray": { "expected_parts": [] },
+          "zone": { "allowed_objects": [] },
+          "hands": { "bare": ["bare hand"], "gloved": ["gloved hand"] },
+          "triggers": { "no_gloves": { "n": {{n}} } }
+        }
+        """);
+
     /// <summary>
     /// Reads the incident log, retrying past a transient sharing violation from the Agent's
     /// own append still in flight on its background task.

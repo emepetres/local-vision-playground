@@ -15,11 +15,19 @@ public enum TriggerKind
 }
 
 /// <summary>
-/// A Trigger's fixed identity: the JSON key a Work Cell file names it by, its label and its
-/// condition in words. The one place these are written down, so a fourth Trigger is added
-/// here once rather than in every switch that used to read on <see cref="TriggerKind"/>.
+/// A Trigger's fixed identity: the JSON key a Work Cell file names it by, its label, its
+/// condition in words, the Incident sentence for a firing instance, and the streak-building
+/// and cleared console messages. The one place these are written down, so a fourth Trigger is
+/// added here once rather than in every switch that used to read on <see cref="TriggerKind"/>.
 /// </summary>
-public sealed record TriggerDescriptor(TriggerKind Kind, string JsonKey, string Label, string Condition);
+public sealed record TriggerDescriptor(
+    TriggerKind Kind,
+    string JsonKey,
+    string Label,
+    string Condition,
+    Func<string, string> Sentence,
+    Func<string, int, int, string> StreakBuildingMessage,
+    Func<string, string> ClearedMessage);
 
 public static class TriggerCatalog
 {
@@ -27,13 +35,22 @@ public static class TriggerCatalog
     [
         new(TriggerKind.MissingPart, "missing_part",
             "part missing from the tray",
-            "an expected part is in neither the Tray nor the Zone"),
+            "an expected part is in neither the Tray nor the Zone",
+            Sentence: partName => $"The {partName} is missing from the Tray.",
+            StreakBuildingMessage: (partName, count, n) => $"missing: {partName} {count}/{n}",
+            ClearedMessage: partName => $"Incident cleared — {partName} is back."),
         new(TriggerKind.NoGloves, "no_gloves",
             "working without gloves",
-            "a bare hand is visible"),
+            "a bare hand is visible",
+            Sentence: _ => "A bare hand is visible without gloves.",
+            StreakBuildingMessage: (_, count, n) => $"no gloves: {count}/{n}",
+            ClearedMessage: _ => "Incident cleared — gloves on."),
         new(TriggerKind.ForeignObject, "foreign_object",
             "foreign object in the zone",
-            "something on the Zone that neither the Zone's nor the Tray's list names"),
+            "something on the Zone that neither the Zone's nor the Tray's list names",
+            Sentence: name => $"A foreign object ({name}) is in the Zone.",
+            StreakBuildingMessage: (name, count, n) => $"foreign object: {name} {count}/{n}",
+            ClearedMessage: name => $"Incident cleared — {name} is gone."),
     ];
 
     public static TriggerDescriptor Of(TriggerKind kind) => All.First(d => d.Kind == kind);

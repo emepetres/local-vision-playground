@@ -66,10 +66,12 @@ public sealed class ObservationsFollower(string path, TimeSpan? pollInterval = n
             {
                 if (skipExistingContentOnce)
                 {
-                    // Nothing here is replayed, but its first line is still worth fingerprinting,
-                    // so a same-size-or-larger recreation right after start is not missed later.
-                    firstLineSnapshot = ReadFirstLine(stream);
-                    position = stream.Length;
+                    // Nothing complete here is replayed, but its first line is still worth
+                    // fingerprinting, so a same-size-or-larger recreation right after start is not
+                    // missed later. A line still being written is not skipped: reading resumes at
+                    // its start, so it is read whole once it completes — and when it is the first
+                    // line, it is fingerprinted then.
+                    (firstLineSnapshot, position) = ReadCompleteLinesExtent(stream);
                     skipExistingContentOnce = false;
                 }
                 else if (IsRecreated(stream, position, firstLineSnapshot))
@@ -133,13 +135,24 @@ public sealed class ObservationsFollower(string path, TimeSpan? pollInterval = n
         return read != buffer.Length || !buffer.AsSpan().SequenceEqual(firstLineSnapshot);
     }
 
-    private static byte[]? ReadFirstLine(FileStream stream)
+    /// <summary>
+    /// The file's first complete line, and the byte offset just past its last complete line —
+    /// null and 0 while not even the first line is complete. A '\n' byte never occurs inside a
+    /// UTF-8 multi-byte sequence, so the bytes can be searched directly.
+    /// </summary>
+    private static (byte[]? FirstLine, long CompleteLength) ReadCompleteLinesExtent(FileStream stream)
     {
         stream.Seek(0, SeekOrigin.Begin);
         var buffer = new byte[stream.Length];
         var read = stream.Read(buffer, 0, buffer.Length);
-        var text = Encoding.UTF8.GetString(buffer, 0, read);
-        var newline = text.IndexOf('\n');
-        return newline < 0 ? null : Encoding.UTF8.GetBytes(text[..(newline + 1)]);
+        var content = buffer.AsSpan(0, read);
+
+        var firstNewline = content.IndexOf((byte)'\n');
+        if (firstNewline < 0)
+        {
+            return (null, 0);
+        }
+
+        return (content[..(firstNewline + 1)].ToArray(), content.LastIndexOf((byte)'\n') + 1);
     }
 }

@@ -13,8 +13,9 @@ public static class WorkCellFile
     };
 
     /// <exception cref="WorkCellConfigurationException">
-    /// The file names an unknown Trigger, gives one an N below one, or turns the missing-part
-    /// Trigger on over an empty Tray.
+    /// The file names an unknown Trigger or one not built yet, gives one an N below one, turns
+    /// the missing-part Trigger on over an empty Tray, or the no-gloves Trigger on with no
+    /// bare-hand names.
     /// </exception>
     public static WorkCell Load(string path)
     {
@@ -51,6 +52,12 @@ public static class WorkCellFile
                 $"the Work Cell file '{path}' turns the missing-part Trigger on, but the Tray's expected parts list is empty");
         }
 
+        if (triggers.Any(t => t.Kind == TriggerKind.NoGloves) && bareHandNames.Count == 0)
+        {
+            throw new WorkCellConfigurationException(
+                $"the Work Cell file '{path}' turns the no-gloves Trigger on, but the hands' bare names list is empty");
+        }
+
         var name = string.IsNullOrWhiteSpace(dto.Name)
             ? Path.GetFileNameWithoutExtension(path)
             : dto.Name;
@@ -71,6 +78,14 @@ public static class WorkCellFile
                 var known = string.Join(", ", TriggerCatalog.All.Select(d => d.JsonKey));
                 throw new WorkCellConfigurationException(
                     $"the Work Cell file '{path}' names an unknown Trigger '{key}' (known: {known})");
+            }
+
+            if (kind == TriggerKind.ForeignObject)
+            {
+                // Named in the catalogue, but TriggerEngine does not evaluate it yet: accepting it
+                // would put a Trigger in force that can never fire.
+                throw new WorkCellConfigurationException(
+                    $"the Work Cell file '{path}' turns on Trigger '{key}', which is not built yet (issue #70)");
             }
 
             if (value is null)

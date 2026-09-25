@@ -126,6 +126,90 @@ public class AgentProcessTests
     }
 
     [Fact]
+    public async Task Refuses_NoBareHandNamesWhenNoGlovesTriggerIsOn()
+    {
+        await using var fixture = new AgentFixture();
+        fixture.WriteWorkCell("""
+            {
+              "tray": { "expected_parts": [] },
+              "zone": { "allowed_objects": [] },
+              "hands": { "bare": [], "gloved": ["gloved hand"] },
+              "triggers": { "no_gloves": { "n": 2 } }
+            }
+            """);
+
+        var exitCode = await AgentProcess.RunAsync(fixture.Options, fixture.Writer, CancellationToken.None);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("bare", fixture.Output);
+    }
+
+    [Fact]
+    public async Task Refuses_TheForeignObjectTrigger_UntilItIsBuilt()
+    {
+        await using var fixture = new AgentFixture();
+        fixture.WriteWorkCell("""
+            {
+              "tray": { "expected_parts": [] },
+              "zone": { "allowed_objects": [] },
+              "hands": { "bare": [], "gloved": [] },
+              "triggers": { "foreign_object": { "n": 2 } }
+            }
+            """);
+
+        var exitCode = await AgentProcess.RunAsync(fixture.Options, fixture.Writer, CancellationToken.None);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("foreign_object", fixture.Output);
+        Assert.Contains("not built yet", fixture.Output);
+    }
+
+    [Fact]
+    public async Task ALineHalfWrittenAtStart_IsReadWhole_OnceItCompletes()
+    {
+        await using var fixture = new AgentFixture();
+        fixture.WriteDefaultWorkCell();
+        File.WriteAllText(fixture.Options.ObservationsPath,
+            """{"type": "watch_start", "time": "2026-09-24T10:30:00+02:00", "variant": "already-there", "cadence": 2.0}""" + "\n" +
+            """{"type": "watch_start", "time": "2026-09-24T10:30:05+02:00", "variant": "half-""");
+
+        using var run = fixture.Start();
+        await fixture.WaitForOutputAsync(o => o.Contains("Watching"));
+        await Task.Delay(300);
+
+        File.AppendAllText(fixture.Options.ObservationsPath, "written\", \"cadence\": 2.0}\n");
+        await fixture.WaitForOutputAsync(o => o.Contains("half-written"));
+
+        Assert.DoesNotContain("did not parse", fixture.Output);
+        Assert.DoesNotContain("already-there", fixture.Output);
+    }
+
+    [Fact]
+    public async Task StartingOnAHalfWrittenFirstLine_StillNoticesALaterRecreation()
+    {
+        await using var fixture = new AgentFixture();
+        fixture.WriteDefaultWorkCell();
+        File.WriteAllText(fixture.Options.ObservationsPath,
+            """{"type": "watch_start", "time": "2026-09-24T10:30:00+02:00", "variant": "first-""");
+
+        using var run = fixture.Start();
+        await fixture.WaitForOutputAsync(o => o.Contains("Watching"));
+        await Task.Delay(300);
+
+        File.AppendAllText(fixture.Options.ObservationsPath, "watch\", \"cadence\": 2.0}\n");
+        await fixture.WaitForOutputAsync(o => o.Contains("first-watch"));
+
+        // Same size or larger than what was read, so only the first-line fingerprint can tell.
+        fixture.RecreateObservations("""
+            {"type": "watch_start", "time": "2026-09-24T10:35:00+02:00", "variant": "second-watch", "cadence": 2.0}
+            {"type": "watch_start", "time": "2026-09-24T10:35:01+02:00", "variant": "second-watch-again", "cadence": 2.0}
+            """);
+
+        await fixture.WaitForOutputAsync(o => o.Contains("second-watch-again"));
+        Assert.DoesNotContain("did not parse", fixture.Output);
+    }
+
+    [Fact]
     public async Task WaitsForTheObservationsFileWhenItDoesNotExistYet()
     {
         await using var fixture = new AgentFixture();

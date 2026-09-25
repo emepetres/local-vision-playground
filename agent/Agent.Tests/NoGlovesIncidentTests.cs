@@ -62,6 +62,9 @@ public class NoGlovesIncidentTests
         Assert.False(root.GetProperty("agent_acted").GetBoolean());
         Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("incident_id").GetString()));
         Assert.Equal(2, root.GetProperty("observation").GetProperty("cadence").GetInt32());
+
+        // There is one no-gloves Incident at a time, not one per part: the entry names no part.
+        Assert.False(root.TryGetProperty("part", out _));
     }
 
     [Fact]

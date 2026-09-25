@@ -97,7 +97,13 @@ Written down so it is not lost. Not promised.
 
 - [ ] **Model comparison on fixed hardware.** `qwen3-vl` at 2B / 4B / 8B, and against
       other local VLMs (`qwen3.5-*`, `ministral-3-3b`, `gemma-4-e2b`) — the variable an
-      Operator can actually change on their own machine.
+      Operator can actually change on their own machine. `qwen3.5-*` goes first (#75): it
+      publishes a `-generic-gpu` variant, so it could reach the Arc iGPU through Foundry
+      Local itself.
+- [ ] **A less lossy INT4 export.** The OpenVINO IR uses the NPU's channel-wise recipe on
+      every Execution Provider, and that recipe, not INT4 itself, is the likely cause of the
+      loops ([the INT4 note](./research/2026-09-25-int4-quantisation.md)): a finer IR for the
+      iGPU and CPU (#72), a better NPU recipe (#73), a repetition penalty (#74).
 - [ ] **The cloud comparison.** Phi-4-reasoning-vision in Microsoft Foundry, not to run
       it as part of the demo but to make "when does local actually compensate?" concrete.
 - [ ] **Live transcription.** The Live Transcription API added in Foundry Local 1.1,

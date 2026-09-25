@@ -58,9 +58,11 @@ falls on run 4, in the middle third of the deck by position.
    mode). Four slides, middle depth: why (the catalogue line), how (one command, "the
    recipe verified on this laptop"), what it means (16 → 4 bits per weight, ~5 GB
    downloaded → ~1.7 GB IR serving all three OpenVINO EPs), the price (the same question,
-   a clean paragraph from Foundry Local's CPU build against INT4 repeating itself:
-   quantising buys the accelerator, not the accuracy — a price every INT4 row pays,
-   NPU no more than the others). NNCF, `--sym`/`--group-size`, the transformers window,
+   a clean paragraph from Foundry Local's CPU build against the OpenVINO IR repeating
+   itself: quantising buys the accelerator, not the accuracy — a price every OpenVINO row
+   pays, NPU no more than the others. Both are INT4; the price is the NPU-shaped recipe's,
+   channel-wise against Foundry Local's block-wise, see
+   [the INT4 note](../../research/2026-09-25-int4-quantisation.md)). NNCF, `--sym`/`--group-size`, the transformers window,
    the system OpenVINO trap and `provenance.json` live in the notes only.
 7. Run 4, the hardware — TURN.
    demo D3 — the same `watch`, switching Variant live: Foundry Local CPU → OpenVINO iGPU →

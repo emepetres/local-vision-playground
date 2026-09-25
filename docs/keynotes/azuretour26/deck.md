@@ -148,7 +148,7 @@ Error: Duplicate definition of name (pad_CUDAExecutionProvider).
 
 ::: notes
 qwen3.5-0.8b-cuda-gpu:3 on my desktop. The defect is in the published artifact, not in the caller.
-Reported as microsoft/foundry-local#1075.
+Reported as microsoft/foundry-local#1075. If asked: fixed by the publisher five days later, as a new version (:4) — nothing the caller did fixed it.
 :::
 
 ---
@@ -287,8 +287,8 @@ type: comparison
 :::
 
 ::: notes
-Same image, same prompt, from the Benchmark of 2026-09-22. Every INT4 row repeats like this, on every engine.
-The price belongs to the quantisation, not to any one chip.
+Same image, same prompt, from the Benchmark of 2026-09-22. Every OpenVINO row repeats like this, on every engine.
+The price belongs to the quantisation recipe, not to any one chip. If asked: Foundry Local's build is INT4 too, but block-wise (one scale per 32 weights); ours is channel-wise, the shape the NPU wants — see docs/research/2026-09-25-int4-quantisation.md.
 :::
 
 ---

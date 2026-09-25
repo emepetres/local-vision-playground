@@ -90,9 +90,13 @@ uv run watch --variant qwen3-vl-2b-instruct-int4-sym-gpu
 
 ## The honest caveat
 
-One caveat carries across all three commands. The IR is **INT4-quantised**, and this
-2B model degrades under it: the description above runs to the token limit repeating itself,
-where Foundry Local's unquantised CPU build stops with a clean paragraph. The second Runtime
-buys the accelerator, not accuracy — the Arc iGPU is the throughput winner (see
-[the benchmark](./benchmark.md)), the NPU leads only on TTFT, and the quality trade-off is the
-INT4 IR's, not the Runtime's.
+One caveat carries across all three commands. The IR is **INT4-quantised with the NPU's
+recipe** — channel-wise, symmetric, every layer — and this 2B model degrades under it: the
+description above runs to the token limit repeating itself, where Foundry Local's CPU build
+stops with a clean paragraph. That build is INT4 too, but block-wise, with one scale per 32
+weights rather than one per row, so the gap is between two recipes, not between quantised and
+unquantised ([the INT4 note](../research/2026-09-25-int4-quantisation.md)). The Arc iGPU is the
+throughput winner (see [the benchmark](./benchmark.md)), the NPU leads only on TTFT, and the
+quality trade-off belongs to the IR's recipe, not to the Runtime — and the iGPU and CPU rows
+pay it only because they share the NPU's IR
+([#72](https://github.com/emepetres/local-vision-playground/issues/72)).

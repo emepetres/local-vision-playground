@@ -146,7 +146,11 @@ honest if they were rehearsed with the network actually gone, on the stage lapto
 assumed from the code. Three things have to be true before airplane mode goes on in front
 of the room:
 - The Foundry Local catalogue is cached — `observe` once, on network, so the catalogue
-  lookup that follows reads the disk cache and never reaches out.
+  lookup that follows can read the disk cache. With the network gone, Foundry Local 2.0.1
+  still tries every region first and then throws that cache away, leaving only scanned
+  models that declare no task; the vision process notices and starts a second manager that
+  reads the cache alone (`vision.inference._reached_the_catalogue`). `UV_OFFLINE` has no
+  part in this — it only keeps uv from fetching packages.
 - Every Variant the demo runs is pinned by id, not by alias — an alias leaves the
   Execution Provider, and the catalogue lookup that picks it, to Foundry Local; a pinned
   id (`qwen3-vl-2b-instruct-generic-cpu:2`, and the OpenVINO slugs D3 switches through)

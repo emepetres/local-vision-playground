@@ -583,7 +583,17 @@ def _disable_runtime_telemetry() -> None:
     os.environ.setdefault("ORT_TELEMETRY_DISABLED", "1")
 
 
-def _foundry_configuration(app_name: str) -> Configuration:
+_CACHE_ONLY_SERVICE_URL = "http://127.0.0.1:5273"
+"""The external service URL that puts Foundry Local's catalogue in cache-only mode.
+
+Nothing is listening there and nothing is sent to it: on 2.0.1 an external service URL only
+switches the catalogue to reading its disk cache, and model load stays in-process
+**[verified 2026-09-25]**. The SDK reserves it for delegating load to that service one day,
+which is the thing to check here when the SDK is upgraded.
+"""
+
+
+def _foundry_configuration(app_name: str, *, cache_only: bool = False) -> Configuration:
     """The ``Configuration`` every ``FoundryLocalManager`` in this process is built from.
 
     ``disable_nonessential_telemetry=True`` is not a flag an Operator chooses: Local-First
@@ -591,10 +601,41 @@ def _foundry_configuration(app_name: str) -> Configuration:
     telemetry too (CONTEXT.md, "Local-First"). Kept apart from ``_manager`` so a test can
     build one without starting the Foundry Local service that constructing a
     ``FoundryLocalManager`` would.
+
+    ``cache_only`` reads the catalogue from its disk cache and never from the network — the
+    second manager ``InProcessFoundryLocal`` starts when the first could not reach the
+    catalogue (``_reached_the_catalogue``).
+
+    The manager that reaches for the network logs errors only. With the network gone it
+    prints a warning for every region it tries — some twenty lines before the command says
+    anything — and those have been the only warnings it ever gave on the demo machine
+    **[verified 2026-09-25]**, so what is lost is the noise and not a signal. The cache-only
+    manager keeps the SDK's default, having no regions to try.
     """
     from foundry_local_sdk import Configuration
+    from foundry_local_sdk.logging_helper import LogLevel
 
-    return Configuration(app_name=app_name, disable_nonessential_telemetry=True)
+    return Configuration(
+        app_name=app_name,
+        disable_nonessential_telemetry=True,
+        log_level=LogLevel.WARNING if cache_only else LogLevel.ERROR,
+        web=Configuration.WebService(external_url=_CACHE_ONLY_SERVICE_URL) if cache_only else None,
+    )
+
+
+def _reached_the_catalogue(manager: FoundryLocalManager) -> bool:
+    """Whether this manager's catalogue holds anything but what a scan of the disk found.
+
+    A model the catalogue describes declares a task; a model found only by scanning the
+    downloaded weights declares none **[verified 2026-09-25]**. So a catalogue where no model
+    declares a task is one that could not be reached — including an empty one, which is a
+    machine with nothing downloaded and no network.
+    """
+    return any(
+        variant.info.task is not None
+        for model in manager.catalog.list_models()
+        for variant in model.variants
+    )
 
 
 class InProcessFoundryLocal:
@@ -618,10 +659,28 @@ class InProcessFoundryLocal:
     @property
     def _manager(self) -> FoundryLocalManager:
         if self._started is None:
-            from foundry_local_sdk import FoundryLocalManager
-
-            self._started = FoundryLocalManager(_foundry_configuration(self._app_name))
+            self._started = self._start(cache_only=False)
+            if not _reached_the_catalogue(self._started):
+                self._started.close()
+                self._started = self._start(cache_only=True)
         return self._started
+
+    def _start(self, *, cache_only: bool) -> FoundryLocalManager:
+        """Start a manager — one per process, so the previous one must be closed first.
+
+        With the network gone, the catalogue cannot be refreshed, and on 2.0.1 Foundry Local
+        then throws its disk cache away along with the refresh **[verified 2026-09-25]**:
+        every region fails, and the catalogue is left with only what a scan of the downloaded
+        models finds — none of which declares a task, so none could see a Frame. That is why
+        ``_manager`` starts a second one reading the disk cache alone, and what lets a
+        prepared machine observe with the network gone (CONTEXT.md, "Local-First"). It does
+        so before anything has been resolved or registered, so no model is left holding the
+        closed one. With the network there, the first manager stands and the catalogue goes
+        on refreshing as it always has.
+        """
+        from foundry_local_sdk import FoundryLocalManager
+
+        return FoundryLocalManager(_foundry_configuration(self._app_name, cache_only=cache_only))
 
     def register_execution_providers(self, announce: Callable[[str], None]) -> None:
         """Register every Execution Provider this machine can offer.

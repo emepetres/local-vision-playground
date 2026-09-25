@@ -161,6 +161,11 @@ public static class ToolCallReliabilityReport
             "Execution Provider Foundry Local offers on this machine, over " +
             $"{(results.Count > 0 ? results[0].Total : 0)} synthetic Incidents (issue #62).");
         markdown.AppendLine();
+        markdown.AppendLine(
+            IncidentActionTools.Instructions is { } instructions
+                ? $"System instructions: \"{instructions}\""
+                : "System instructions: none — the turn carries only the Incident text and the two tool definitions.");
+        markdown.AppendLine();
         markdown.AppendLine("| Candidate | Execution Provider | Variant | Reliable | Total |");
         markdown.AppendLine("| --- | --- | --- | --- | --- |");
         foreach (var result in results)

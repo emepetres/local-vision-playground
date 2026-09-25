@@ -4,19 +4,22 @@ using Microsoft.Extensions.AI;
 namespace Agent.Incidents;
 
 /// <summary>
-/// The one definition of what a model turn over an Incident is told and which two Actions it
-/// is given — shared by <see cref="IncidentAgent"/> (issue #65) and
+/// The one definition of what a model turn over an Incident is told (nothing) and which two
+/// Actions it is given — shared by <see cref="IncidentAgent"/> (issue #65) and
 /// <c>ToolCallReliabilityMeasurement</c> (issue #62), so the measurement that picked the
 /// pinned model and the Agent that runs it are always asking the same question.
 /// </summary>
 internal static class IncidentActionTools
 {
-    public const string Instructions =
-        "You are the safety agent for a Work Cell. Every message you receive describes one Incident " +
-        "as plain text: a Trigger name, its condition, the Observation line that crossed it, and the " +
-        "time. Write one short sentence describing the Incident for a Supervisor to read, then call " +
-        "notify_supervisor with that sentence and call log_incident with that same sentence. Always " +
-        "call both tools exactly once each; never only describe them in your reply.";
+    /// <summary>
+    /// None, on purpose: the turn carries only the Incident text and the two tool definitions.
+    /// Every system prompt measured on the pinned model pulled it off its native tool-call
+    /// format — prose first and the calls written as JSON text, bare JSON the parser does not
+    /// recognise, or one call and then narration — and cost it anything from 2 to 10 of 10
+    /// Incidents. Without one it calls both tools, 10/10 (ADR-0015). Setting this changes what
+    /// the turn and the measurement both send, so re-run the measurement before pinning.
+    /// </summary>
+    public static readonly string? Instructions = null;
 
     /// <summary>
     /// The <c>notify_supervisor</c> and <c>log_incident</c> tools, reporting each call's

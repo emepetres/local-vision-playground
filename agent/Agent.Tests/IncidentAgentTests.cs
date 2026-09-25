@@ -164,18 +164,18 @@ public class IncidentAgentTests
     }
 
     [Fact]
-    public async Task TheInstructionsReachTheChatClientAsChatOptions_NotAsASystemMessage()
+    public async Task TheTurnCarriesNoSystemPrompt_OnlyTheIncidentAndTheTwoTools()
     {
-        // The contract FoundryLocalChatClient relies on when it turns ChatOptions.Instructions
-        // into the request's system message: if Agent Framework ever started sending them as
-        // a system message too, the model would get them twice.
+        // Every system prompt measured cost the pinned model tool calls (ADR-0015). If this
+        // fails because instructions were added on purpose, re-run the measurement first.
         await using var fixture = new AgentFixture();
 
         using var run = await FireOneIncidentAsync(fixture);
 
         var (messages, options) = fixture.ChatClient.Calls[0];
-        Assert.Contains("notify_supervisor", options?.Instructions);
+        Assert.Null(options?.Instructions);
         Assert.DoesNotContain(messages, m => m.Role == Microsoft.Extensions.AI.ChatRole.System);
+        Assert.Equal(2, options?.Tools?.Count);
     }
 
     [Fact]

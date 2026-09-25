@@ -43,7 +43,7 @@ Provider — printed once, resolved before the first Observation is read, the sa
 random: `qwen2.5-1.5b-instruct-generic-cpu:4` is the only candidate that called both
 Actions reliably on this machine, on the CPU — the NPU and GPU Variants of the same
 candidate dropped one of the two, every run (see the
-[tool-call reliability measurement](../benchmarks/tool-call-reliability-zenbook-20260924-175747.md)).
+[tool-call reliability measurement](../benchmarks/tool-call-reliability-zenbook-20260925-114415.md)).
 That is also why the Watch and the Agent are told apart by hardware: the Watch runs the
 vision model on the iGPU, the Agent runs its own text model on the CPU, and the two never
 share an Execution Provider.
@@ -60,10 +60,12 @@ is the moment, and only that moment, the model is asked to do anything: a turn r
 per Incident, never once per Observation.
 
 The Incident is handed to the model as text — the Trigger, its condition in words, the
-Observation line exactly as it crossed, and the time. Never a Frame. The model is asked to
-write the one sentence a Supervisor will read and to invoke two Actions with it,
-`notify_supervisor` and `log_incident`: a Windows toast and an entry in
-`agent/incidents/incidents.jsonl`.
+Observation line exactly as it crossed, and the time. Never a Frame. Alongside it the model
+gets two Actions as tools, `notify_supervisor` and `log_incident` — a Windows toast and an
+entry in `agent/incidents/incidents.jsonl` — each taking the one sentence a Supervisor will
+read. Nothing else: no system prompt. Every one measured made this small model write the
+calls out as text instead of making them, and the tools' own descriptions are enough (see
+[ADR-0015](../adr/0015-our-own-ichatclient-over-foundry-local.md#no-system-prompt)).
 
 **If the model does not act — and the Agent always checks — it acts for it.** A tool call
 never made, one written out as prose instead of invoked, an exception, or a turn that does

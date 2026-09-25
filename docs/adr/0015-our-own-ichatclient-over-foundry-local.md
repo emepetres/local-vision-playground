@@ -31,6 +31,9 @@ sitting in front of Foundry Local, so Agent Framework's function invocation work
   `ChatSession.AddToolDefinition` calls, tool-call items to `FunctionCallContent`, and
   `FunctionResultContent` to `ToolResultItem`s, so Agent Framework's automatic function
   invocation works against it unchanged.
+- Turns `ChatOptions.Instructions` into the request's leading system message — Agent
+  Framework passes an agent's instructions there, never as a message in the history (see
+  [No system prompt](#no-system-prompt) for why the Agent's own turn sets none).
 - Serves streaming from the non-streaming path (`GetStreamingResponseAsync` wraps one
   `GetResponseAsync` call and replays it as updates), since tool calls must never be lost in
   a stream.
@@ -107,6 +110,42 @@ NPU or GPU, either family — carried both tool calls reliably; each one silentl
 exactly one of the two, every time. This is the "no candidate reaches about 8 in 10 anywhere
 [accelerated]" case #59 anticipated, one level more specific: the model does not just write
 the sentence — one accelerated candidate does reach 10/10, but only unaccelerated.
+
+## No system prompt
+
+The turn carries only the Incident text and the two tool definitions — no instructions.
+That is what the measurement above actually measured, though not by design: the first
+`FoundryLocalChatClient` ignored `ChatOptions.Instructions`, the only way Agent Framework
+hands an agent's instructions to its chat client, so the instructions the measurement set
+never reached the model. Once the client turned them into the request's system message, the
+same full measurement scored **0/10 on every combination**
+(`docs/benchmarks/tool-call-reliability-zenbook-20260925-100622.md`).
+
+The failure is the wording, not where it goes. On `qwen2.5-1.5b-instruct-generic-cpu:4`:
+
+| What the turn carried | Reliable | What the model did instead |
+| --- | --- | --- |
+| "Write one short sentence …, then call `notify_supervisor` … and `log_incident` …", as the system message | 0/10 | the sentence as prose, then both calls written as JSON text |
+| the same, prepended to the user message instead | 0/2 | the same |
+| "Respond only by calling `notify_supervisor` and `log_incident` …" | 1/5 | the calls as bare JSON, without the `<tool_call>` tags Foundry Local parses |
+| context only ("You are the safety agent for a Work Cell …"), no format | 0/5 | one real call, then narrated the other after the tool result |
+| no instructions, a richer `sentence` description ("for the Supervisor to read") | 8/10 | skipped `notify_supervisor` on two no-gloves Incidents |
+| **no instructions** | **10/10** | — |
+
+Any text beyond the tool definitions pulls a 1.5B model off Qwen's native tool-call format;
+the tool names and descriptions alone are enough for it to write the sentence and call both.
+So `IncidentActionTools.Instructions` is `null`, shared by the Agent's turn and the
+measurement, and the measurement's report now states the instructions it ran with. The client
+still honours `ChatOptions.Instructions` — a turn that sets them sends them — so adding any
+means re-running the measurement before pinning. The `qwen3-*` candidates fail differently
+with instructions: they reason about calling the tools and spend the 256-token bound before
+reaching a call.
+
+The reference run with the final code,
+`docs/benchmarks/tool-call-reliability-zenbook-20260925-114415.md`, repeats the measurement's
+table exactly, down to the failure shapes: 10/10 on `qwen2.5-1.5b-instruct-generic-cpu:4`,
+`openvino-gpu` calling only `log_incident` and `openvino-npu` only `notify_supervisor` on every
+run, and 0/10 everywhere else. The pinned Variant stands.
 
 ## Execution Providers
 

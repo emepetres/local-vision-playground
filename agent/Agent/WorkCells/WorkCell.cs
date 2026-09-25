@@ -91,6 +91,7 @@ public sealed record WorkCell(
     IReadOnlyList<NamedObject> AllowedObjects,
     IReadOnlyList<string> BareHandNames,
     IReadOnlyList<string> GlovedHandNames,
+    IReadOnlyList<string> PlainHandNames,
     IReadOnlyList<TriggerConfig> Triggers);
 
 /// <summary>

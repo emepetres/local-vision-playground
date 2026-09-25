@@ -64,13 +64,15 @@
   },
   "hands": {
     "bare": ["bare hand"],
-    "gloved": ["gloved hand", "white glove", "glove"]
+    "gloved": ["gloved hand", "white glove", "glove"],
+    "plain": ["hand"]
   },
   "triggers": {
     "no_gloves": { "n": 2 }
   },
   "notes": [
     "Only no_gloves is on in this demo file. missing_part (A2) was refuted on the 4B iGPU export and stays off, though the code and its tests still cover it. foreign_object is split out to its own ticket and deferred. See issue #58 (docs/research/2026-09-24-work-cell-spike.md) and issue #66.",
+    "The 4B iGPU export names a bare hand on the live Work Cell a plain \"hand\" (the 2026-09-25 D5 rehearsal: 0/4 said \"bare hand\"), so \"hand\" is listed as plain: it counts as bare unless a gloved hand is named in the same Observation. Leave plain empty for the 2B, where counting \"hand\" as bare added false Triggers (issue #58).",
     "Only white gloves (grey palm coating) were photographed in the spike; grey electrical gloves are untested and left out of the gloved-hand list above."
   ]
 }

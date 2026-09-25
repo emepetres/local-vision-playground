@@ -59,6 +59,7 @@ public sealed class TriggerEngine
     private readonly IReadOnlyList<NamedObject> _expectedParts;
     private readonly IReadOnlyList<string> _bareHandNames;
     private readonly IReadOnlyList<string> _glovedHandNames;
+    private readonly IReadOnlyList<string> _plainHandNames;
     private readonly Dictionary<string, InstanceState> _states = new(StringComparer.OrdinalIgnoreCase);
     private InstanceState? _handsState;
 
@@ -69,6 +70,7 @@ public sealed class TriggerEngine
         _expectedParts = workCell.ExpectedParts;
         _bareHandNames = workCell.BareHandNames;
         _glovedHandNames = workCell.GlovedHandNames;
+        _plainHandNames = workCell.PlainHandNames;
         ReArmAll();
     }
 
@@ -138,25 +140,39 @@ public sealed class TriggerEngine
         Neutral,
     }
 
+    /// <summary>
+    /// A named bare hand wins; then a gloved one. A plain hand (the <c>plain</c> list, empty
+    /// unless the Work Cell file opts in) counts as bare only when no gloved hand shares its
+    /// Cadence: the 4B on the live Work Cell says "hand" for a bare hand, but beside a
+    /// "gloved hand" the plain one is more likely the same gloved hand named twice.
+    /// </summary>
     private HandState DetermineHandState(IReadOnlyList<ObservedObject> objects)
     {
-        if (objects.Any(o => _bareHandNames.Any(n => string.Equals(n, o.Name, StringComparison.OrdinalIgnoreCase))))
+        if (AnyNamed(objects, _bareHandNames))
         {
             return HandState.Bare;
         }
 
-        if (objects.Any(o => _glovedHandNames.Any(n => string.Equals(n, o.Name, StringComparison.OrdinalIgnoreCase))))
+        if (AnyNamed(objects, _glovedHandNames))
         {
             return HandState.Gloved;
+        }
+
+        if (AnyNamed(objects, _plainHandNames))
+        {
+            return HandState.Bare;
         }
 
         return HandState.Neutral;
     }
 
+    private static bool AnyNamed(IReadOnlyList<ObservedObject> objects, IReadOnlyList<string> names) =>
+        objects.Any(o => names.Any(n => string.Equals(n, o.Name, StringComparison.OrdinalIgnoreCase)));
+
     /// <summary>
     /// The no-gloves Trigger (spec #66): a bare hand anywhere counts, `where` is never read,
     /// and one bare hand is enough — there is one Incident, not one per hand. A plain "hand",
-    /// matching neither hand-name set, is neutral while armed: it leaves the streak toward
+    /// matching no hand-name set, is neutral while armed: it leaves the streak toward
     /// firing exactly where it was (counting it as bare added false Triggers on the 2B, per
     /// the spike). Clearing only needs no bare hand reported, so a plain "hand" (like a
     /// gloved one) still counts toward it — <c>bare</c> is what <see cref="EvaluateArmed"/>

@@ -62,11 +62,11 @@ public sealed class AgentFixture : IAsyncDisposable
         """);
 
     /// <summary>A Work Cell with the no-gloves Trigger on, for issue #66's Incident tests.</summary>
-    public void WriteWorkCellWithNoGlovesTrigger(int n = 2) => WriteWorkCell($$"""
+    public void WriteWorkCellWithNoGlovesTrigger(int n = 2, string plain = "") => WriteWorkCell($$"""
         {
           "tray": { "expected_parts": [] },
           "zone": { "allowed_objects": [] },
-          "hands": { "bare": ["bare hand"], "gloved": ["gloved hand"] },
+          "hands": { "bare": ["bare hand"], "gloved": ["gloved hand"], "plain": [{{plain}}] },
           "triggers": { "no_gloves": { "n": {{n}} } }
         }
         """);

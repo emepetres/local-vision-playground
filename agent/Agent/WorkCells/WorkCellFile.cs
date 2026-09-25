@@ -44,6 +44,7 @@ public static class WorkCellFile
         var allowedObjects = ToNamedObjects(dto.Zone?.AllowedObjects);
         var bareHandNames = dto.Hands?.Bare ?? [];
         var glovedHandNames = dto.Hands?.Gloved ?? [];
+        var plainHandNames = dto.Hands?.Plain ?? [];
         var triggers = ToTriggers(dto.Triggers, path);
 
         if (triggers.Any(t => t.Kind == TriggerKind.MissingPart) && expectedParts.Count == 0)
@@ -62,7 +63,7 @@ public static class WorkCellFile
             ? Path.GetFileNameWithoutExtension(path)
             : dto.Name;
 
-        return new WorkCell(name, path, expectedParts, allowedObjects, bareHandNames, glovedHandNames, triggers);
+        return new WorkCell(name, path, expectedParts, allowedObjects, bareHandNames, glovedHandNames, plainHandNames, triggers);
     }
 
     private static List<NamedObject> ToNamedObjects(List<NamedObjectDto>? items) =>
@@ -135,6 +136,7 @@ public static class WorkCellFile
     {
         public List<string>? Bare { get; set; }
         public List<string>? Gloved { get; set; }
+        public List<string>? Plain { get; set; }
     }
 
     private sealed class TriggerDto

@@ -107,6 +107,58 @@ public class NoGlovesIncidentTests
     }
 
     [Fact]
+    public async Task APlainHand_ListedAsPlain_CountsAsBare()
+    {
+        await using var fixture = new AgentFixture();
+        fixture.WriteWorkCellWithNoGlovesTrigger(n: 2, plain: "\"hand\"");
+
+        using var run = fixture.Start();
+        await fixture.WaitForOutputAsync(o => o.Contains("Watching"));
+
+        fixture.AppendObservations(CadenceLine(1, "2026-09-24T10:30:01+02:00", Present("hand")));
+        await fixture.WaitForOutputAsync(o => o.Contains("no gloves: 1/2"));
+
+        fixture.AppendObservations(CadenceLine(2, "2026-09-24T10:30:03+02:00", Present("hand")));
+        await fixture.WaitForOutputAsync(o => o.Contains("Incident fired"));
+    }
+
+    [Fact]
+    public async Task APlainHand_BesideAGlovedHand_CountsAsGloved()
+    {
+        await using var fixture = new AgentFixture();
+        fixture.WriteWorkCellWithNoGlovesTrigger(n: 2, plain: "\"hand\"");
+
+        using var run = fixture.Start();
+        await fixture.WaitForOutputAsync(o => o.Contains("Watching"));
+
+        fixture.AppendObservations(CadenceLine(1, "2026-09-24T10:30:01+02:00", Present("hand")));
+        await fixture.WaitForOutputAsync(o => o.Contains("no gloves: 1/2"));
+
+        // "hand" next to "gloved hand" is read as the gloved hand named twice: the streak breaks.
+        const string mixed = """[{"name":"gloved hand","count":1,"where":"zone"},{"name":"hand","count":1,"where":"zone"}]""";
+        fixture.AppendObservations(CadenceLine(2, "2026-09-24T10:30:03+02:00", mixed));
+        await Task.Delay(300);
+
+        fixture.AppendObservations(CadenceLine(3, "2026-09-24T10:30:05+02:00", Present("hand")));
+        await fixture.WaitForOutputAsync(o => o.Split("no gloves: 1/2").Length - 1 == 2);
+        Assert.DoesNotContain("Incident fired", fixture.Output);
+    }
+
+    [Fact]
+    public async Task ANamedBareHand_BesideAGlovedHand_StillCountsAsBare()
+    {
+        await using var fixture = new AgentFixture();
+        fixture.WriteWorkCellWithNoGlovesTrigger(n: 1, plain: "\"hand\"");
+
+        using var run = fixture.Start();
+        await fixture.WaitForOutputAsync(o => o.Contains("Watching"));
+
+        const string mixed = """[{"name":"gloved hand","count":1,"where":"zone"},{"name":"bare hand","count":1,"where":"zone"}]""";
+        fixture.AppendObservations(CadenceLine(1, "2026-09-24T10:30:01+02:00", mixed));
+        await fixture.WaitForOutputAsync(o => o.Contains("Incident fired"));
+    }
+
+    [Fact]
     public async Task AGlovedHand_BreaksTheStreakTowardFiring()
     {
         await using var fixture = new AgentFixture();

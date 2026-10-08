@@ -181,3 +181,7 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
 - [`CLAUDE.md`](./CLAUDE.md) — the house rules, including the repository layout convention.
 - [`docs/agents/`](./docs/agents/) — how issues, triage labels and the domain docs are
   handled.
+
+## License
+
+[MIT](./LICENSE) © 2026 Javier Carnero Iglesias.

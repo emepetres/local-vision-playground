@@ -69,20 +69,23 @@ How these items map onto the anchor scenario is in
       loops come from the model and are worse in the int4 export. See
       [the spike write-up](./research/2026-09-24-work-cell-spike.md) and, for the Scene
       Questions the demo asks, [their validation](./research/2026-09-24-d2-scene-questions.md).
-- [ ] **6. Triggers.** Fire when a condition over Observations holds — the conditions of
+- [x] **6. Triggers.** Fire when a condition over Observations holds — the conditions of
       the [anchor scenario](./business-value.md#the-anchor-scenario-a-workstation-on-a-production-line),
       staged as a desk-scale work cell: a part is missing from the tray, someone is working
       the cell without gloves, a foreign object is in the zone — those of them the spike
       (item 11) found the model can resolve. That is **working without gloves**, on the 4B
-      model: the missing part is beyond it, and the Foreign Object waits on a choice of
-      Observation shape (#70).
-- [ ] **7. The Agent, in C#.** Microsoft Agent Framework consuming Observations from the
+      model, and it is the only Trigger the demo's Work Cell file turns on. The missing part
+      is built and tested (#63) but left off, since the model cannot see it; the Foreign
+      Object waits on a choice of Observation shape (#70).
+- [x] **7. The Agent, in C#.** Microsoft Agent Framework consuming Observations from the
       JSON Lines file `watch --emit` writes and invoking Actions when Triggers fire. The
       Agent never sees an image ([ADR-0003](./adr/0003-the-agent-consumes-observations-not-images.md)).
       Its model is `qwen2.5-1.5b-instruct` on the CPU, the only candidate that called its
       tools reliably on the demo machine (#62). Its Actions stay on the machine: a desktop notification — the supervisor finds out —
       and an entry in a local incident log holding the Trigger, the Observation that fired
-      it and the time. Never a Frame: what is kept is a sentence, never a face.
+      it and the time. Never a Frame: what is kept is a sentence, never a face. When the
+      model does not act, a safety net acts for it, and the log says which happened (#65).
+      See [the Agent guide](./guide/agent.md).
 - [ ] **9. Capacity and cost.** From a Benchmark and a requested Cadence, how many cameras
       a Hardware Profile could serve at most — ⌊Cadence / median inference latency⌋, one
       model serving the Feeds in series — next to what the same Observations would cost

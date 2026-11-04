@@ -160,6 +160,7 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
 - [2026-09-24 — which Scene Questions the 4B model can answer on the Work Cell](./docs/research/2026-09-24-d2-scene-questions.md)
 - [2026-09-25 — both runtimes run INT4; the recipe is what differs](./docs/research/2026-09-25-int4-quantisation.md)
 - [2026-11-04 — OpenVINO 2026.4 and the NPU driver floor (#78)](./docs/research/2026-11-04-openvino-2026-4-spike.md)
+- [2026-11-04 — OpenVINO/Qwen3-VL-4B-Instruct-int4-gq-ov: what "gq" is and what runs on the NPU](./docs/research/2026-11-04-qwen3-vl-ov-npu-verification.md)
 
 **What was measured**
 

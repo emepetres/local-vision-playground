@@ -139,3 +139,10 @@ The one-file reproduction from #38 / #40 is the reference — `VLMPipeline(ir_di
 MAX_PROMPT_LEN=2048, MIN_RESPONSE_LEN=128)` over `docs/fixtures/reference-frame.jpg`. The same
 INT4-sym IR also serves the OV-CPU and OV-GPU Benchmark rows; only FL-CPU comes from elsewhere.
 Produce an IR for each target Execution Provider (NPU, iGPU, CPU) to complete the acceptance.
+
+## Measuring what a Variant costs the machine
+
+`uv run python -m tools.measure.memory SLUG` loads one Variant in a fresh process and prints load
+time and host RAM (before, after load, after one generation, peak). On the demo machine run it
+from a shell with the OpenVINO 2025.3 archive removed from the environment (see the trap above).
+Figures for the 4B: [the note for #81](../../../docs/research/2026-11-04-our-own-qwen3-vl-4b-in-two-recipes.md).

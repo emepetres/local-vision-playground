@@ -1,0 +1,111 @@
+{
+  "schema_version": 2,
+  "recorded_at": "2026-11-04T21:33:17.384922+01:00",
+  "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, Intel gq-ov artifact",
+  "workload": {
+    "prompt": "Describe what you see in this image in two or three sentences.",
+    "max_output_tokens": 128,
+    "temperature": 0.0,
+    "frame": {
+      "sha256": "2e8dbaf486957506796f282282a0577a4093495edb837df7fb991dfca70af54f",
+      "bytes": 43881,
+      "width": 640,
+      "height": 360,
+      "codec": "jpeg",
+      "provenance": "C:\\Users\\jcarnero\\dev\\local-vision-playground\\docs\\fixtures\\reference-frame.jpg"
+    }
+  },
+  "repetitions": 5,
+  "provider_registration": 1.0999992809956893e-06,
+  "variants": [
+    {
+      "order": 1,
+      "id": "intel-qwen3-vl-4b-instruct-int4-sym-g128-npu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "NPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, Intel gq-ov artifact",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "NPU"
+      },
+      "provenance": {
+        "origin": "third-party",
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "source": {
+          "repository": "OpenVINO/Qwen3-VL-4B-Instruct-int4-gq-ov",
+          "revision": "91c5e474bd5a21e1fd79b5c885fe61b4136a03c0",
+          "url": "https://huggingface.co/OpenVINO/Qwen3-VL-4B-Instruct-int4-gq-ov",
+          "requires": {
+            "openvino": "2026.4.0",
+            "npu_driver": "32.0.100.4023"
+          }
+        },
+        "recipe": {
+          "name": "int4-sym-g128",
+          "weight_format": "int4",
+          "sym": true,
+          "group_size": 128,
+          "ratio": 1.0,
+          "tool": "nncf.compress_weights (as stated on the model card)",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=128"
+          ],
+          "toolchain": {}
+        },
+        "execution_provider": "NPU",
+        "slug": "intel-qwen3-vl-4b-instruct-int4-sym-g128-npu",
+        "created": "2026-11-04T20:21:48.636596+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 5.104373100000885,
+      "runs": [
+        {
+          "inference": 10.277602399999523,
+          "completion_tokens": 100,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 9.497332200000528,
+          "completion_tokens": 100,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 9.480614100000821,
+          "completion_tokens": 100,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 9.431495199998608,
+          "completion_tokens": 100,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 9.372079499999018,
+          "completion_tokens": 100,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": {
+        "fixtures": 32,
+        "shape_respected": 32,
+        "objects_found": 32
+      },
+      "observation": "This image captures a cozy, well-lit home office or study corner. On the left, a tall, light-colored wooden bookshelf is filled with books, small figurines, and decorative items, while a modern ergonomic office chair with a blue mesh back is prominently featured in the foreground. To the right, a white door is slightly ajar, revealing a glimpse of another room, and a large, dark-framed painting of a galaxy hangs on the wall above a small desk or table."
+    }
+  ],
+  "token_divergence": null
+}

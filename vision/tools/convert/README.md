@@ -91,6 +91,23 @@ is held `>=4.57,<5.0`. That window matters twice over: 4.57 carries native `qwen
 rows stand on one model, the args are recorded verbatim in every `provenance.json`: change one
 and the first-try result is no longer the one #40 proved.
 
+## Adopting an IR somebody else published
+
+`adopt.py` is the other way in: Intel publishes a Qwen3-VL IR, and a Variant is identified by its
+Provenance, so adopting it means writing that Provenance by hand. From `vision/`:
+
+```
+uv run --group convert python -m tools.convert.adopt                       # download Intel's 4B gq-ov, write its manifest
+uv run python -m tools.convert.adopt --from DIR --revision SHA             # an IR already on disk, adopted in place
+```
+
+The manifest says `origin: third-party` and records the repository, the revision, the Recipe the
+card states and the OpenVINO version and NPU driver the card requires; the slug carries the
+publisher (`intel-qwen3-vl-4b-instruct-int4-sym-g128-npu`). The Recipe is checked against the
+repository's `openvino_config.json` and the adoption is refused if they disagree. The IR lands in
+the same cache as one we exported, and `observe`, `watch` and `benchmark` take the slug as a
+`--variant`.
+
 ## Prerequisites an Operator needs
 
 | | |

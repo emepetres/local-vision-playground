@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -80,7 +81,7 @@ def test_a_cache_only_configuration_keeps_telemetry_off() -> None:
     assert configuration.disable_nonessential_telemetry is True
 
 
-def _manager_listing(*tasks: str | None) -> SimpleNamespace:
+def _manager_listing(*tasks: str | None) -> Any:  # a fake standing in for FoundryLocalManager
     variants = [SimpleNamespace(info=SimpleNamespace(task=task)) for task in tasks]
     model = SimpleNamespace(variants=variants)
     return SimpleNamespace(catalog=SimpleNamespace(list_models=lambda: [model]))

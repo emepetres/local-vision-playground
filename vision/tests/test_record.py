@@ -358,16 +358,16 @@ def test_the_markdown_lays_every_variant_out_as_one_comparison_table(benchmarks:
     assert "- **Recorded** — 2026-09-07 14:03:11+02:00\n" in document
     assert (
         "| Variant | Runtime | Runs on | Turn | Load | First | Median | Min | Max |"
-        " Tokens | Tokens/second |\n"
+        " Tokens | Tokens/second | Loops | Work Cell |\n"
     ) in document
     assert (
         "| `qwen3-vl-2b-instruct-cuda-gpu:2` | Foundry Local |"
         " GPU / NvTensorRtRtxExecutionProvider |"
-        " 1st of 2 | 1.250 s | 2.500 s | 2.000 s | 1.800 s | 2.200 s | 25 | 12.1 |\n"
+        " 1st of 2 | 1.250 s | 2.500 s | 2.000 s | 1.800 s | 2.200 s | 25 | 12.1 | 0/5 | — |\n"
     ) in document
     assert (
         "| `qwen3-vl-2b-instruct-generic-cpu:2` | Foundry Local | CPU / CPUExecutionProvider |"
-        " 2nd of 2 | 0.800 s | 20.000 s | 18.000 s | 17.500 s | 18.500 s | 25 | 1.4 |\n"
+        " 2nd of 2 | 0.800 s | 20.000 s | 18.000 s | 17.500 s | 18.500 s | 25 | 1.4 | 0/5 | — |\n"
     ) in document
 
 
@@ -420,7 +420,7 @@ def test_the_markdown_says_why_an_unmeasured_variants_row_is_empty(benchmarks: P
     assert (
         "| `qwen3-vl-2b-instruct-cuda-gpu:2` | Foundry Local |"
         " GPU / NvTensorRtRtxExecutionProvider |"
-        " 1st of 2 | — | — | — | — | — | — | — |\n"
+        " 1st of 2 | — | — | — | — | — | — | — | — | — |\n"
     ) in document
     assert "**qwen3-vl-2b-instruct-cuda-gpu:2 was not measured.** " in document
     assert INVALID_GRAPH in document
@@ -440,7 +440,7 @@ def test_a_lone_repetition_has_no_steady_state_to_put_in_the_table(benchmarks: P
     assert (
         "| `qwen3-vl-2b-instruct-cuda-gpu:2` | Foundry Local |"
         " GPU / NvTensorRtRtxExecutionProvider |"
-        " 1st of 1 | 1.250 s | 2.500 s | — | — | — | 30 | 12.0 |\n"
+        " 1st of 1 | 1.250 s | 2.500 s | — | — | — | 30 | 12.0 | 0/1 | — |\n"
     ) in document
 
 
@@ -842,7 +842,7 @@ def test_the_markdown_reads_the_two_cpu_rows_as_the_runtime_calibration(benchmar
 
     assert (
         "| Variant | Runtime | Runs on | Turn | Load | First | Median | Min | Max |"
-        " Tokens | Tokens/second |\n"
+        " Tokens | Tokens/second | Loops | Work Cell |\n"
     ) in document
     assert (
         "| `qwen3-vl-2b-instruct-generic-cpu:2` | Foundry Local | CPU / CPUExecutionProvider |"

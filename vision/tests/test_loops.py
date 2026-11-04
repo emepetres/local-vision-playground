@@ -77,3 +77,21 @@ def test_the_same_object_in_two_places_or_not_in_a_row_is_not_a_loop() -> None:
 
 def test_a_no_shape_has_no_objects_to_loop_over() -> None:
     assert not loops_in_objects(NoShape("the model answered in prose"))
+
+
+def test_the_recorded_2b_ir_loops_on_openvino_and_not_on_foundry_local() -> None:
+    """The contrast the Benchmark exists to show, read off the real recorded Observations."""
+    import json
+    from pathlib import Path
+
+    record = Path(__file__).resolve().parents[2] / "docs" / "benchmarks"
+    record = next(record.glob("asus-zenbook-s14-*-20260922-090814.json"))
+    variants = json.loads(record.read_text(encoding="utf-8"))["variants"]
+    looped = {v["id"]: loops_in_text(v["observation"]) for v in variants}
+
+    assert looped == {
+        "qwen3-vl-2b-instruct-generic-cpu:2": False,
+        "qwen3-vl-2b-instruct-int4-sym-cpu": True,
+        "qwen3-vl-2b-instruct-int4-sym-gpu": True,
+        "qwen3-vl-2b-instruct-int4-sym-npu": True,
+    }

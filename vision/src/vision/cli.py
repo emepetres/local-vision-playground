@@ -40,10 +40,12 @@ from vision.benchmark import (
     measure,
     refuse_a_live_camera,
     require_a_benchmark_run,
+    work_cell_fixtures,
 )
 from vision.capture import (
     FRAMES_DIRECTORY,
     REFERENCE_FRAME,
+    WORK_CELL_FIXTURES,
     Camera,
     HeldFeed,
     ImageFileCamera,
@@ -168,6 +170,7 @@ def benchmark_main(
     out: TextIO | None = None,
     err: TextIO | None = None,
     benchmarks_dir: Path | None = None,
+    work_cell_dir: Path | None = None,
 ) -> int:
     """Run ``benchmark``. Several Variants, N Benchmark Runs each over one Workload."""
     args = _benchmark_parser().parse_args(argv)
@@ -205,6 +208,7 @@ def benchmark_main(
             if question is None
             else Workload(prompt=question, frame=frame)
         )
+        fixtures = work_cell_fixtures(work_cell_dir or WORK_CELL_FIXTURES) if args.work_cell else ()
         benchmark = measure(
             router=router,
             clock=clock,
@@ -213,6 +217,7 @@ def benchmark_main(
             repetitions=args.repetitions,
             out=out,
             structured=args.structured,
+            fixtures=fixtures,
         )
     except Exception as error:
         return _fail(error, debug=args.debug, err=err)
@@ -625,6 +630,16 @@ def _benchmark_parser() -> argparse.ArgumentParser:
         what_it_means=(
             " The question is the Workload, so two Benchmarks asked different questions"
             " measured different amounts of generation and are not comparable."
+        ),
+    )
+    parser.add_argument(
+        "--work-cell",
+        action="store_true",
+        help=(
+            "after the repetitions, ask each Variant for the fixed shape on every Work Cell"
+            " fixture photo once, and report how often the shape was respected and objects"
+            " were found. Not timed; costs one inference per photo per Variant, so it adds"
+            " minutes on a CPU Variant"
         ),
     )
     _add_structured(parser)

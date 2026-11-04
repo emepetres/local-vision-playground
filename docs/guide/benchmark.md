@@ -237,6 +237,57 @@ the report above is inside it — and a warning on every Benchmark is a warning 
 The divergence is carried on the Benchmark rather than only printed, so it travels into the
 persisted record instead of living in a terminal that has since scrolled.
 
+## When a Variant goes round in circles
+
+Latency says nothing about whether the Observation is any good, and the channel-wise INT4 IR
+fails in one recognisable way: it says a sentence and then says it again until the output
+limit stops it ([the INT4 note](../research/2026-09-25-int4-quantisation.md)). So every
+Variant carries a **loop rate** — the share of its Benchmark Runs that repeated themselves,
+the cold one included — as a `Loops` line above its table and a `Loops` column in the
+Markdown (`3/5`), and as `loops`, `loop_rate` and a per-run `looped` in the JSON:
+
+```
+Loops        5 of 5 Benchmark Runs (100%)
+```
+
+**The detection rule.** A text _loops_ when a run of words repeats back-to-back at least
+**3 times** and the repeating stretch covers at least **12 words** (`vision/loops.py`). Case
+and punctuation are ignored, and a final repetition cut off by the output limit still counts
+— that is how a loop usually ends. The two thresholds are the point: a sentence said twice, a
+phrase repeated across a list, or emphasis such as "very very very" or "no, no, no" is a text
+that repeats _legitimately_ and is not a loop. A Structured Observation has no prose, so there
+a loop is the same object (name, count and `where`) listed three times in a row.
+
+On the 2B recorded in `docs/benchmarks/`, the rule reads the three OpenVINO rows as looping
+and Foundry Local's CPU row as clean. It counts what the model _wrote_; it does not say the
+text was wrong, only that it was stuck.
+
+## Is the Structured Observation usable? `--work-cell`
+
+```bash
+uv run benchmark --work-cell --variant qwen3-vl-2b-instruct-generic-cpu --variant qwen3-vl-2b-instruct-int4-sym-gpu
+```
+
+After its repetitions, and while it is still on the hardware, each Variant is asked for the
+fixed shape (the [`--structured`](./structured.md) prompt) once on every photo in
+[`docs/fixtures/work-cell/`](../fixtures/work-cell/) — byte-identical copies counted once.
+It is independent of `--structured` and not timed; it costs one inference per photo per
+Variant, so it adds minutes on a CPU Variant. Two counts come back per Variant, as a
+`Work Cell` line, a Markdown column and a `work_cell` object in the JSON:
+
+```
+Work Cell    shape respected on 29 of 32 fixtures, objects found on 27
+```
+
+- **Shape respected** — photos that came back as a list of objects at all: not prose, not
+  malformed JSON, not cut off with nothing closed.
+- **Objects found** — those among them that listed at least one object. Every fixture is a
+  Work Cell with things on it, so an empty list is a miss.
+
+Neither says the objects named were the _right_ ones: the fixtures carry no labels beside the
+photos, and scoring them against the Triggers was done by hand in
+[the spike](../research/2026-09-24-work-cell-spike.md).
+
 ## What a Benchmark leaves behind
 
 A Benchmark that measured something is written to **[`docs/benchmarks/`](../benchmarks/)** as

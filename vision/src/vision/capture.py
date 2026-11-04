@@ -63,6 +63,9 @@ in editable mode. That is what ``uv run`` gives us, and it is why a Benchmark sa
 rather than reporting a missing file when it is not.
 """
 
+WORK_CELL_FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "fixtures" / "work-cell"
+"""The photos of the demo's Work Cell, kept in the repository like the reference Frame."""
+
 FRAMES_DIRECTORY = Path(__file__).resolve().parents[2] / "frames"
 """Where camera Frames are kept when an Operator asks for them — ``vision/frames/``,
 git-ignored. Nothing is written here unless they do.

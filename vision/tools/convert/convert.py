@@ -109,7 +109,7 @@ def parse_recipe(name: str) -> Recipe:
     )
 
 
-def _recipe_argument(name: str) -> Recipe:
+def recipe_argument(name: str) -> Recipe:
     """``parse_recipe`` as an argparse ``type``, so a bad name is a usage error, not a traceback."""
     try:
         return parse_recipe(name)
@@ -364,7 +364,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--weights", default=DEFAULT_WEIGHTS, help="Hugging Face model id to export")
-    ap.add_argument("--recipe", default=DEFAULT_RECIPE, type=_recipe_argument, metavar="NAME",
+    ap.add_argument("--recipe", default=DEFAULT_RECIPE, type=recipe_argument, metavar="NAME",
                     help="Recipe to compress the weights with, named in full: int4-sym-cw "
                          "(channel-wise, the default #40 verified) or e.g. int4-sym-g128 "
                          "(group-wise). It is part of the slug, so each Recipe is its own Variant")

@@ -22,8 +22,8 @@ from typing import Any
 
 from tools.convert.convert import (
     Recipe,
-    _recipe_argument,
     default_cache_root,
+    recipe_argument,
     slug_for,
 )
 
@@ -155,7 +155,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                     help="Hugging Face repository that publishes the IR")
     ap.add_argument("--weights", default=DEFAULT_WEIGHTS,
                     help="the model the IR was made from, named in the slug")
-    ap.add_argument("--recipe", default=CARD_RECIPE, type=_recipe_argument, metavar="NAME",
+    ap.add_argument("--recipe", default=CARD_RECIPE, type=recipe_argument, metavar="NAME",
                     help="the Recipe the model card states (checked against openvino_config.json)")
     ap.add_argument("--revision", default=None,
                     help="commit to fetch (default: the repository's latest); required with --from")

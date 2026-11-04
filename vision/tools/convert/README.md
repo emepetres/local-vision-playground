@@ -17,7 +17,9 @@ dependency group** in [`../../pyproject.toml`](../../pyproject.toml):
 - Nothing in `observe` / `watch` / `benchmark` imports any of it. `convert.py` itself imports
   **only the standard library** and reaches the export tools by shelling out to `optimum-cli`
   in the same interpreter — so an Operator who only runs the demo installs none of this, and
-  the unit tests import the module without pulling the toolchain in.
+  the unit tests import the module without pulling the toolchain in. `adopt.py` keeps the same
+  promise: its only non-standard import, `huggingface_hub`, is loaded inside the download
+  function, so `--from` adoption needs no `convert` group either.
 
 ## Run it
 

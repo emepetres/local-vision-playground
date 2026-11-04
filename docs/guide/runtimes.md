@@ -47,9 +47,9 @@ The provenance slug is the Variant name. With the exports above:
 | Execution Provider | Runtime        | Variant to name                     |
 | ------------------ | -------------- | ----------------------------------- |
 | CPU                | Foundry Local  | `qwen3-vl-2b-instruct-generic-cpu`  |
-| CPU                | OpenVINO GenAI | `qwen3-vl-2b-instruct-int4-sym-cpu` |
-| Arc iGPU           | OpenVINO GenAI | `qwen3-vl-2b-instruct-int4-sym-gpu` |
-| NPU                | OpenVINO GenAI | `qwen3-vl-2b-instruct-int4-sym-npu` |
+| CPU                | OpenVINO GenAI | `qwen3-vl-2b-instruct-int4-sym-cw-cpu` |
+| Arc iGPU           | OpenVINO GenAI | `qwen3-vl-2b-instruct-int4-sym-cw-gpu` |
+| NPU                | OpenVINO GenAI | `qwen3-vl-2b-instruct-int4-sym-cw-npu` |
 
 The slug names the [Recipe](../../CONTEXT.md) in full: `int4-sym-cw` is INT4, symmetric,
 channel-wise, and `convert.py --recipe int4-sym-g128` exports the same weights group-wise as

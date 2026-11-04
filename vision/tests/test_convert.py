@@ -132,6 +132,20 @@ class TestParseRecipe:
     def test_refuses_a_name_that_is_no_recipe(self) -> None:
         with pytest.raises(ValueError):
             parse_recipe("int4")
+        with pytest.raises(ValueError):
+            parse_recipe("int4-sym-g0")
+
+    def test_a_manifest_from_before_recipes_were_named_reads_as_the_default(self) -> None:
+        legacy = {"recipe": {"tool": "optimum-cli export openvino", "args": []}}
+        assert recipe_from_provenance(legacy) == DEFAULT_RECIPE
+
+    def test_the_recipe_flag_names_the_ir_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setenv("LVP_IR_CACHE", str(tmp_path))
+        monkeypatch.setattr("tools.convert.convert.check_npu_driver", lambda: None)
+        assert main(["--dry-run", "--recipe", "int4-sym-g128"]) == 0
+        assert "qwen3-vl-2b-instruct-int4-sym-g128-npu" in capsys.readouterr().out
 
 
 class TestToolchainVersions:

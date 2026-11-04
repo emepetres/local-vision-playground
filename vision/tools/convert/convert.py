@@ -96,6 +96,8 @@ def parse_recipe(name: str) -> Recipe:
             "e.g. int4-sym-cw or int4-sym-g128"
         )
     weight_format, symmetry, group = match.groups()
+    if group is not None and int(group) < 1:
+        raise ValueError(f"{name!r} has a group size of {group} — it must be at least 1")
     return Recipe(
         weight_format=weight_format,
         sym=symmetry == "sym",
@@ -106,6 +108,9 @@ def parse_recipe(name: str) -> Recipe:
 def recipe_from_provenance(manifest: dict[str, Any]) -> Recipe:
     """Read the Recipe back out of a ``provenance.json`` — the inverse of ``build_provenance``."""
     recipe = manifest["recipe"]
+    if "name" not in recipe:
+        # A manifest written before the Recipe was named: the one export then was channel-wise.
+        return DEFAULT_RECIPE
     return Recipe(
         weight_format=recipe["weight_format"],
         sym=recipe["sym"],

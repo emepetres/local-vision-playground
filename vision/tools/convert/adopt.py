@@ -47,6 +47,15 @@ STATED_ON_THE_CARD = "nncf.compress_weights (as stated on the model card)"
 """The ``recipe.tool``: not something we ran, so not recorded as if we had."""
 
 
+PUBLISHER = "intel"
+"""Prefixed to the slug, so an adopted IR never shares a name with one we exported."""
+
+
+def third_party_slug(weights: str, execution_provider: str, recipe: Recipe) -> str:
+    """The slug of an adopted IR: the name its directory and its manifest both carry."""
+    return f"{PUBLISHER}-{slug_for(weights, execution_provider, recipe)}"
+
+
 def build_third_party_provenance(
     *,
     weights: str,
@@ -56,14 +65,13 @@ def build_third_party_provenance(
     execution_provider: str,
     requires: dict[str, str],
     created: str,
-    publisher: str = "intel",
 ) -> dict[str, Any]:
     """The ``provenance.json`` of an IR we did not build (CONTEXT.md, "Provenance").
 
     ``weights`` are the model the IR was made from, ``repository`` and ``revision`` the exact
     artifact adopted, and ``recipe`` what its card states — checked against the files by the
     caller, not here. The slug is the one ``convert.py`` would give those weights and Recipe,
-    prefixed with the ``publisher``: the same weights under the same Recipe exported by us are
+    prefixed with the ``PUBLISHER``: the same weights under the same Recipe exported by us are
     a different Variant, because we cannot vouch they are the same bytes.
     """
     return {
@@ -86,7 +94,7 @@ def build_third_party_provenance(
             "toolchain": {},
         },
         "execution_provider": execution_provider,
-        "slug": f"{publisher}-{slug_for(weights, execution_provider, recipe)}",
+        "slug": third_party_slug(weights, execution_provider, recipe),
         "created": created,
     }
 
@@ -177,7 +185,7 @@ def main(argv: list[str] | None = None, *, download: Download = download_from_hu
         "openvino": args.requires_openvino,
         "npu_driver": args.requires_npu_driver,
     }
-    slug = f"intel-{slug_for(args.weights, args.execution_provider, recipe)}"
+    slug = third_party_slug(args.weights, args.execution_provider, recipe)
 
     if args.source_dir is not None:
         ir_dir: Path = args.source_dir

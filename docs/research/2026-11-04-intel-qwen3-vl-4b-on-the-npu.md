@@ -56,6 +56,12 @@ The ticket expected "eight models where its cards say nine". The collection
 nine ([the verification](./2026-11-04-qwen3-vl-ov-npu-verification.md), question 4), so there is
 no disagreement to record. Not verified: where the figure of nine came from.
 
-The NPU driver floor 4023 is what the model card states; the OpenVINO GenAI NPU guide says only
-"latest" (and `3104` in its troubleshooting). This machine runs 4512, so the run does not test
-whether 4023 is the true minimum.
+The one place the card and the machine differ is the NPU driver: the card states 4023 as the
+floor and this machine runs 4512, so the run does not test whether 4023 is the true minimum. The
+OpenVINO GenAI NPU guide says only "latest" (and `3104` in its troubleshooting). Nothing in the
+code checks the manifest's `requires` at run time; it is a record, not a gate.
+
+Not verified: the card's "AWQ off" and `ratio` 1.0 are checked against `openvino_config.json`
+only for the fields it records (`awq` is not one of them); no hash of the downloaded files is
+kept beyond the pinned commit. The `observe` and `watch` figures above were read from the
+terminal and have no record beside the Benchmark's.

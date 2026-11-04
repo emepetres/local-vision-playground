@@ -97,8 +97,9 @@ uv run watch --variant qwen3-vl-2b-instruct-int4-sym-gpu
 
 ## The honest caveat
 
-One caveat carries across all three commands. The IR is **INT4-quantised with the NPU's
-recipe** — channel-wise, symmetric, every layer — and this 2B model degrades under it: the
+One caveat carries across all three commands. The IR is **INT4-quantised channel-wise**
+— symmetric, on every decoder linear layer, a recipe the NPU accepts but its guide does not
+recommend for models up to 4B–5B (it prefers group size 128) — and this 2B model degrades under it: the
 description above runs to the token limit repeating itself, where Foundry Local's CPU build
 stops with a clean paragraph. That build is INT4 too, but block-wise, with one scale per 32
 weights rather than one per row, so the gap is between two recipes, not between quantised and

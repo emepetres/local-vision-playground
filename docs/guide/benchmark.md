@@ -88,7 +88,7 @@ apart. Two things the numbers say plainly, and neither flatters the NPU:
   [#38](https://github.com/emepetres/local-vision-playground/issues/38)), which this
   Benchmark does not measure.
 - **This is not a like-for-like comparison.** Every row is INT4, but not the same INT4: the
-  three OpenVINO rows run the NPU's channel-wise recipe, Foundry Local's row a block-wise one
+  three OpenVINO rows run a channel-wise recipe (one the NPU accepts, though its guide recommends group size 128 at this size), Foundry Local's row a block-wise one
   ([the INT4 note](../research/2026-09-25-int4-quantisation.md)). The OpenVINO Variants
   degrade into repetition and run to the 128-token limit (see _What each Variant saw_ in the record), while Foundry Local's
   stops at 92 tokens with a clean description. Different amounts of work, so Tokens/second is

@@ -143,6 +143,6 @@ Produce an IR for each target Execution Provider (NPU, iGPU, CPU) to complete th
 ## Measuring what a Variant costs the machine
 
 `uv run python -m tools.measure.memory SLUG` loads one Variant in a fresh process and prints load
-time and host RAM (before, after load, after one generation, peak). On the demo machine run it
-from a shell with the OpenVINO 2025.3 archive removed from the environment (see the trap above).
+time and host RAM (before, after load, after one generation, peak), through the same Runtime
+`observe` uses. `--cold` clears the IR's `ov-cache` first.
 Figures for the 4B: [the note for #81](../../../docs/research/2026-11-04-our-own-qwen3-vl-4b-in-two-recipes.md).

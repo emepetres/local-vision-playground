@@ -31,18 +31,26 @@ repetitions: a first reading, not the verdict (#82).
 
 ## Memory and load time (fresh process per Variant, `tools/measure/memory.py`)
 
-Host RAM held by the process (working set, MiB). The NPU's own memory is not a process counter
-and is not measured.
+Measured through the same Runtime `observe` uses (`InProcessOpenVINO`, with its `CACHE_DIR`), one
+generation of the default Workload on the reference Frame. Host RAM held by the process (working
+set, MiB). The NPU's own memory is not a process counter and is not measured.
 
 | Variant | Load | After load | After 1 generation | Peak |
 | --- | --- | --- | --- | --- |
-| ours, channel-wise | 53.0 s | 3073 | 4486 | 5180 |
-| ours, g128 | 113.2 s | 3266 | 4809 | 5425 |
-| Intel's, g128 | 112.0 s | 3265 | 4809 | 5423 |
+| ours, channel-wise | 3.8 s | 3387 | 4960 | 5494 |
+| ours, g128 | 4.3 s | 3528 | 5236 | 5698 |
+| Intel's, g128 | 4.7 s | 3541 | 5239 | 5699 |
 
-So the 4B on the NPU costs roughly 5 GB of RAM at peak and about 4.5–4.8 GB once running. The load times here are the cold-process figures: about 53 s channel-wise and 112 s for g128. The
-benchmark's load column differs (g128 135.5 s, Intel's 6.8 s) and the likely reason is a cached NPU
-compile, but that was not verified. Budget the first load, as in #80.
+So the 4B on the NPU costs about 5.5–5.7 GB of RAM at peak and about 5–5.2 GB once running.
+
+Load time: these figures are loads with the compiled blob cached, taken after `--cold` deleted the
+IR's `ov-cache`, so they are not first-compile loads; the tool did not reproduce a slow load after
+that, and why is not known (something outside the IR directory may also cache the compile). The
+slow loads are the ones in the Benchmark, which compiled each IR for the first time: 53.7 s
+channel-wise and 135.5 s g128 (Intel's, whose compile #80 had already paid, 6.8 s). An earlier
+version of the tool loaded without `CACHE_DIR` and read 53 s, 113 s and 112 s with RAM peaks of
+5.2–5.4 GB; it was not the configuration `observe` runs, so those figures are superseded. Budget
+the first load, as in #80.
 
 ## Does the group-wise export match Intel's card?
 

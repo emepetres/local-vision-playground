@@ -4,9 +4,15 @@ The Agent shares the machine with the vision model (#81), so "how much does the 
 matters beside "how fast is it?". A Benchmark records load time but not memory; this measures
 both for one Variant in a fresh process, so nothing a previous model left behind is counted.
 
-Windows only (it reads the process counters through ``ctypes``). Run from ``vision/``::
+It loads the Variant through the same Runtime ``observe`` uses (``InProcessOpenVINO``) and asks it
+the Benchmark's own default Workload, so what is measured is what runs — not a second
+configuration that could drift from it. Windows only (it reads the process counters through
+``ctypes``). Run from ``vision/``::
 
-    uv run python -m tools.measure.memory SLUG [--execution-provider NPU]
+    uv run python -m tools.measure.memory SLUG [--cold]
+
+``--cold`` deletes the IR's ``ov-cache`` first, so the load pays the NPU compile; without it the
+load is whatever the cache makes it.
 
 Prints one JSON line: working set before the load, after the load, after one generation, and the
 peak working set over the whole run, in MiB; plus load and first-generation seconds. The NPU's
@@ -18,10 +24,13 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
-import os
+import shutil
 import time
 from ctypes import wintypes
-from pathlib import Path
+
+from vision.capture import REFERENCE_FRAME, ImageFileCamera
+from vision.inference import PROMPT, Workload
+from vision.openvino_runtime import InProcessOpenVINO, resolve_ir_directory
 
 MIB = 1024 * 1024
 
@@ -54,48 +63,34 @@ def working_set() -> tuple[float, float]:
     return counters.WorkingSetSize / MIB, counters.PeakWorkingSetSize / MIB
 
 
-def ir_directory(slug: str) -> Path:
-    root = os.environ.get("LVP_IR_CACHE")
-    local = Path(os.environ.get("LOCALAPPDATA", "~/.cache")).expanduser()
-    base = Path(root) if root else local / "local-vision-playground" / "ir"
-    return base / slug
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Load time and memory of one Variant.")
     ap.add_argument("slug")
-    ap.add_argument("--execution-provider", default="NPU")
+    ap.add_argument("--cold", action="store_true", help="delete the IR's ov-cache first")
     args = ap.parse_args(argv)
 
-    import numpy as np
-    import openvino as ov  # loaded here so importing this module needs no OpenVINO
-    import openvino_genai as genai
-    from PIL import Image
-
-    frame = Path(__file__).resolve().parents[3] / "docs" / "fixtures" / "reference-frame.jpg"
-    image = ov.Tensor(np.array(Image.open(frame).convert("RGB"))[None])
+    model = InProcessOpenVINO().resolve(args.slug)
+    ir_dir = resolve_ir_directory(args.slug)
+    if args.cold and ir_dir is not None:
+        shutil.rmtree(ir_dir / "ov-cache", ignore_errors=True)
+    workload = Workload(prompt=PROMPT, frame=ImageFileCamera(REFERENCE_FRAME).capture())
 
     before, _ = working_set()
     started = time.perf_counter()
-    pipe = genai.VLMPipeline(
-        str(ir_directory(args.slug)),
-        args.execution_provider,
-        MAX_PROMPT_LEN=2048,
-        MIN_RESPONSE_LEN=128,
-    )
+    model.load()
     load = time.perf_counter() - started
     loaded, _ = working_set()
     started = time.perf_counter()
-    pipe.generate("Describe what you see in this image in two or three sentences.",
-                  images=[image], max_new_tokens=128)
+    model.observe(workload)
     first = time.perf_counter() - started
     after, peak = working_set()
     print(json.dumps({
-        "slug": args.slug, "execution_provider": args.execution_provider,
+        "slug": args.slug, "execution_provider": model.identity.execution_provider,
         "load_s": round(load, 1), "first_generation_s": round(first, 1),
         "ram_mib": {"before": round(before), "after_load": round(loaded),
                     "after_generation": round(after), "peak": round(peak)},
     }))
+    model.unload()
     return 0
 
 

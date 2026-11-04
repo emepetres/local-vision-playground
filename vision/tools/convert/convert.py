@@ -49,6 +49,10 @@ from typing import Any
 DEFAULT_WEIGHTS = "Qwen/Qwen3-VL-2B-Instruct"
 
 
+CHANNEL_WISE = -1
+"""The ``--group-size`` that gives each output channel its own scale (slug fragment ``cw``)."""
+
+
 @dataclass(frozen=True)
 class Recipe:
     """How the weights are compressed (CONTEXT.md, Recipe), named in full.
@@ -61,13 +65,13 @@ class Recipe:
 
     weight_format: str = "int4"
     sym: bool = True
-    group_size: int = -1
+    group_size: int = CHANNEL_WISE
     ratio: float = 1.0
 
     @property
     def name(self) -> str:
         """The slug fragment: ``int4-sym-cw`` (channel-wise) or ``int4-sym-g128``."""
-        scale = "cw" if self.group_size == -1 else f"g{self.group_size}"
+        scale = "cw" if self.group_size == CHANNEL_WISE else f"g{self.group_size}"
         return f"{self.weight_format}-{'sym' if self.sym else 'asym'}-{scale}"
 
     def args(self) -> list[str]:
@@ -101,8 +105,16 @@ def parse_recipe(name: str) -> Recipe:
     return Recipe(
         weight_format=weight_format,
         sym=symmetry == "sym",
-        group_size=int(group) if group else -1,
+        group_size=int(group) if group else CHANNEL_WISE,
     )
+
+
+def _recipe_argument(name: str) -> Recipe:
+    """``parse_recipe`` as an argparse ``type``, so a bad name is a usage error, not a traceback."""
+    try:
+        return parse_recipe(name)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 def recipe_from_provenance(manifest: dict[str, Any]) -> Recipe:
@@ -352,7 +364,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--weights", default=DEFAULT_WEIGHTS, help="Hugging Face model id to export")
-    ap.add_argument("--recipe", default=DEFAULT_RECIPE, type=parse_recipe, metavar="NAME",
+    ap.add_argument("--recipe", default=DEFAULT_RECIPE, type=_recipe_argument, metavar="NAME",
                     help="Recipe to compress the weights with, named in full: int4-sym-cw "
                          "(channel-wise, the default #40 verified) or e.g. int4-sym-g128 "
                          "(group-wise). It is part of the slug, so each Recipe is its own Variant")

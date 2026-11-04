@@ -11,9 +11,9 @@ OpenVINO GenAI's CPU, Arc iGPU and NPU — named explicitly:
 cd vision
 uv run benchmark \
   --variant qwen3-vl-2b-instruct-generic-cpu \
-  --variant qwen3-vl-2b-instruct-int4-sym-cpu \
-  --variant qwen3-vl-2b-instruct-int4-sym-gpu \
-  --variant qwen3-vl-2b-instruct-int4-sym-npu \
+  --variant qwen3-vl-2b-instruct-int4-sym-cw-cpu \
+  --variant qwen3-vl-2b-instruct-int4-sym-cw-gpu \
+  --variant qwen3-vl-2b-instruct-int4-sym-cw-npu \
   --hardware "ASUS Zenbook S14, Intel Core Ultra 7 258V"
 ```
 
@@ -34,7 +34,7 @@ Inference       9.589 s   7.972 s   7.801 s   8.321 s
 Tokens               92        92        92        92
 Tokens/second       9.6      11.5      11.1      11.8
 
-Model        qwen3-vl-2b-instruct-int4-sym-cpu (CPU)
+Model        qwen3-vl-2b-instruct-int4-sym-cw-cpu (CPU)
 Runtime      OpenVINO GenAI
 Measured     2nd of 4
 Load         4.551 s
@@ -46,7 +46,7 @@ Tokens/second      14.1      27.8      27.4      28.7
 
 (5 of 5 Benchmark Runs hit the 128-token output limit, so the limit decided how much text they generated)
 
-Model        qwen3-vl-2b-instruct-int4-sym-gpu (GPU)
+Model        qwen3-vl-2b-instruct-int4-sym-cw-gpu (GPU)
 Runtime      OpenVINO GenAI
 Measured     3rd of 4
 Load         6.188 s
@@ -58,7 +58,7 @@ Tokens/second      46.2      56.0      51.4      56.6
 
 (5 of 5 Benchmark Runs hit the 128-token output limit, so the limit decided how much text they generated)
 
-Model        qwen3-vl-2b-instruct-int4-sym-npu (NPU)
+Model        qwen3-vl-2b-instruct-int4-sym-cw-npu (NPU)
 Runtime      OpenVINO GenAI
 Measured     4th of 4
 Load         2.251 s
@@ -70,7 +70,7 @@ Tokens/second      22.2      21.8      20.9      23.0
 
 (5 of 5 Benchmark Runs hit the 128-token output limit, so the limit decided how much text they generated)
 
-(qwen3-vl-2b-instruct-int4-sym-cpu generated 128 tokens against qwen3-vl-2b-instruct-generic-cpu:2's 92 — 39% more, so these Variants did not do the same amount of work and their latencies are not a hardware comparison; Tokens/second is the figure that survives it)
+(qwen3-vl-2b-instruct-int4-sym-cw-cpu generated 128 tokens against qwen3-vl-2b-instruct-generic-cpu:2's 92 — 39% more, so these Variants did not do the same amount of work and their latencies are not a hardware comparison; Tokens/second is the figure that survives it)
 
 Recorded     C:\Users\jcarnero\dev\local-vision-playground\docs\benchmarks\asus-zenbook-s14-intel-core-ultra-7-258v-20260922-090814.json
              C:\Users\jcarnero\dev\local-vision-playground\docs\benchmarks\asus-zenbook-s14-intel-core-ultra-7-258v-20260922-090814.md
@@ -265,7 +265,7 @@ text was wrong, only that it was stuck.
 ## Is the Structured Observation usable? `--work-cell`
 
 ```bash
-uv run benchmark --work-cell --variant qwen3-vl-2b-instruct-generic-cpu --variant qwen3-vl-2b-instruct-int4-sym-gpu
+uv run benchmark --work-cell --variant qwen3-vl-2b-instruct-generic-cpu --variant qwen3-vl-2b-instruct-int4-sym-cw-gpu
 ```
 
 After its repetitions, and while it is still on the hardware, each Variant is asked for the

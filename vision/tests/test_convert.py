@@ -118,8 +118,11 @@ class TestProvenance:
     def test_the_slug_matches_the_one_that_names_the_directory(self) -> None:
         # The slug in the manifest and the slug the IR directory is named for are the one name,
         # because the router matches an OpenVINO Variant token against it (ADR-0013).
-        manifest = build_provenance("org/Model-X", "GPU", toolchain={}, created=CREATED)
-        assert manifest["slug"] == slug_for("org/Model-X", "GPU")
+        recipe = Recipe(group_size=128)
+        manifest = build_provenance(
+            "org/Model-X", "GPU", toolchain={}, created=CREATED, recipe=recipe
+        )
+        assert manifest["slug"] == slug_for("org/Model-X", "GPU", recipe)
 
 
 class TestParseRecipe:
@@ -146,6 +149,14 @@ class TestParseRecipe:
         monkeypatch.setattr("tools.convert.convert.check_npu_driver", lambda: None)
         assert main(["--dry-run", "--recipe", "int4-sym-g128"]) == 0
         assert "qwen3-vl-2b-instruct-int4-sym-g128-npu" in capsys.readouterr().out
+
+
+class TestRecipeFlag:
+    def test_a_bad_recipe_is_a_usage_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit) as exit_info:
+            main(["--recipe", "int4"])
+        assert exit_info.value.code == 2
+        assert "names no Recipe" in capsys.readouterr().err
 
 
 class TestToolchainVersions:

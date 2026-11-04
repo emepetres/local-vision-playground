@@ -36,7 +36,8 @@ uv run --group convert tools/convert/convert.py --help
 all three OpenVINO Benchmark rows. `--recipe NAME` picks the [Recipe](../../../CONTEXT.md) — how the
 weights are compressed — and defaults to `int4-sym-cw` (INT4, symmetric, channel-wise), the one
 #40 verified; `int4-sym-g128` is the same weights group-wise. The Recipe is named in full in the
-slug, so two Recipes of the same weights land side by side as two Variants. `--out` overrides where it lands; `--force` overwrites an
+slug, so two Recipes of the same weights land side by side as two Variants. `--out` overrides
+where it lands; `--force` overwrites an
 existing IR directory.
 
 ## Where the IR lands

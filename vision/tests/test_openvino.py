@@ -27,6 +27,7 @@ from vision.openvino_runtime import (
     device_of,
     identity_from_provenance,
     ir_cache_root,
+    legacy_alias,
     read_provenance,
     resolve_ir_directory,
     without_shadow,
@@ -76,6 +77,15 @@ class TestResolveIrDirectory:
         assert resolve_ir_directory("qwen3-vl-2b-instruct-int4-sym-npu") == (
             tmp_path / "qwen3-vl-2b-instruct-int4-sym-cw-npu"
         )
+
+    def test_the_alias_is_the_slug_the_conversion_step_gives_the_default_recipe(self) -> None:
+        # The runtime and the conversion step each hold this naming (the latter is stdlib-only),
+        # so this is what keeps them from drifting apart.
+        from tools.convert.convert import slug_for
+
+        for ep in ("NPU", "GPU", "CPU"):
+            legacy = f"qwen3-vl-2b-instruct-int4-sym-{ep.lower()}"
+            assert legacy_alias(legacy) == slug_for("Qwen/Qwen3-VL-2B-Instruct", ep)
 
     def test_an_ir_still_on_disk_under_the_legacy_name_wins(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

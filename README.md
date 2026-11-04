@@ -20,8 +20,8 @@ watched all shift — is argued in [`docs/business-value.md`](./docs/business-va
   build — so the machine's own accelerators are reached through a second runtime, OpenVINO
   GenAI. → [`docs/stack.md`](./docs/stack.md), Constraint 3
 - **The NPU's quantisation recipe buys the accelerator, not the accuracy.** Both runtimes
-  run INT4, but the OpenVINO export is quantised channel-wise, the shape the NPU wants, and
-  the same 2B model degrades into repetition under it, while Foundry Local's block-wise INT4
+  run INT4, but the OpenVINO export is quantised channel-wise, a recipe the NPU accepts but not
+  the one its guide recommends for models this small, and the same 2B model degrades into repetition under it, while Foundry Local's block-wise INT4
   build answers cleanly. → [the INT4 note](./docs/research/2026-09-25-int4-quantisation.md)
 - **A published model variant can simply be broken**, and no caller can fix it — only the
   publisher, as Foundry Local did five days later with a new version — which is

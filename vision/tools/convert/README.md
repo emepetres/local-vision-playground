@@ -97,7 +97,7 @@ and the first-try result is no longer the one #40 proved.
 |---|---|
 | **Export machine** | Any x86-64 with Python 3.12 and [uv](https://docs.astral.sh/uv/). The export is CPU-bound — **it does not need an NPU**, so it can run on the dev machine. |
 | **Smoke-run machine** | The **demo machine** (ASUS Zenbook S14, Intel Core Ultra 7 258V). The IR is only proven when it generates on `Intel(R) AI Boost` — that run is this step's acceptance, not hygiene. |
-| **NPU driver** | `>= 32.0.100.4023`. Needed only for the smoke run. `--dry-run` checks it. |
+| **NPU driver** | `>= 32.0.100.4023`, the floor Intel's model cards state for these IRs (the GenAI NPU guide only says "latest"). Needed only for the smoke run. `--dry-run` checks it. |
 | **Disk** | ~1.7 GB IR output + ~5 GB transient Hugging Face weights cache + a multi-GB `convert` venv. Budget ~15 GB free. |
 | **RAM** | Export traces the full-precision model — ~8–10 GB peak. 16 GB recommended. |
 | **Network** | First run downloads the weights from Hugging Face; later runs reuse the HF cache. |

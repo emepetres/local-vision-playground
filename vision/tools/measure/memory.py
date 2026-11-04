@@ -62,7 +62,7 @@ def ir_directory(slug: str) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Load time and memory of one Variant on an Execution Provider.")
+    ap = argparse.ArgumentParser(description="Load time and memory of one Variant.")
     ap.add_argument("slug")
     ap.add_argument("--execution-provider", default="NPU")
     args = ap.parse_args(argv)
@@ -78,7 +78,10 @@ def main(argv: list[str] | None = None) -> int:
     before, _ = working_set()
     started = time.perf_counter()
     pipe = genai.VLMPipeline(
-        str(ir_directory(args.slug)), args.execution_provider, MAX_PROMPT_LEN=2048, MIN_RESPONSE_LEN=128
+        str(ir_directory(args.slug)),
+        args.execution_provider,
+        MAX_PROMPT_LEN=2048,
+        MIN_RESPONSE_LEN=128,
     )
     load = time.perf_counter() - started
     loaded, _ = working_set()

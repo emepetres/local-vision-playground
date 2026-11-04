@@ -26,13 +26,17 @@ From the `vision/` project directory:
 ```
 uv sync --group convert                                      # once, to install the toolchain
 uv run --group convert tools/convert/convert.py              # Qwen3-VL-2B-Instruct, INT4-sym, NPU
+uv run --group convert tools/convert/convert.py --recipe int4-sym-g128   # same weights, group-wise Recipe
 uv run --group convert tools/convert/convert.py --dry-run    # print the plan + check the NPU driver
 uv run --group convert tools/convert/convert.py --help
 ```
 
 `--ep {NPU,GPU,CPU}` names the Execution Provider the IR is built *for* — it fixes the
 [Provenance](../../../CONTEXT.md) slug, not the export itself: the one INT4-symmetric IR serves
-all three OpenVINO Benchmark rows. `--out` overrides where it lands; `--force` overwrites an
+all three OpenVINO Benchmark rows. `--recipe NAME` picks the [Recipe](../../../CONTEXT.md) — how the
+weights are compressed — and defaults to `int4-sym-cw` (INT4, symmetric, channel-wise), the one
+#40 verified; `int4-sym-g128` is the same weights group-wise. The Recipe is named in full in the
+slug, so two Recipes of the same weights land side by side as two Variants. `--out` overrides where it lands; `--force` overwrites an
 existing IR directory.
 
 ## Where the IR lands
@@ -42,7 +46,7 @@ The IR lands **outside the repo** (it is ~1.7 GB): by default under
 the same location the second Runtime reads from ([ADR-0013](../../../docs/adr/0013-the-second-runtime-is-an-adapter-behind-an-unchanged-model-port.md))
 — the convention is shared, not the conversion step's private choice.
 
-The `<slug>` is derived from the model's Provenance — e.g. `qwen3-vl-2b-instruct-int4-sym-npu`
+The `<slug>` is derived from the model's Provenance — e.g. `qwen3-vl-2b-instruct-int4-sym-cw-npu`
 — and a `provenance.json` is written beside the IR bytes. An IR we exported has no catalogue
 id or version, so it is identified by that manifest instead:
 
@@ -50,12 +54,17 @@ id or version, so it is identified by that manifest instead:
 {
   "weights": "Qwen/Qwen3-VL-2B-Instruct",
   "recipe": {
+    "name": "int4-sym-cw",
+    "weight_format": "int4",
+    "sym": true,
+    "group_size": -1,
+    "ratio": 1.0,
     "tool": "optimum-cli export openvino",
     "args": ["--weight-format", "int4", "--sym", "--ratio=1.0", "--group-size=-1"],
-    "toolchain": { "openvino": "2026.3.0", "optimum-intel": "2.1.0", "nncf": "3.3.0", "transformers": "4.57.6", "…": "…" }
+    "toolchain": { "openvino": "2026.4.0", "optimum-intel": "2.1.0", "nncf": "3.3.0", "transformers": "4.57.6", "…": "…" }
   },
   "execution_provider": "NPU",
-  "slug": "qwen3-vl-2b-instruct-int4-sym-npu",
+  "slug": "qwen3-vl-2b-instruct-int4-sym-cw-npu",
   "created": "2026-09-21T…Z"
 }
 ```
@@ -65,8 +74,13 @@ the persisted Benchmark record reads through the router. The `toolchain` version
 that actually produced the IR, read from the environment the export ran in — so the recipe is
 reproducible from the manifest alone, months later.
 
-## The recipe
+## The Recipe
 
+An IR exported before the Recipe was named in the slug is called `...-int4-sym-<ep>`. That
+name still runs: it is an alias for the channel-wise `...-int4-sym-cw-<ep>` (and an IR still
+on disk under the old name is found first), so existing commands keep working.
+
+The default Recipe, `int4-sym-cw`, is
 `optimum-cli export openvino --weight-format int4 --sym --ratio=1.0 --group-size=-1`, verified
 on the demo machine in
 [#40](https://github.com/emepetres/local-vision-playground/issues/40): this exact export of
@@ -82,7 +96,7 @@ and the first-try result is no longer the one #40 proved.
 |---|---|
 | **Export machine** | Any x86-64 with Python 3.12 and [uv](https://docs.astral.sh/uv/). The export is CPU-bound — **it does not need an NPU**, so it can run on the dev machine. |
 | **Smoke-run machine** | The **demo machine** (ASUS Zenbook S14, Intel Core Ultra 7 258V). The IR is only proven when it generates on `Intel(R) AI Boost` — that run is this step's acceptance, not hygiene. |
-| **NPU driver** | `>= 32.0.100.3104`. Needed only for the smoke run. `--dry-run` checks it. |
+| **NPU driver** | `>= 32.0.100.4023`. Needed only for the smoke run. `--dry-run` checks it. |
 | **Disk** | ~1.7 GB IR output + ~5 GB transient Hugging Face weights cache + a multi-GB `convert` venv. Budget ~15 GB free. |
 | **RAM** | Export traces the full-precision model — ~8–10 GB peak. 16 GB recommended. |
 | **Network** | First run downloads the weights from Hugging Face; later runs reuse the HF cache. |

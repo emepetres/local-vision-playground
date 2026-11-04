@@ -51,6 +51,13 @@ The provenance slug is the Variant name. With the exports above:
 | Arc iGPU           | OpenVINO GenAI | `qwen3-vl-2b-instruct-int4-sym-gpu` |
 | NPU                | OpenVINO GenAI | `qwen3-vl-2b-instruct-int4-sym-npu` |
 
+The slug names the [Recipe](../../CONTEXT.md) in full: `int4-sym-cw` is INT4, symmetric,
+channel-wise, and `convert.py --recipe int4-sym-g128` exports the same weights group-wise as
+`qwen3-vl-2b-instruct-int4-sym-g128-npu` — a different Variant, so it is a different row. The
+names without a Recipe (`…-int4-sym-npu`, as earlier versions of this guide printed them) still
+resolve: they are an alias for the channel-wise `…-int4-sym-cw-npu`, and an IR still on disk
+under the old name is found first.
+
 A path to an IR directory works anywhere a slug does. The two CPU rows are the same silicon
 through two Runtimes — the calibration between them. A slug with no IR behind it reaches
 neither Runtime: `observe` and `watch` refuse it in one line naming both ways to name a

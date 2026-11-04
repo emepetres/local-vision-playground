@@ -20,6 +20,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -91,7 +92,24 @@ def resolve_ir_directory(name: str) -> Path | None:
     under_cache = ir_cache_root() / name
     if _is_ir_directory(under_cache):
         return under_cache
+    aliased = ir_cache_root() / legacy_alias(name)
+    if _is_ir_directory(aliased):
+        return aliased
     return None
+
+
+_LEGACY_SLUG = re.compile(r"^(?P<stem>.+)-int4-sym-(?P<ep>npu|gpu|cpu)$")
+
+
+def legacy_alias(name: str) -> str:
+    """The slug a pre-Recipe name stands for, or the name unchanged.
+
+    Before the Recipe was named in the slug, the one INT4 export was ``<stem>-int4-sym-<ep>``.
+    That export was channel-wise, so the old name is an alias for ``<stem>-int4-sym-cw-<ep>``.
+    An IR still on disk under the old name is found first and never reaches this.
+    """
+    match = _LEGACY_SLUG.match(name)
+    return f"{match['stem']}-int4-sym-cw-{match['ep']}" if match else name
 
 
 def _is_ir_directory(candidate: Path) -> bool:

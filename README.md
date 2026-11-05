@@ -103,6 +103,8 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
   levers this demo claims and which it deliberately does not.
 - [`docs/stack.md`](./docs/stack.md) — the Microsoft stack it is built on and the
   constraints that shaped everything, each dated and verified.
+- [`docs/whitepapers/`](./docs/whitepapers/README.md) — _Local-first physical AI on Intel_:
+  the three whitepapers this work feeds (device, plant, cloud).
 
 **Guides — one per thing you can run**
 

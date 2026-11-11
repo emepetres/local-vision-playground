@@ -274,9 +274,9 @@ the same watch on the CPU, the GPU and the NPU, changing only the Variant
 
 ::: notes
 D3, el 4B, `--ask "What is the person doing? Answer in one sentence."`:
-`--variant qwen3-vl-4b-instruct-generic-cpu:3` (VERIFY: versión actual), luego `qwen3-vl-4b-instruct-int4-sym-gpu`, luego `qwen3-vl-4b-instruct-int4-sym-cw-npu`.
+`--variant qwen3-vl-4b-instruct-generic-cpu:3` (la versión que resolvió el catálogo el 2026-11-11, #86), luego `qwen3-vl-4b-instruct-int4-sym-gpu`, luego `qwen3-vl-4b-instruct-int4-sym-cw-npu`.
 En la CPU, señalar el Shortfall que aparece. En la NPU, ya compilada antes de la charla.
-Cierra eligiendo la iGPU para lo que sigue: es la más rápida, y la NPU va justa para D4 en directo.
+Cierra eligiendo la iGPU para lo que sigue: es la más rápida, y la NPU no sirve para D4: 10,0 s por Frame estructurado y en bucle 5 de 5 (#86).
 :::
 
 ---
@@ -284,15 +284,16 @@ Cierra eligiendo la iGPU para lo que sigue: es la más rápida, y la NPU va just
 type: bullets
 
 ## Qwen3-VL 4B, same image, same prompt
-- Arc iGPU, OpenVINO: 3.5 s · 25.2 tokens/s
-- NPU, OpenVINO: 5.7 s · 14.5 tokens/s
-- CPU, OpenVINO: VERIFY
-- CPU, Foundry Local: VERIFY
+- Arc iGPU, OpenVINO: 3.0 s · 29.2 tokens/s
+- NPU, OpenVINO: 6.2 s · 13.5 tokens/s
+- CPU, OpenVINO: 7.2 s · 13.2 tokens/s
+- CPU, Foundry Local: 15.4 s · 5.1 tokens/s
 
 ::: notes
-VERIFY (#86): Benchmark nuevo del 4B en las cuatro filas, en una sola sesión, antes del 14-nov. Hoy solo hay iGPU y NPU (#82, 2026-11-04, 5 repeticiones, 128 tokens, temperatura 0).
-La NPU no es más rápida que la iGPU en este modelo. Se dice una vez y no se insiste.
-A favor de la NPU, medido aquí: carga con caché en 4-5 s frente a 17 s de la iGPU; deja libres CPU y GPU para el resto del puesto.
+Fuente (#86): las cuatro filas en una sola sesión, 2026-11-11, `docs/benchmarks/asus-zenbook-s14-intel-core-ultra-7-258v-openvino-2026-4-0-n-20261111-182016.*`. Frame de referencia, 128 tokens, temperatura 0, 5 repeticiones, mediana sobre las 4 en caliente. 0 de 5 bucles y Work Cell 32/32 en las cuatro.
+Tokens: Foundry Local 78, OpenVINO CPU 95, iGPU 87, NPU 83. Las dos CPU difieren un 22%: comparar las CPU por tokens/s, no por segundos.
+La NPU no es más rápida que la iGPU en este modelo, y en tokens/s empata con la CPU por OpenVINO (13,5 frente a 13,2). Se dice una vez y no se insiste.
+A favor de la NPU: deja libres CPU y GPU para el resto del puesto. La carga con caché ya no la favorece: en #86, 6,7 s la NPU frente a 5,6 s la iGPU (en #82 fue 4-5 s frente a 17 s).
 De Intel, etiquetado como de Intel: en Panther Lake, 2,8x rendimiento por vatio de la NPU sobre la GPU (Gemma 4 E2B). Otra generación, otro modelo.
 :::
 
@@ -306,6 +307,7 @@ type: statement
 ::: notes
 El listón: 0 de 5 bucles y la forma correcta con objetos en las 32 fotos de la Work Cell. Las tres Variants de NPU lo pasan.
 Lo que no dice: no se ha puntuado la NPU contra los Triggers. "Pasa" es fiable en forma, no probado igual de preciso.
+VERIFY: "sin bucles" solo vale para prosa. En la Observation estructurada sobre `bare_hand_1.png` la NPU entra en bucle 5 de 5 (repite "soldering iron cable", 178 tokens, 10,0 s; #86). El 32/32 de la Work Cell se mantiene, pero cuenta forma, no bucles.
 :::
 
 ::: script
@@ -511,7 +513,8 @@ bare hands on the mat, and the agent warns the supervisor from sentences alone
 
 ::: notes
 D4, tres paneles: el agente, el watch con --structured --emit, y el fichero emitido.
-`uv run watch --camera 2 --variant qwen3-vl-4b-instruct-int4-sym-gpu --structured --every 10 --emit observations.jsonl`. iGPU: ~8 s por Frame estructurado, Cadence de 10 s.
+`uv run watch --camera 2 --variant qwen3-vl-4b-instruct-int4-sym-gpu --structured --every 10 --emit observations.jsonl`. iGPU: ~2,2 s por Frame estructurado (#86, sobre `bare_hand_1.png`, 61 tokens), Cadence de 10 s.
+En ese Frame la iGPU escribe "hand", no "bare hand": work-cell.json ya lo cuenta como mano desnuda.
 Fuera guantes: no gloves 1/2, luego el Incident, la notificación y el registro. ~40 s: narrar sobre el fichero, nunca en silencio.
 Plan B: la grabación.
 :::
@@ -560,14 +563,15 @@ type: statement
 
 ::: notes
 Un modelo sirviendo los Feeds en serie; cota superior para un Hardware Profile, nada más.
-Este portátil, de 2025, con el 4B mirando guantes cada 10 s (~8 s por Frame en la iGPU): una cámara. Con una descripción cada 10 s (3,5 s): dos.
+Este portátil, de 2025, con el 4B mirando guantes cada 10 s (2,2 s por Frame estructurado en la iGPU, #86): ⌊10 / 2,2⌋ = hasta cuatro cámaras. Con una descripción cada 10 s (3,0 s): tres.
+Cota medida sobre un único Frame con una respuesta corta (61 tokens, solo la mano). Con la bandeja entera (122 tokens) serían ~4,4 s: dos cámaras.
 En planta no hay portátiles: hay un dispositivo edge, tipo mini-PC, junto a la cámara. Uno con más capacidad puede llevar varias. No se recomienda ningún modelo concreto.
 :::
 
 ::: script
 En una planta no vas a tener portátiles conectados a cámaras. Vas a tener un mini-PC industrial junto a cada puesto.
 Cuántas cámaras lleva cada uno es una división: la Cadence entre lo que tarda el modelo.
-Este portátil, de 2025, lleva una con el 4B mirando guantes cada diez segundos. Mide tu dispositivo.
+Este portátil, de 2025, lleva hasta cuatro con el 4B mirando guantes cada diez segundos. Mide tu dispositivo.
 :::
 
 ---

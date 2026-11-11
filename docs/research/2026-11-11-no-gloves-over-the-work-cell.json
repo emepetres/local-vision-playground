@@ -1,0 +1,2749 @@
+{
+  "qwen3-vl-4b-instruct-int4-sym-gpu": {
+    "photos": 32,
+    "bare_found": 9,
+    "bare_photos": 9,
+    "false_bare": 0,
+    "negative_photos": 23,
+    "no_shape": 0,
+    "seconds_median": 4.441,
+    "seconds_worst": 7.99,
+    "seconds_p90": 7.046,
+    "rows": [
+      {
+        "photo": "bare-hand_3",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 4.594,
+        "objects": [
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "circuit board",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "bare-hand_4",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 4.366,
+        "objects": [
+          {
+            "name": "hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tool",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "bare_hand_1",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 1.35,
+        "objects": [
+          {
+            "name": "hand",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "bare_hand_2",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 3.172,
+        "objects": [
+          {
+            "name": "hand",
+            "count": 2,
+            "where": "zone"
+          },
+          {
+            "name": "circuit board",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_1",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 1.403,
+        "objects": [
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "glove",
+            "count": 2,
+            "where": "elsewhere"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_2",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 7.358,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron body",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron body",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron body",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_3",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 7.44,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_4",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 4.147,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_5",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 7.796,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-cup-mobile",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 6.571,
+        "objects": [
+          {
+            "name": "mug",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "cell phone",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "circuit board",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "cup",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tool",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-cup",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 5.475,
+        "objects": [
+          {
+            "name": "mug",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "Arduino board",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "circuit board",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tool",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-mobile",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 4.593,
+        "objects": [
+          {
+            "name": "smartphone",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "Arduino board",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "glove",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tool",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-off-zone-cup-mobile",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 4.651,
+        "objects": [
+          {
+            "name": "cup",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "cell phone",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "soldering tool",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "soldering stand",
+            "count": 1,
+            "where": "elsewhere"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-off-zone-cup",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 2.168,
+        "objects": [
+          {
+            "name": "cup",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "zone",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-off-zone-mobile",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 6.275,
+        "objects": [
+          {
+            "name": "Arduino board",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron cable",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_1",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 4.651,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tool",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_2",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 6.799,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_3",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 6.298,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_4",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 7.99,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "glove",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_5",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 3.367,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "circuit board",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "one-glove_1",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 2.92,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "elsewhere"
+          }
+        ]
+      },
+      {
+        "photo": "one-glove_2",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 1.593,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "one-glove_3",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 5.114,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "one-glove_4",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 4.196,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "solder",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-brush",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 3.58,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-electronics",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 4.281,
+        "objects": [
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-pliers",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 4.464,
+        "objects": [
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-small_cables",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 4.417,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "circuit board",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-soldering_iron",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 2.125,
+        "objects": [
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "glove",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "glove",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-tin",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 7.046,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron handle",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "two-gloves_1",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 2.501,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 2,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "elsewhere"
+          }
+        ]
+      },
+      {
+        "photo": "two-gloves_2",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 4.211,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      }
+    ]
+  },
+  "qwen3-vl-4b-instruct-int4-sym-g128-gpu": {
+    "photos": 32,
+    "bare_found": 9,
+    "bare_photos": 9,
+    "false_bare": 1,
+    "negative_photos": 23,
+    "no_shape": 0,
+    "seconds_median": 5.466,
+    "seconds_worst": 9.47,
+    "seconds_p90": 6.463,
+    "rows": [
+      {
+        "photo": "bare-hand_3",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 5.57,
+        "objects": [
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "spool of wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "pencil",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "bare-hand_4",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 4.482,
+        "objects": [
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering stand",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "bare_hand_1",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 4.293,
+        "objects": [
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering wire",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "bare_hand_2",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 4.384,
+        "objects": [
+          {
+            "name": "bare hand",
+            "count": 2,
+            "where": "zone"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wires",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_1",
+        "expected_bare": false,
+        "state": "bare",
+        "correct": false,
+        "seconds": 2.569,
+        "objects": [
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "gloved hand",
+            "count": 2,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_2",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 5.897,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "pencil",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "Arduino board",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wires",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "cutting mat",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "gloved hand",
+            "count": 2,
+            "where": "elsewhere"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_3",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 5.748,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "cutting mat",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_4",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 8.896,
+        "objects": [
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "baseline_5",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 4.89,
+        "objects": [
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "brush",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "battery",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "gloved hand",
+            "count": 2,
+            "where": "elsewhere"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-cup-mobile",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 6.499,
+        "objects": [
+          {
+            "name": "phone",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "circuit board",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "mug",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "scissors",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-cup",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 6.463,
+        "objects": [
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "cup",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "spool of wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-mobile",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 6.114,
+        "objects": [
+          {
+            "name": "smartphone",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "pencil",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "gloved hand",
+            "count": 2,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-off-zone-cup-mobile",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 6.367,
+        "objects": [
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "cup",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "phone",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "spool of wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-off-zone-cup",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 5.793,
+        "objects": [
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "cup",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "spatula",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "foreign-off-zone-mobile",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 5.728,
+        "objects": [
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "phone",
+            "count": 1,
+            "where": "elsewhere"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "spatula",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_1",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 5.254,
+        "objects": [
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "circuit board",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_2",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 5.341,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_3",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 9.361,
+        "objects": [
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_4",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 6.156,
+        "objects": [
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "mixed_5",
+        "expected_bare": true,
+        "state": "bare",
+        "correct": true,
+        "seconds": 5.937,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "bare hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "one-glove_1",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 4.754,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "one-glove_2",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 5.362,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "one-glove_3",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 5.604,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "one-glove_4",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 4.515,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-brush",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 1.869,
+        "objects": [
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "gloved hand",
+            "count": 2,
+            "where": "elsewhere"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-electronics",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 9.47,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron stand",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron tip",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-pliers",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 4.807,
+        "objects": [
+          {
+            "name": "Arduino",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "cutting mat",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-small_cables",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 5.27,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "solder wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "circuit board",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "cutting mat",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-soldering_iron",
+        "expected_bare": false,
+        "state": "neutral",
+        "correct": true,
+        "seconds": 3.161,
+        "objects": [
+          {
+            "name": "tray",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      },
+      {
+        "photo": "part-missing-tin",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 5.104,
+        "objects": [
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "tweezers",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire bundle",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "cutting mat",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "gloved hand",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "two-gloves_1",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 3.895,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 2,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire spool",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "zone"
+          }
+        ]
+      },
+      {
+        "photo": "two-gloves_2",
+        "expected_bare": false,
+        "state": "gloved",
+        "correct": true,
+        "seconds": 5.937,
+        "objects": [
+          {
+            "name": "gloved hand",
+            "count": 2,
+            "where": "zone"
+          },
+          {
+            "name": "soldering iron",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "microcontroller",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "soldering tip",
+            "count": 1,
+            "where": "zone"
+          },
+          {
+            "name": "wire",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver tip",
+            "count": 1,
+            "where": "tray"
+          },
+          {
+            "name": "screwdriver handle",
+            "count": 1,
+            "where": "tray"
+          }
+        ]
+      }
+    ]
+  }
+}

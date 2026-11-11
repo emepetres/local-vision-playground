@@ -13,9 +13,11 @@ to back, one Workload each:
 - **Structured, reference Frame** — `docs/benchmarks/asus-zenbook-s14-intel-core-ultra-7-258v-openvino-2026-4-0-n-20261111-183518.*`.
   The same, on the reference Frame, kept as the negative result (see below).
 
-And two follow-ups taken the same evening, after the ticket's Benchmarks: [runtime or
-Recipe](#runtime-or-recipe-on-the-same-cpu) on the CPU, and [structured latency over six Work
-Cell scenes](#structured-latency-over-six-work-cell-scenes) on the iGPU.
+And four follow-ups taken the same evening, after the ticket's Benchmarks: [runtime or
+Recipe](#runtime-or-recipe-on-the-same-cpu) on the CPU, [structured latency over six Work Cell
+scenes](#structured-latency-over-six-work-cell-scenes) on the iGPU, [no_gloves over all 32 Work
+Cell photos](#no_gloves-over-all-32-work-cell-photos), and [the NPU over the six
+scenes](#the-npu-over-the-six-scenes).
 
 ## The four rows
 
@@ -130,15 +132,16 @@ One Benchmark per scene, `--structured`, 5 repetitions:
 | `two-gloves_1` | 2.26 s | 67 | 4.63 s | 136 | 2 × gloved hand → 2 × gloved hand |
 | `mixed_1` | 4.72 s | 152 | 4.87 s | 147 | gloved + bare → bare + gloved |
 | `baseline_1` | 2.04 s | 63 | 2.14 s | 63 | 2 × glove (elsewhere) → 2 × gloved hand **+ bare hand** (zone) |
+
+(`baseline_1` has no gloves in it: the dark shapes at its bottom edge are the tripod's feet,
+which both Recipes misread as gloves. Its only hand is a bare forearm at the top edge, off the mat.)
 | **Median / worst** | **2.94 s / 4.72 s** | | **4.32 s / 4.87 s** | | |
 
 0 loops in all 60 Benchmark Runs. Tokens/s is the same in both Recipes (about 28–32), so g128
 costs no speed per token. It writes more because it lists more of the tray.
 
-**Capacity on the iGPU at a 10 s Cadence.** A box has to keep up whatever the scene, so the worst
-scene is the figure that counts: ⌊10 / 4.72⌋ = **2** cameras with cw, ⌊10 / 4.87⌋ = **2** with
-g128. On the median scene, ⌊10 / 2.94⌋ = 3 with cw. The earlier 4, from `bare_hand_1` alone, was
-the shortest answer of the six.
+Six scenes read 2 cameras on the worst one (⌊10 / 4.72⌋). The sweep of all 32 photos below
+replaces that figure: the six happened to miss the slowest scenes.
 
 **Which Recipe on stage for D4.** For no_gloves, cw reads all six scenes correctly ("hand" counts
 as bare when no gloved hand is named). g128 reads five. On `baseline_1` it reports a bare hand
@@ -147,16 +150,62 @@ no_gloves Trigger counts a bare hand anywhere and never reads `where` (`TriggerE
 g128 that Frame would count toward a false Incident. cw stays on stage: faster on short scenes, and
 no false bare hand here. g128 is the better describer, not the better guard, on this evidence.
 
+## no_gloves over all 32 Work Cell photos
+
+The question D4 rests on: does the stage Variant read the hands the way the no_gloves Trigger
+needs, across every Work Cell photo, not only six? One Structured Observation per distinct photo
+(byte-identical copies counted once), read with the agent's own rule (`DetermineHandState` in
+`TriggerEngine.cs`, with the names in `work-cell.json`), against the label the file name carries:
+`bare*` and `mixed*` have a bare hand (9 photos), every other photo does not (23). Raw replies,
+states and timings: [`2026-11-11-no-gloves-over-the-work-cell.json`](./2026-11-11-no-gloves-over-the-work-cell.json),
+produced by a throwaway script outside the repository that calls `observe_structured` through the
+OpenVINO Runtime, as `--work-cell` does.
+
+| Variant | Bare hand found | False bare hand | No shape | Median | p90 | Worst |
+| --- | --- | --- | --- | --- | --- | --- |
+| iGPU cw (stage) | **9 / 9** | **0 / 23** | 0 | 4.44 s | 7.05 s | 7.99 s |
+| iGPU g128 | 9 / 9 | 1 / 23 (`baseline_1`) | 0 | 5.47 s | 6.46 s | 9.47 s |
+
+- **The stage Variant reads every photo right for no_gloves.** It confirms the spike's 4B result
+  (8–9 of 9, no false Trigger) on the Variant and prompt D4 now uses.
+- **The slow photos are loops cut off by the limit, not long lists.** The slowest (7–9.5 s, both
+  Recipes) repeat the soldering iron's parts ("soldering iron tip", "…cable") until the 256-token
+  limit closes the list at 9–11 objects. The hands come first in the list, so the reading survives.
+  The latency does not: the limit, not the scene, sets the worst case.
+- These are single, unrepeated inferences per photo, not the warm medians of a Benchmark.
+
+**Capacity on the iGPU at a 10 s Cadence, from the 32 photos.** A box has to keep up whatever the
+scene: worst 7.99 s gives ⌊10 / 7.99⌋ = **1** camera, guaranteed. The typical scene (median 4.44 s)
+gives ⌊10 / 4.44⌋ = **2**. D4's single camera at a 10 s Cadence has headroom on every photo.
+
+## The NPU over the six scenes
+
+`qwen3-vl-4b-instruct-int4-sym-cw-npu`, `--structured`, the same six scenes, 5 repetitions:
+`docs/benchmarks/…-20261111-{203852,203930,203958,204024,204104,204150}.*`.
+
+| Scene | Median | Tokens | Loops |
+| --- | --- | --- | --- |
+| `bare_hand_1` | 10.12 s | 178 | **5 / 5** |
+| `bare_hand_2` | 6.24 s | 88 | 0 / 5 |
+| `bare-hand_3` | 4.09 s | 42 | 0 / 5 |
+| `two-gloves_1` | 4.17 s | 44 | 0 / 5 |
+| `mixed_1` | 6.87 s | 106 | 0 / 5 |
+| `baseline_1` | 8.07 s | 133 | 0 / 5 |
+
+The loop is one scene's, not the NPU's: 5 of 30 Benchmark Runs, all on `bare_hand_1`, and
+reproduced exactly (178 tokens every time, temperature 0). Median over the six 6.56 s, worst
+10.12 s, which is over D4's 10 s Cadence. "The NPU passes" holds in prose and on 5 of 6
+structured scenes; it is still not the stage Variant for D4.
+
 ## Not verified, and what it puts at risk
 
-- **The NPU loops on the structured Frame** (5 of 5). The prose run and the Work Cell sweep pass,
-  but the sweep counts shape, not loops. "The NPU passes" holds for prose, not for this structured
-  Observation.
-- **The OpenVINO CPU and iGPU wrote "hand", not "bare hand"**, on the D4 scene, as in the
-  2026-09-25 rehearsal. `agent/Agent/work-cell.json` already lists "hand" as plain, counted as bare
-  unless a gloved hand is named, so no_gloves still fires. The iGPU's answer here is the short
-  one, though: it also missed every tool in the tray that FL-CPU and the NPU named.
-- Six fixtures are photos, not the live camera on stage; the camera's framing decides whether an
-  operator's arm enters the Frame. 5 repetitions are not a distribution; TTFT not measured.
+- **The live camera.** Every figure here is from photos taken with the demo camera, not from the
+  camera on stage: light and framing can differ. The framing decides whether an arm enters the
+  Frame (g128's one false bare hand). Rehearse D4 live before 2026-11-14.
+- **The OpenVINO cw rows write "hand" for a bare hand** on some scenes, as in the 2026-09-25
+  rehearsal. `work-cell.json` counts a plain "hand" as bare unless a gloved hand is named, and the
+  32-photo sweep shows the rule holds.
+- The sweep's timings are one inference per photo; the Benchmarks' are 5 repetitions. Neither is a
+  distribution. TTFT not measured.
 - The g128 iGPU export is on the 2026.4 toolchain, the cw one on 2026.3. Same Recipe arguments,
   but not the same toolchain.

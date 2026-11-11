@@ -1,0 +1,147 @@
+{
+  "schema_version": 2,
+  "recorded_at": "2026-11-11T20:38:52.881115+01:00",
+  "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+  "workload": {
+    "prompt": "This is a work bench seen from above. The work zone is the green cutting mat. The tray is the white mesh tray beside it. List every distinct object you can see, and where it is: \"tray\" if it lies in the white tray, \"zone\" if it lies on the green mat, \"hand\" if a hand is holding it, \"elsewhere\" for anything else. Hands are objects too: name each visible hand \"bare hand\" (skin showing) or \"gloved hand\". Reply with ONLY a JSON array, where each element is an object {\"name\": <string>, \"count\": <integer >= 1>, \"where\": <one of \"tray\", \"zone\", \"hand\", \"elsewhere\">}. Example: [{\"name\": \"cup\", \"count\": 1, \"where\": \"zone\"}, {\"name\": \"bare hand\", \"count\": 1, \"where\": \"zone\"}]. If nothing is there, reply with [].",
+    "max_output_tokens": 256,
+    "temperature": 0.0,
+    "frame": {
+      "sha256": "5b50647a497d93acd3c356dc85c2034b2c48c703211a97cb3ee7e57a517d11a8",
+      "bytes": 58893,
+      "width": 640,
+      "height": 360,
+      "codec": "jpeg",
+      "provenance": "C:\\Users\\jcarnero\\dev\\local-vision-playground\\vision\\..\\docs\\fixtures\\work-cell\\bare_hand_1.png"
+    }
+  },
+  "repetitions": 5,
+  "provider_registration": 1.6999983927235007e-06,
+  "variants": [
+    {
+      "order": 1,
+      "id": "qwen3-vl-4b-instruct-int4-sym-cw-npu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "NPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "NPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "recipe": {
+          "name": "int4-sym-cw",
+          "weight_format": "int4",
+          "sym": true,
+          "group_size": -1,
+          "ratio": 1.0,
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.4.0",
+            "openvino-genai": "2026.4.0.0",
+            "openvino-tokenizers": "2026.4.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "NPU",
+        "slug": "qwen3-vl-4b-instruct-int4-sym-cw-npu",
+        "created": "2026-11-04T20:59:08.771776+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 7.7931413000042085,
+      "runs": [
+        {
+          "inference": 11.479345500003546,
+          "completion_tokens": 178,
+          "finish_reason": "complete",
+          "looped": true
+        },
+        {
+          "inference": 10.241515900001104,
+          "completion_tokens": 178,
+          "finish_reason": "complete",
+          "looped": true
+        },
+        {
+          "inference": 10.300921599999128,
+          "completion_tokens": 178,
+          "finish_reason": "complete",
+          "looped": true
+        },
+        {
+          "inference": 10.00595720000274,
+          "completion_tokens": 178,
+          "finish_reason": "complete",
+          "looped": true
+        },
+        {
+          "inference": 9.914450999996916,
+          "completion_tokens": 178,
+          "finish_reason": "complete",
+          "looped": true
+        }
+      ],
+      "loops": 5,
+      "loop_rate": 1.0,
+      "work_cell": null,
+      "objects": [
+        {
+          "name": "hand",
+          "count": 1,
+          "where": "zone"
+        },
+        {
+          "name": "tray",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "soldering iron",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "soldering iron tip",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "soldering iron cable",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "soldering iron cable",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "soldering iron cable",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "soldering iron cable",
+          "count": 1,
+          "where": "tray"
+        }
+      ],
+      "no_shape": null
+    }
+  ],
+  "token_divergence": null
+}

@@ -232,7 +232,7 @@ type: statement
 En el 2B, este mismo INT4 channel-wise entraba en bucle ("A white door is in the center" x4).
 En el 4B: 0 bucles de 5 y forma correcta en 32 de 32, en channel-wise y en group-wise 128. #82.
 El IR de Intel (g128) escribe palabra por palabra lo mismo que nuestro g128: no lo exportamos mal.
-"Suficiente" es para vigilar los guantes, no para describir la bandeja (#86): en `bare_hand_1` la cw solo ve "hand" y la g128 nombra la mano desnuda y cinco objetos. Para no_gloves, la cw acierta las seis escenas medidas; la g128, cinco.
+"Suficiente" es para vigilar los guantes, no para describir la bandeja (#86): en `bare_hand_1` la cw solo ve "hand" y la g128 nombra la mano desnuda y cinco objetos. Para no_gloves, en las 32 fotos la cw acierta todas; la g128 da una mano desnuda falsa.
 :::
 
 ::: script
@@ -277,7 +277,7 @@ the same watch on the CPU, the GPU and the NPU, changing only the Variant
 D3, el 4B, `--ask "What is the person doing? Answer in one sentence."`:
 `--variant qwen3-vl-4b-instruct-generic-cpu:3` (la versión que resolvió el catálogo el 2026-11-11, #86), luego `qwen3-vl-4b-instruct-int4-sym-gpu`, luego `qwen3-vl-4b-instruct-int4-sym-cw-npu`.
 En la CPU, señalar el Shortfall que aparece. En la NPU, ya compilada antes de la charla.
-Cierra eligiendo la iGPU para lo que sigue: es la más rápida, y la NPU no sirve para D4: 10,0 s por Frame estructurado y en bucle 5 de 5 (#86).
+Cierra eligiendo la iGPU para lo que sigue: es la más rápida, y la NPU no sirve para D4: mediana 6,6 s por Frame estructurado, y en una de seis escenas entra en bucle y pasa de los 10 s (#86).
 :::
 
 ---
@@ -341,12 +341,13 @@ type: statement
 ::: notes
 El listón: 0 de 5 bucles y la forma correcta con objetos en las 32 fotos de la Work Cell. Las tres Variants de NPU lo pasan.
 Lo que no dice: no se ha puntuado la NPU contra los Triggers. "Pasa" es fiable en forma, no probado igual de preciso.
-VERIFY: "sin bucles" solo vale para prosa. En la Observation estructurada sobre `bare_hand_1.png` la NPU entra en bucle 5 de 5 (repite "soldering iron cable", 178 tokens, 10,0 s; #86). El 32/32 de la Work Cell se mantiene, pero cuenta forma, no bucles.
+"Sin bucles" es al describir: 0 de 5 en prosa (#86). En estructurado, seis escenas: bucle en una, `bare_hand_1`, 5 de 5 ("soldering iron cable" repetido, 178 tokens). Las otras cinco, limpias. El 32/32 cuenta forma, no bucles.
+Por eso la NPU no va a D4: mediana 6,6 s por Frame estructurado, y la escena del bucle tarda 10,1 s, más que la Cadence.
 :::
 
 ::: script
 La NPU no gana en velocidad. Pero ahora cumple, y en el 2B no cumplía.
-Sin bucles, y con la forma correcta en las treinta y dos fotos.
+Sin bucles al describir, y con la forma correcta en las treinta y dos fotos.
 Hoy la demo sigue en la GPU, porque es más rápida. Pero la NPU ya es un tercer motor de verdad.
 :::
 
@@ -547,7 +548,8 @@ bare hands on the mat, and the agent warns the supervisor from sentences alone
 
 ::: notes
 D4, tres paneles: el agente, el watch con --structured --emit, y el fichero emitido.
-`uv run watch --camera 2 --variant qwen3-vl-4b-instruct-int4-sym-gpu --structured --every 10 --emit observations.jsonl`. iGPU: de 2,0 a 4,7 s por Frame estructurado según la escena, mediana 2,9 s (#86, seis fotos de la Work Cell). Cadence de 10 s.
+`uv run watch --camera 2 --variant qwen3-vl-4b-instruct-int4-sym-gpu --structured --every 10 --emit observations.jsonl`. iGPU: mediana 4,4 s por Frame estructurado, peor caso 8,0 s, en las 32 fotos de la Work Cell (#86). Cadence de 10 s: hay margen en todas.
+no_gloves con la iGPU cw, en las 32 fotos y con la regla del agente: mano desnuda en 9 de 9, ninguna falsa en las otras 23.
 La iGPU con la receta cw escribe a veces "hand", no "bare hand": work-cell.json ya lo cuenta como mano desnuda.
 Se queda la cw, no la g128: la g128 describe mejor la bandeja, pero en `baseline_1` cuenta como mano desnuda el antebrazo del operario al borde de la foto, y no_gloves no mira dónde está la mano. Encuadrar la cámara para que no entre el brazo.
 Fuera guantes: no gloves 1/2, luego el Incident, la notificación y el registro. ~40 s: narrar sobre el fichero, nunca en silencio.
@@ -598,14 +600,15 @@ type: statement
 
 ::: notes
 Un modelo sirviendo los Feeds en serie; cota superior para un Hardware Profile, nada más.
-Este portátil, de 2025, con el 4B mirando guantes cada 10 s: dos cámaras. La caja tiene que aguantar la peor escena, 4,7 s en la iGPU sobre seis fotos de la Work Cell (#86): ⌊10 / 4,7⌋ = 2. En la escena mediana (2,9 s) serían tres. Con una descripción cada 10 s (3,0 s): tres.
+Este portátil, de 2025, con el 4B mirando guantes cada 10 s: una cámara garantizada. La caja tiene que aguantar la peor escena: 8,0 s en la iGPU, la más lenta de las 32 fotos de la Work Cell (#86), ⌊10 / 8,0⌋ = 1. En la escena típica (4,4 s), dos. Con una descripción cada 10 s (3,0 s): tres.
+El peor caso lo pone el límite de 256 tokens, cuando el modelo se queda repitiendo piezas del soldador.
 En planta no hay portátiles: hay un dispositivo edge, tipo mini-PC, junto a la cámara. Uno con más capacidad puede llevar varias. No se recomienda ningún modelo concreto.
 :::
 
 ::: script
 En una planta no vas a tener portátiles conectados a cámaras. Vas a tener un mini-PC industrial junto a cada puesto.
 Cuántas cámaras lleva cada uno es una división: la Cadence entre lo que tarda el modelo.
-Este portátil, de 2025, lleva dos con el 4B mirando guantes cada diez segundos. Mide tu dispositivo.
+Este portátil, de 2025, lleva una con el 4B mirando guantes cada diez segundos, con margen. Dos, si la escena acompaña. Mide tu dispositivo.
 :::
 
 ---

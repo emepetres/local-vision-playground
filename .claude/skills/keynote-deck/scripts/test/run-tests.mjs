@@ -49,5 +49,17 @@ for (const c of cases) {
   }
 }
 
+// The canonical example's weighted count: nine content slides, a title and a section
+// at 0.2 each, a demo at 0, and two `[+]` steps at 0.2 each.
+{
+  const { visible } = validateDeck(readFileSync(example, "utf8"));
+  if (visible === 9.8) {
+    console.log("  ok   weighted visible changes (example-deck = 9.8)");
+  } else {
+    failures++;
+    console.log(`  FAIL weighted visible changes — expected 9.8, got ${visible}`);
+  }
+}
+
 console.log(failures === 0 ? "\nAll corpus checks green." : `\n${failures} corpus check(s) red.`);
 process.exit(failures === 0 ? 0 : 1);

@@ -57,6 +57,17 @@ A `demo` slide stays on screen while the speaker drives the live demo; its `::: 
 
 A `[+]` prefix on a line or block marks the **start of a new reveal step**, used identically in every type. Bullets are **static** unless written `- [+]`: nothing reveals behind the speaker's back. Reveal *boundaries* live in the format so the pace budget can count visible changes; seconds never do.
 
+## Visible changes
+
+The unit of the pace budget (`esquema.md`'s `ritmo`, in seconds per change). Changes are weighted by how long the speaker stays on them, and `scripts/validate-deck.mjs` (`CHANGE_WEIGHTS`) is the one place the weights live:
+
+| what | weight | why |
+|---|---|---|
+| a content slide | 1 | the speaker talks over it |
+| a `title` or `section` slide | 0.2 | a glance |
+| a `[+]` step | 0.2 | it extends the slide it is on, which is already counted |
+| a `demo` slide | 0 | held while the demo runs; demo minutes are budgeted apart |
+
 ## Regions: the `:::` construct
 
 One general construct: `::: name` opens, a bare `:::` closes. Every open needs a close.

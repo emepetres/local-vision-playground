@@ -33,7 +33,7 @@ Done when every arc row has the facts its slides need, or a note of which fact i
 
 - Each arc row becomes a run of slides in its order; each demo row becomes one `demo` slide with what it proves.
 - The body unit (the slide run the body repeats) runs 3 to 6 times; the carrier recurs; the turn lands on the row the esquema names.
-- Aim at the esquema's visible-change budget: slides plus `[+]` steps.
+- Aim at the esquema's visible-change budget, counted with the weights of `deck-format.md` (Visible changes).
 - `::: notes` on every slide, as terse cues. `::: script` on the opening, the turn and the close, where the exact words matter.
 - Each picture is an `image` slide with a classified placeholder (`draw:`, `capture:` or `provide:`) unless the file already exists.
 - Every number or claim on a slide comes from the repo or a primary source. A load-bearing fact you cannot confirm goes to a background subagent; until it reports, the slide carries it and its notes say `VERIFY: <claim>`.
@@ -51,7 +51,7 @@ If you collected doubts, invoke `mattpocock-skills:grilling` for one round with 
 node <this-skill-dir>/scripts/validate-deck.mjs docs/keynotes/<slug>/deck.md
 ```
 
-Done when it exits 0. It also prints the visible changes; the corpus under `scripts/test/` is run with `node <this-skill-dir>/scripts/test/run-tests.mjs` after any change to the validator.
+Done when it exits 0. It also prints the weighted visible changes; the corpus under `scripts/test/` is run with `node <this-skill-dir>/scripts/test/run-tests.mjs` after any change to the validator.
 
 ## 5. Check against the esquema and report
 

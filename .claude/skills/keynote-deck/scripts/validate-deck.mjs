@@ -8,7 +8,7 @@
 //
 // CLI:  node validate-deck.mjs <deck.md>   → exit 0 (clean) or 1 (faults printed)
 // API:  import { validateDeck } from "./validate-deck.mjs"
-//       validateDeck(text) → { ok: boolean, errors: [{ slide, message }] }
+//       validateDeck(text) → { ok, errors: [{ slide, message }], slides, steps, visible }
 
 const SLIDE_TYPES = new Set([
   "title", "section", "statement", "bullets", "quote",
@@ -19,6 +19,12 @@ const DECK_KEYS = new Set(["title", "language", "accent"]);
 // one of these is the signature of a frontmatter run split by a stray blank line.
 const SLIDE_KEYS = new Set(["type", "src", "alt", "link", "file", "poster"]);
 const REQUIRES_SRC = new Set(["image", "video"]);
+
+// Weight of each visible change in the pace budget (deck-format.md, "Visible changes").
+// A content slide is one change. A title or section slide is a glance; a `[+]` step
+// extends the slide it is on rather than replacing it. A demo slide is held while the
+// demo runs, and the demo's minutes are budgeted apart, so it costs no pace.
+export const CHANGE_WEIGHTS = { slide: 1, title: 0.2, section: 0.2, demo: 0, step: 0.2 };
 
 const KEY_LINE = /^([A-Za-z][\w-]*):(?:\s+(.*))?$/;
 
@@ -198,22 +204,29 @@ export function validateDeck(text) {
   }
   validateDeckFrontmatter(split.frontmatter, errors);
   // Count visible changes: each slide, plus each `[+]` step outside the reserved
-  // notes/script regions. Pacing stays out of the deck; counting is structure.
+  // notes/script regions, weighted by CHANGE_WEIGHTS. Pacing stays out of the deck;
+  // counting is structure.
   let slides = 0;
   let steps = 0;
+  let visible = 0;
   split.slides.forEach((slide, idx) => {
     const parsed = validateSlide(slide, idx + 1, errors);
     if (!parsed) return;
     slides++;
+    visible += CHANGE_WEIGHTS[parsed.fm.type] ?? CHANGE_WEIGHTS.slide;
     let reserved = false;
     for (const line of parsed.body) {
       const t = line.trim();
       if (/^:::\s+(notes|script)\s*$/.test(t)) reserved = true;
       else if (t === ":::") reserved = false;
-      else if (!reserved && /^(?:-\s+)?\[\+\]/.test(t)) steps++;
+      else if (!reserved && /^(?:-\s+)?\[\+\]/.test(t)) {
+        steps++;
+        visible += CHANGE_WEIGHTS.step;
+      }
     }
   });
-  return { ok: errors.length === 0, errors, slides, steps };
+  visible = Math.round(visible * 10) / 10;
+  return { ok: errors.length === 0, errors, slides, steps, visible };
 }
 
 // CLI entry point.
@@ -231,9 +244,9 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
     console.error(`cannot read ${path}: ${e.message}`);
     process.exit(2);
   }
-  const { ok, errors, slides, steps } = validateDeck(text);
+  const { ok, errors, slides, steps, visible } = validateDeck(text);
   if (ok) {
-    console.log(`${path}: well-formed ✓ — ${slides} slides + ${steps} reveal steps = ${slides + steps} visible changes`);
+    console.log(`${path}: well-formed ✓ — ${slides} slides, ${steps} reveal steps = ${visible} visible changes (weighted)`);
     process.exit(0);
   }
   console.error(`${path}: ${errors.length} problem(s)`);

@@ -32,7 +32,7 @@ Done when you can state in four lines what the event promises, how long the talk
 ## 2. Compute the budget
 
 - **Useful minutes** = duration − 5 min of Q&A buffer − 1 min of event frame when `template.pptx` exists (its cover, speaker, sponsor and Q&A slides).
-- **Pace**: the `ritmo` field of the esquema header; 35 s per visible change when there is none. A visible change is a slide or a `[+]` step.
+- **Pace**: the `ritmo` field of the esquema header; 35 s per visible change when there is none. A visible change is weighted as `keynote-deck/references/deck-format.md` (Visible changes) says: a content slide is 1, and titles, sections, `[+]` steps and demo slides count for less.
 - **Visible changes** = (useful minutes − demo minutes) × 60 / pace, computed once the demo rows have minutes.
 
 Done when you hold the useful minutes and the pace.

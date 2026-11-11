@@ -60,6 +60,8 @@ Entrenamiento y fine-tuning; el precio por imagen de una API de visión en la nu
 
 ## Decisiones
 
+- 2026-11-11 — Descartada la NPU como motor del watch en D2 y D4: probada en D4, va lenta para el directo; el watch corre en la iGPU y la NPU queda en D3.
+- 2026-11-11 — Descartado "1 cámara por portátil" como cifra de capacidad: en planta habrá un dispositivo edge tipo mini-PC, y cuántas cámaras lleva depende de ese dispositivo; se da la fórmula y el dato de este portátil de 2025, sin recomendar ningún modelo.
 - 2026-11-11 — Descartado reponer _Computer Vision in Airplane Mode_ con retoques: charla nueva que reutiliza demos y hallazgos, porque #80–#82 cambian la historia de la NPU.
 - 2026-11-11 — Descartado el portador "what crosses the wire?": resultó poco natural en Azure Tour.
 - 2026-11-11 — Descartada como tesis "el portátil que usas para videollamadas ya es el servidor de visión que buscas en la nube": se guarda como frase en la fila 7.

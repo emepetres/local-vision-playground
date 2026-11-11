@@ -232,6 +232,7 @@ type: statement
 En el 2B, este mismo INT4 channel-wise entraba en bucle ("A white door is in the center" x4).
 En el 4B: 0 bucles de 5 y forma correcta en 32 de 32, en channel-wise y en group-wise 128. #82.
 El IR de Intel (g128) escribe palabra por palabra lo mismo que nuestro g128: no lo exportamos mal.
+"Suficiente" es para vigilar los guantes, no para describir la bandeja (#86): en `bare_hand_1` la cw solo ve "hand" y la g128 nombra la mano desnuda y cinco objetos. Para no_gloves, la cw acierta las seis escenas medidas; la g128, cinco.
 :::
 
 ::: script
@@ -292,6 +293,10 @@ type: bullets
 ::: notes
 Fuente (#86): las cuatro filas en una sola sesión, 2026-11-11, `docs/benchmarks/asus-zenbook-s14-intel-core-ultra-7-258v-openvino-2026-4-0-n-20261111-182016.*`. Frame de referencia, 128 tokens, temperatura 0, 5 repeticiones, mediana sobre las 4 en caliente. 0 de 5 bucles y Work Cell 32/32 en las cuatro.
 Tokens: Foundry Local 78, OpenVINO CPU 95, iGPU 87, NPU 83. Las dos CPU difieren un 22%: comparar las CPU por tokens/s, no por segundos.
+Las dos CPU son INT4, pero no el mismo INT4 (verificado en los modelos, #86). Foundry Local: lenguaje con una escala por bloque de 32 pesos, visión INT4 en bloques de 128. Nuestro IR: lenguaje con una escala por fila entera (channel-wise), visión INT8. Más fino el lenguaje en Foundry Local, más fina la visión en el nuestro.
+Calidad: igual de fiables (0 bucles, 32/32 en las dos), pero Foundry Local da más detalle. En `bare_hand_1.png` nombra la mano desnuda y cinco objetos de la bandeja; el IR de OpenVINO, en CPU y en iGPU, solo "hand". Un Frame, sin puntuar contra los Triggers.
+Separado después con nuestro IR en g128 en la misma CPU (#86, `…-20261111-194657` y `…-195140`): con g128, OpenVINO vuelve a nombrar la mano desnuda y la bandeja, como Foundry Local. El detalle lo decide la receta, no el runtime.
+Y la velocidad la decide el runtime: con recetas parecidas (g32 frente a g128), OpenVINO saca unas 3 veces los tokens/s de Foundry Local (11,8–14,0 frente a 3,7–4,1).
 La NPU no es más rápida que la iGPU en este modelo, y en tokens/s empata con la CPU por OpenVINO (13,5 frente a 13,2). Se dice una vez y no se insiste.
 A favor de la NPU: deja libres CPU y GPU para el resto del puesto. La carga con caché ya no la favorece: en #86, 6,7 s la NPU frente a 5,6 s la iGPU (en #82 fue 4-5 s frente a 17 s).
 De Intel, etiquetado como de Intel: en Panther Lake, 2,8x rendimiento por vatio de la NPU sobre la GPU (Gemma 4 E2B). Otra generación, otro modelo.
@@ -513,8 +518,9 @@ bare hands on the mat, and the agent warns the supervisor from sentences alone
 
 ::: notes
 D4, tres paneles: el agente, el watch con --structured --emit, y el fichero emitido.
-`uv run watch --camera 2 --variant qwen3-vl-4b-instruct-int4-sym-gpu --structured --every 10 --emit observations.jsonl`. iGPU: ~2,2 s por Frame estructurado (#86, sobre `bare_hand_1.png`, 61 tokens), Cadence de 10 s.
-En ese Frame la iGPU escribe "hand", no "bare hand": work-cell.json ya lo cuenta como mano desnuda.
+`uv run watch --camera 2 --variant qwen3-vl-4b-instruct-int4-sym-gpu --structured --every 10 --emit observations.jsonl`. iGPU: de 2,0 a 4,7 s por Frame estructurado según la escena, mediana 2,9 s (#86, seis fotos de la Work Cell). Cadence de 10 s.
+La iGPU con la receta cw escribe a veces "hand", no "bare hand": work-cell.json ya lo cuenta como mano desnuda.
+Se queda la cw, no la g128: la g128 describe mejor la bandeja, pero en `baseline_1` cuenta como mano desnuda el antebrazo del operario al borde de la foto, y no_gloves no mira dónde está la mano. Encuadrar la cámara para que no entre el brazo.
 Fuera guantes: no gloves 1/2, luego el Incident, la notificación y el registro. ~40 s: narrar sobre el fichero, nunca en silencio.
 Plan B: la grabación.
 :::
@@ -563,15 +569,14 @@ type: statement
 
 ::: notes
 Un modelo sirviendo los Feeds en serie; cota superior para un Hardware Profile, nada más.
-Este portátil, de 2025, con el 4B mirando guantes cada 10 s (2,2 s por Frame estructurado en la iGPU, #86): ⌊10 / 2,2⌋ = hasta cuatro cámaras. Con una descripción cada 10 s (3,0 s): tres.
-Cota medida sobre un único Frame con una respuesta corta (61 tokens, solo la mano). Con la bandeja entera (122 tokens) serían ~4,4 s: dos cámaras.
+Este portátil, de 2025, con el 4B mirando guantes cada 10 s: dos cámaras. La caja tiene que aguantar la peor escena, 4,7 s en la iGPU sobre seis fotos de la Work Cell (#86): ⌊10 / 4,7⌋ = 2. En la escena mediana (2,9 s) serían tres. Con una descripción cada 10 s (3,0 s): tres.
 En planta no hay portátiles: hay un dispositivo edge, tipo mini-PC, junto a la cámara. Uno con más capacidad puede llevar varias. No se recomienda ningún modelo concreto.
 :::
 
 ::: script
 En una planta no vas a tener portátiles conectados a cámaras. Vas a tener un mini-PC industrial junto a cada puesto.
 Cuántas cámaras lleva cada uno es una división: la Cadence entre lo que tarda el modelo.
-Este portátil, de 2025, lleva hasta cuatro con el 4B mirando guantes cada diez segundos. Mide tu dispositivo.
+Este portátil, de 2025, lleva dos con el 4B mirando guantes cada diez segundos. Mide tu dispositivo.
 :::
 
 ---

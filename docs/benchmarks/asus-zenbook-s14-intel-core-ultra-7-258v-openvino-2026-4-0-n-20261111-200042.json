@@ -1,0 +1,251 @@
+{
+  "schema_version": 2,
+  "recorded_at": "2026-11-11T20:00:42.461810+01:00",
+  "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+  "workload": {
+    "prompt": "This is a work bench seen from above. The work zone is the green cutting mat. The tray is the white mesh tray beside it. List every distinct object you can see, and where it is: \"tray\" if it lies in the white tray, \"zone\" if it lies on the green mat, \"hand\" if a hand is holding it, \"elsewhere\" for anything else. Hands are objects too: name each visible hand \"bare hand\" (skin showing) or \"gloved hand\". Reply with ONLY a JSON array, where each element is an object {\"name\": <string>, \"count\": <integer >= 1>, \"where\": <one of \"tray\", \"zone\", \"hand\", \"elsewhere\">}. Example: [{\"name\": \"cup\", \"count\": 1, \"where\": \"zone\"}, {\"name\": \"bare hand\", \"count\": 1, \"where\": \"zone\"}]. If nothing is there, reply with [].",
+    "max_output_tokens": 256,
+    "temperature": 0.0,
+    "frame": {
+      "sha256": "c3a164c6f476d71705b9703e085b918fe32b847eddd1c78a5653d70b31b49bc8",
+      "bytes": 57114,
+      "width": 640,
+      "height": 360,
+      "codec": "jpeg",
+      "provenance": "C:\\Users\\jcarnero\\dev\\local-vision-playground\\vision\\..\\docs\\fixtures\\work-cell\\bare-hand_3.png"
+    }
+  },
+  "repetitions": 5,
+  "provider_registration": 1.3000026228837669e-06,
+  "variants": [
+    {
+      "order": 1,
+      "id": "qwen3-vl-4b-instruct-int4-sym-gpu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "GPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "GPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "recipe": {
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.3.0",
+            "openvino-genai": "2026.3.0.0",
+            "openvino-tokenizers": "2026.3.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "GPU",
+        "slug": "qwen3-vl-4b-instruct-int4-sym-gpu",
+        "created": "2026-09-24T18:25:51.733014+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 3.108418600000732,
+      "runs": [
+        {
+          "inference": 4.642136200003733,
+          "completion_tokens": 132,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 4.185813600000984,
+          "completion_tokens": 131,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 4.054672099999152,
+          "completion_tokens": 131,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 4.083458599998266,
+          "completion_tokens": 131,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 4.4547961999996915,
+          "completion_tokens": 131,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": null,
+      "objects": [
+        {
+          "name": "bare hand",
+          "count": 1,
+          "where": "zone"
+        },
+        {
+          "name": "circuit board",
+          "count": 1,
+          "where": "zone"
+        },
+        {
+          "name": "soldering iron",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "soldering iron tip",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "soldering wire",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "soldering iron stand",
+          "count": 1,
+          "where": "tray"
+        }
+      ],
+      "no_shape": null
+    },
+    {
+      "order": 2,
+      "id": "qwen3-vl-4b-instruct-int4-sym-g128-gpu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "GPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "GPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "recipe": {
+          "name": "int4-sym-g128",
+          "weight_format": "int4",
+          "sym": true,
+          "group_size": 128,
+          "ratio": 1.0,
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=128"
+          ],
+          "toolchain": {
+            "openvino": "2026.4.0",
+            "openvino-genai": "2026.4.0.0",
+            "openvino-tokenizers": "2026.4.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "GPU",
+        "slug": "qwen3-vl-4b-instruct-int4-sym-g128-gpu",
+        "created": "2026-11-11T18:58:00.304355+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 2.417407799999637,
+      "runs": [
+        {
+          "inference": 6.294644299996435,
+          "completion_tokens": 144,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 4.71342469999945,
+          "completion_tokens": 125,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 4.544024399998307,
+          "completion_tokens": 125,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 4.086815000002389,
+          "completion_tokens": 125,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 4.090862899996864,
+          "completion_tokens": 125,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": null,
+      "objects": [
+        {
+          "name": "bare hand",
+          "count": 1,
+          "where": "zone"
+        },
+        {
+          "name": "Arduino",
+          "count": 1,
+          "where": "zone"
+        },
+        {
+          "name": "soldering iron",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "screwdriver",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "wire",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "spool of wire",
+          "count": 1,
+          "where": "tray"
+        },
+        {
+          "name": "pencil",
+          "count": 1,
+          "where": "tray"
+        }
+      ],
+      "no_shape": null
+    }
+  ],
+  "token_divergence": null
+}

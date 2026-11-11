@@ -20,7 +20,7 @@ Javier Carnero
 
 ### Duración
 
-50 minutos
+45 minutos
 
 ### Track
 

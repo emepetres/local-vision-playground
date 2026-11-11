@@ -304,6 +304,35 @@ De Intel, etiquetado como de Intel: en Panther Lake, 2,8x rendimiento por vatio 
 
 ---
 
+type: comparison
+
+::: The recipe decides the detail
+- one scale per row: "hand"
+- one scale per 128 weights: bare hand, iron, solder, board
+:::
+
+::: The runtime decides the speed
+- Foundry Local: 4 tokens/s
+- OpenVINO: 12 to 14 tokens/s
+:::
+
+::: notes
+#86, misma CPU, misma sesión: `…-20261111-194657` (prosa) y `…-195140` (estructurado sobre `bare_hand_1.png`).
+Izquierda, mismo runtime (OpenVINO) y dos recetas: channel-wise solo dice "hand"; group-wise 128 nombra la mano desnuda y cinco objetos, como Foundry Local.
+Derecha, recetas parecidas (Foundry Local en bloques de 32, nuestro IR en bloques de 128): OpenVINO 11,8–14,0 tokens/s, Foundry Local 3,7–4,1.
+Entre nuestras dos recetas la velocidad es la misma dentro del ruido; la g128 tarda más porque escribe más.
+Si preguntan por qué no llevo la g128 a D4: describe mejor, pero cuenta como mano desnuda un antebrazo al borde de la foto. Para vigilar guantes basta la channel-wise.
+:::
+
+::: script
+¿Por qué las dos CPU dicen cosas distintas? Lo separé.
+Con el mismo runtime, cambiando solo la receta, vuelve el detalle: la mano desnuda, el soldador, el estaño.
+Con una receta parecida, cambiando solo el runtime, OpenVINO va tres veces más rápido.
+El detalle lo decide la receta. La velocidad, el runtime.
+:::
+
+---
+
 type: statement
 
 # The NPU passes

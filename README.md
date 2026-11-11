@@ -164,6 +164,7 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
 - [2026-11-04 — Intel's Qwen3-VL-4B gq-ov on the NPU as a Benchmark row (#80)](./docs/research/2026-11-04-intel-qwen3-vl-4b-on-the-npu.md)
 - [2026-11-04 — Our own Qwen3-VL-4B in two Recipes, on the NPU: Benchmark, memory and load time (#81)](./docs/research/2026-11-04-our-own-qwen3-vl-4b-in-two-recipes.md)
 - [2026-11-04 — Does the Recipe or the artifact decide quality on the NPU? The verdict (#82)](./docs/research/2026-11-04-recipe-or-artifact-on-the-npu.md)
+- [2026-11-11 — Qwen3-VL-4B on all four rows, prose and structured, for the keynote's face-off (#86)](./docs/research/2026-11-11-the-4b-on-all-four-rows.md)
 
 **What was measured**
 

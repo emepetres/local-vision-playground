@@ -18,6 +18,15 @@ Y contaremos lo que no sale en los tutoriales: por qué acabamos con dos motores
 
 Javier Carnero
 
+### Speaker
+
+- Name: Javier Carnero
+- Role: Senior Research Manager
+- Company: Plain Concepts
+- Communities: SevillaDotNet
+- Quote: (the speaker adds it by hand in PowerPoint)
+- Photo: (the speaker adds it by hand in PowerPoint)
+
 ### Duración
 
 45 minutos

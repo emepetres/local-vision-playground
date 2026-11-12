@@ -30,7 +30,7 @@ Hoy las vamos a poner a trabajar. En directo, y sin que salga una imagen.
 ---
 
 type: image
-src: !todo "capture: Windows Defender Firewall with the outbound block rules for the demo's python and Agent executables, enabled"
+src: images/firewall-outbound.png
 alt: outbound firewall rules blocking the demo processes
 
 outbound: blocked, for every process in this demo
@@ -137,7 +137,7 @@ Esa es la frase que firman ciberseguridad y legal. Vamos a hacerla verdad.
 ---
 
 type: image
-src: !todo "draw: the whole system inside one laptop outline: a camera, then a box labelled vision (Python, Qwen3-VL), then a single sheet labelled observations.jsonl, then a box labelled Agent (C#, Agent Framework), then a notification bell and a log file; a dashed boundary around the camera and the vision box marks where the image stops; only text flows past it; no airplane icon"
+src: images/system-map.png
 alt: camera, vision, a JSON Lines file, the agent, a notification and a log, all on one laptop
 
 the whole system, on one laptop

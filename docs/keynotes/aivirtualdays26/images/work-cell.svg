@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="821" viewBox="0 0 1920 821">
+  <defs>
+    <pattern id="matGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#F7FAFF" stroke-opacity="0.12" stroke-width="1.5"/>
+    </pattern>
+    <pattern id="mesh" width="20" height="20" patternUnits="userSpaceOnUse">
+      <rect x="4" y="4" width="12" height="12" rx="2" fill="#00BCF2" fill-opacity="0.10"/>
+    </pattern>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- one glove, fingers up, 120 x 200 -->
+    <g id="glove">
+      <path d="M20,200 L20,92 L6,60 Q2,48 14,44 Q24,42 30,54 L36,70 L36,22 Q36,10 48,10 Q60,10 60,22 L60,64 L62,8 Q62,-4 74,-4 Q86,-4 86,8 L86,64 L90,16 Q90,4 102,4 Q114,4 114,16 L112,76 L116,40 Q118,30 128,32 Q138,34 136,46 L130,120 Q128,160 108,200 Z"
+            fill="#F7FAFF" stroke="#A2B6CD" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M28,200 L28,150 Q70,136 116,150 L108,200 Z" fill="#A2B6CD"/>
+    </g>
+  </defs>
+
+  <!-- view cone: the camera looks down at the work cell from behind it -->
+  <polygon points="915,135 1005,135 1560,190 360,190" fill="#0078D4" fill-opacity="0.10"/>
+  <g stroke="#0078D4" stroke-opacity="0.55" stroke-width="3" stroke-dasharray="10 10">
+    <line x1="915" y1="135" x2="360" y2="190"/>
+    <line x1="1005" y1="135" x2="1560" y2="190"/>
+  </g>
+
+  <!-- desk -->
+  <rect x="360" y="190" width="1200" height="510" rx="26" fill="#12304F" stroke="#3E5D81" stroke-width="4"/>
+
+  <!-- work cell, scaled into the desk -->
+  <g transform="translate(347.5 120) scale(0.75)">
+  <!-- ===== Zone: the mat ===== -->
+  <rect x="110" y="120" width="780" height="600" rx="18" fill="#7FBA00" fill-opacity="0.16"/>
+  <rect x="110" y="120" width="780" height="600" rx="18" fill="url(#matGrid)"/>
+  <g stroke="#F7FAFF" stroke-opacity="0.25" stroke-width="2.5">
+    <path d="M310 120V720M510 120V720M710 120V720"/>
+    <path d="M110 320H890M110 520H890"/>
+  </g>
+  <rect x="110" y="120" width="780" height="600" rx="18" fill="none" stroke="#7FBA00" stroke-width="5"/>
+
+  <!-- PCB on the mat -->
+  <g transform="rotate(-6 500 450)">
+    <rect x="300" y="300" width="400" height="280" rx="16" fill="#1A3961" stroke="#7FBA00" stroke-width="4"/>
+    <g fill="none" stroke="#7FBA00" stroke-opacity="0.7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M420 440H500L530 410H590"/>
+      <path d="M420 470H510L540 500H640"/>
+      <path d="M350 400H390M350 500H390"/>
+    </g>
+    <rect x="410" y="380" width="100" height="100" rx="8" fill="#12304F" stroke="#A2B6CD" stroke-width="3"/>
+    <rect x="570" y="360" width="70" height="40" rx="6" fill="#12304F" stroke="#A2B6CD" stroke-width="3"/>
+    <rect x="340" y="530" width="220" height="24" rx="4" fill="#12304F"/>
+    <g fill="#FFB900">
+      <circle cx="356" cy="542" r="4.5"/><circle cx="378" cy="542" r="4.5"/><circle cx="400" cy="542" r="4.5"/><circle cx="422" cy="542" r="4.5"/><circle cx="444" cy="542" r="4.5"/><circle cx="466" cy="542" r="4.5"/><circle cx="488" cy="542" r="4.5"/><circle cx="510" cy="542" r="4.5"/><circle cx="532" cy="542" r="4.5"/>
+    </g>
+  </g>
+
+  <!-- ===== Tray ===== -->
+  <rect x="990" y="120" width="560" height="400" rx="18" fill="#1A3961"/>
+  <rect x="990" y="120" width="560" height="400" rx="18" fill="url(#mesh)"/>
+  <rect x="990" y="120" width="560" height="400" rx="18" fill="none" stroke="#00BCF2" stroke-width="5"/>
+
+  <!-- soldering iron -->
+  <g transform="rotate(-12 1250 250)">
+    <rect x="1080" y="232" width="200" height="40" rx="20" fill="#3E5D81" stroke="#F7FAFF" stroke-width="3"/>
+    <rect x="1280" y="242" width="90" height="20" rx="6" fill="#A2B6CD"/>
+    <path d="M1370 246 L1430 252 L1370 258 Z" fill="#F7FAFF"/>
+    <path d="M1080 252 C1040 252 1030 300 1010 320" fill="none" stroke="#A2B6CD" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <!-- solder spool -->
+  <circle cx="1100" cy="400" r="58" fill="#3E5D81" stroke="#F7FAFF" stroke-width="4"/>
+  <circle cx="1100" cy="400" r="40" fill="none" stroke="#A2B6CD" stroke-width="6" stroke-dasharray="4 6"/>
+  <circle cx="1100" cy="400" r="16" fill="#12304F" stroke="#F7FAFF" stroke-width="3"/>
+  <!-- brush -->
+  <g transform="rotate(20 1250 410)">
+    <rect x="1190" y="400" width="110" height="18" rx="9" fill="#FFB900"/>
+    <rect x="1296" y="396" width="20" height="26" rx="3" fill="#A2B6CD"/>
+    <path d="M1316 396 L1350 390 L1350 428 L1316 422 Z" fill="#F7FAFF"/>
+  </g>
+  <!-- tweezers -->
+  <g stroke="#F7FAFF" stroke-width="7" stroke-linecap="round" fill="none">
+    <path d="M1370 470 L1470 330"/>
+    <path d="M1384 476 L1478 346"/>
+  </g>
+  <!-- jumper wires -->
+  <g fill="none" stroke-width="6" stroke-linecap="round" transform="translate(-10 4)">
+    <path d="M1180 480 C1220 450 1260 500 1290 470" stroke="#F25022"/>
+    <path d="M1180 498 C1220 468 1260 518 1290 488" stroke="#7FBA00"/>
+  </g>
+
+  <!-- gloves -->
+  <use href="#glove" x="1030" y="570" transform="scale(0.9) translate(114 56)"/>
+  <use href="#glove" x="1190" y="570" transform="scale(0.9) translate(114 56)"/>
+
+  </g>
+  <text x="452" y="250" font-family="Consolas, monospace" font-size="30" fill="#7FBA00">Zone</text>
+  <text x="1112" y="250" font-family="Consolas, monospace" font-size="30" fill="#00BCF2">Tray</text>
+  <text x="1345" y="650" font-family="Consolas, monospace" font-size="30" fill="#A2B6CD">gloves</text>
+
+  <!-- camera, behind the cell, looking down (focal) -->
+  <g transform="translate(960,80)" filter="url(#glow)">
+    <rect x="-70" y="-50" width="140" height="100" rx="18" fill="#1A3961" stroke="#0078D4" stroke-width="5"/>
+    <circle cx="0" cy="0" r="32" fill="#12304F" stroke="#0078D4" stroke-width="5"/>
+    <circle cx="0" cy="0" r="12" fill="#0078D4"/>
+  </g>
+  <text x="1056" y="92" font-family="Consolas, monospace" font-size="30" fill="#A2B6CD">camera</text>
+
+  <!-- the operator, seen from above, in front of the cell -->
+  <ellipse cx="960" cy="808" rx="160" ry="52" fill="#1A3961" stroke="#A2B6CD" stroke-width="4"/>
+  <circle cx="960" cy="772" r="40" fill="#3E5D81" stroke="#A2B6CD" stroke-width="4"/>
+  <text x="1140" y="790" font-family="Consolas, monospace" font-size="30" fill="#A2B6CD">operator</text>
+</svg>

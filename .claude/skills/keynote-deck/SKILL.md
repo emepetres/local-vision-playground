@@ -63,7 +63,7 @@ Flag each deviation without blocking; the speaker owns the fix:
 - Placeholders, grouped by kind: `draw:` ones go to `/keynote-images <slug>`; `capture:` and `provide:` ones are the speaker's list.
 - Every `VERIFY:` still open.
 
-Finish by saying the deck is ready to read, and that the next steps are `/keynote-images <slug>` and `/keynote-pptx <slug>`.
+Finish by saying the deck is ready to read, and that the next steps are `/keynote-images <slug>` and `/keynote-pptx <slug>`, plus `/keynote-demo-script <slug>` when the deck has demos.
 
 ## Iterate
 

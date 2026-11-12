@@ -22,8 +22,8 @@ All repository documentation, code, comments and commit messages are written in
 
 The one exception is keynote work under `docs/keynotes/`: a keynote's `esquema.md` is
 written in **Spanish** unless asked for English; the slide text of its `deck.md`, images
-and `.pptx` is in **English (US)** unless asked for Spanish; and the deck's speaker notes
-and script are in the language the talk is delivered in. Everything else stays English.
+and `.pptx` is in **English (US)** unless asked for Spanish; and the deck's speaker notes,
+its script and the keynote's `demo-script.md` are in the language the talk is delivered in. Everything else stays English.
 
 ## Repository layout
 

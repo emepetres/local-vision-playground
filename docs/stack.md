@@ -232,8 +232,10 @@ on decode throughput — not a faster replacement for the GPU.
 **Both Runtimes run INT4 [verified 2026-09-25].** Foundry Local's `qwen3-vl` builds are not
 full precision — their catalogue sizes (1.34 GB for the 2B, 2.73 GB for the 4B) only fit 4-bit
 weights, and its other CPU builds are named `cpu-int4-rtn-block-32`. Our OpenVINO IR is INT4
-too, but channel-wise and symmetric on every layer, the shape the NPU wants, which is a much
-coarser recipe. The quality gap between the Runtimes is that difference, not quantised against
+too, but channel-wise and symmetric on every decoder linear layer (the vision tower and
+embeddings are INT8), which is a much coarser recipe. The NPU accepts it, but its guide
+recommends group size 128 for models up to 4B-5B parameters
+([verification](./research/2026-11-04-qwen3-vl-ov-npu-verification.md)). The quality gap between the Runtimes is that difference, not quantised against
 unquantised. See [the INT4 note](./research/2026-09-25-int4-quantisation.md).
 
 For reference, per the Windows ML supported-EP table — the one page that carries the actual

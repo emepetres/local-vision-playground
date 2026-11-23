@@ -20,12 +20,15 @@ from pathlib import Path
 import pytest
 
 from tools.convert.convert import (
-    EXPORT_ARGS,
+    DEFAULT_RECIPE,
     TOOLCHAIN,
+    Recipe,
     build_provenance,
     child_environment,
     default_cache_root,
     main,
+    parse_recipe,
+    recipe_from_provenance,
     scrubbed_environment,
     slug_for,
     toolchain_versions,
@@ -39,7 +42,26 @@ class TestSlug:
     """The name an IR carries in place of the catalogue id it does not have."""
 
     def test_drops_the_org_and_lowercases(self) -> None:
-        assert slug_for("Qwen/Qwen3-VL-2B-Instruct", "NPU") == "qwen3-vl-2b-instruct-int4-sym-npu"
+        assert slug_for("Qwen/Qwen3-VL-2B-Instruct", "NPU") == (
+            "qwen3-vl-2b-instruct-int4-sym-cw-npu"
+        )
+
+    def test_names_the_recipe_in_full_group_size_included(self) -> None:
+        weights = "Qwen/Qwen3-VL-2B-Instruct"
+        assert slug_for(weights, "NPU", Recipe(group_size=-1)) == (
+            "qwen3-vl-2b-instruct-int4-sym-cw-npu"
+        )
+        assert slug_for(weights, "NPU", Recipe(group_size=128)) == (
+            "qwen3-vl-2b-instruct-int4-sym-g128-npu"
+        )
+        assert slug_for(weights, "NPU", Recipe(sym=False, group_size=128)) == (
+            "qwen3-vl-2b-instruct-int4-asym-g128-npu"
+        )
+
+    def test_two_recipes_of_the_same_weights_are_two_names(self) -> None:
+        a = slug_for("org/M", "NPU", Recipe(group_size=-1))
+        b = slug_for("org/M", "NPU", Recipe(group_size=128))
+        assert a != b
 
     def test_the_execution_provider_is_part_of_the_name(self) -> None:
         # The same weights built for a different Execution Provider is a different Variant, so
@@ -63,11 +85,13 @@ class TestProvenance:
         )
         assert manifest["weights"] == "Qwen/Qwen3-VL-2B-Instruct"
         assert manifest["execution_provider"] == "NPU"
-        assert manifest["slug"] == "qwen3-vl-2b-instruct-int4-sym-npu"
+        assert manifest["slug"] == "qwen3-vl-2b-instruct-int4-sym-cw-npu"
         assert manifest["created"] == CREATED
         recipe = manifest["recipe"]
         assert recipe["tool"] == "optimum-cli export openvino"
-        assert recipe["args"] == EXPORT_ARGS
+        assert recipe["args"] == DEFAULT_RECIPE.args()
+        assert recipe["name"] == "int4-sym-cw"
+        assert recipe["group_size"] == -1
         assert recipe["toolchain"] == {"openvino": "2026.3.0", "transformers": "4.57.6"}
 
     def test_records_the_recipe_actually_run_not_a_summary(self) -> None:
@@ -78,11 +102,61 @@ class TestProvenance:
         assert "int4" in manifest["recipe"]["args"]
         assert "--sym" in manifest["recipe"]["args"]
 
+    def test_round_trips_the_recipe(self) -> None:
+        for recipe in (Recipe(), Recipe(group_size=128), Recipe(sym=False, group_size=64)):
+            manifest = build_provenance(
+                "m", "NPU", toolchain={}, created=CREATED, recipe=recipe
+            )
+            assert recipe_from_provenance(manifest) == recipe
+
+    def test_the_recipe_in_the_manifest_is_the_one_in_the_slug_and_the_args(self) -> None:
+        recipe = Recipe(group_size=128)
+        manifest = build_provenance("org/M", "GPU", toolchain={}, created=CREATED, recipe=recipe)
+        assert manifest["slug"] == "m-int4-sym-g128-gpu"
+        assert "--group-size=128" in manifest["recipe"]["args"]
+
     def test_the_slug_matches_the_one_that_names_the_directory(self) -> None:
         # The slug in the manifest and the slug the IR directory is named for are the one name,
         # because the router matches an OpenVINO Variant token against it (ADR-0013).
-        manifest = build_provenance("org/Model-X", "GPU", toolchain={}, created=CREATED)
-        assert manifest["slug"] == slug_for("org/Model-X", "GPU")
+        recipe = Recipe(group_size=128)
+        manifest = build_provenance(
+            "org/Model-X", "GPU", toolchain={}, created=CREATED, recipe=recipe
+        )
+        assert manifest["slug"] == slug_for("org/Model-X", "GPU", recipe)
+
+
+class TestParseRecipe:
+    """A Recipe is named on the command line the way the slug names it."""
+
+    def test_parses_what_the_slug_prints(self) -> None:
+        for recipe in (Recipe(), Recipe(group_size=128), Recipe(sym=False, group_size=32)):
+            assert parse_recipe(recipe.name) == recipe
+
+    def test_refuses_a_name_that_is_no_recipe(self) -> None:
+        with pytest.raises(ValueError):
+            parse_recipe("int4")
+        with pytest.raises(ValueError):
+            parse_recipe("int4-sym-g0")
+
+    def test_a_manifest_from_before_recipes_were_named_reads_as_the_default(self) -> None:
+        legacy = {"recipe": {"tool": "optimum-cli export openvino", "args": []}}
+        assert recipe_from_provenance(legacy) == DEFAULT_RECIPE
+
+    def test_the_recipe_flag_names_the_ir_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setenv("LVP_IR_CACHE", str(tmp_path))
+        monkeypatch.setattr("tools.convert.convert.check_npu_driver", lambda: None)
+        assert main(["--dry-run", "--recipe", "int4-sym-g128"]) == 0
+        assert "qwen3-vl-2b-instruct-int4-sym-g128-npu" in capsys.readouterr().out
+
+
+class TestRecipeFlag:
+    def test_a_bad_recipe_is_a_usage_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit) as exit_info:
+            main(["--recipe", "int4"])
+        assert exit_info.value.code == 2
+        assert "names no Recipe" in capsys.readouterr().err
 
 
 class TestToolchainVersions:

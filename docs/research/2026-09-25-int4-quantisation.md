@@ -6,7 +6,9 @@ describes cleanly (the [Benchmark of 2026-09-22](../benchmarks/asus-zenbook-s14-
 to quantisation: *the OpenVINO rows are INT4, Foundry Local's row is unquantised*. **The second
 half of that is wrong.** Foundry Local's builds are 4-bit as well. What separates the two is
 *how* each was quantised, and ours was quantised the coarsest way INT4 allows, because that is
-the shape the NPU wants.
+the shape the NPU wants. *(Corrected 2026-11-04: the NPU guide accepts channel-wise but
+recommends group size 128 for models up to 4B-5B; see
+[the verification](./2026-11-04-qwen3-vl-ov-npu-verification.md).)*
 
 ## Foundry Local's builds are INT4 **[verified 2026-09-25]**
 
@@ -38,7 +40,7 @@ as the rest of the catalogue is an **inference**.
   largest of the three losses.
 - **`--sym` — symmetric.** No zero-point, so a row whose weights are not centred on zero wastes
   part of its 16 levels.
-- **`--ratio=1.0` — every layer.** No layer is kept in INT8 as a backup (optimum-intel's
+- **`--ratio=1.0` — every decoder linear layer.** No such layer is kept in INT8 as a backup (optimum-intel's
   default keeps 20%).
 
 The IR is *larger* than Foundry Local's build (~1.7 GB against 1.34 GB for the 2B) and still
@@ -47,8 +49,9 @@ here.
 
 ## Why the recipe is that one
 
-The NPU. Channel-wise symmetric INT4 is the layout OpenVINO's NPU plugin is built around for
-LLMs, and it is the recipe that loaded first try on `Intel(R) AI Boost`
+The NPU. Channel-wise symmetric INT4 is one of the two layouts the NPU guide allows (the other
+is group size 128, which the guide recommends up to 4B-5B parameters; corrected 2026-11-04, see
+[the verification](./2026-11-04-qwen3-vl-ov-npu-verification.md)), and it is the recipe that loaded first try on `Intel(R) AI Boost`
 ([#40](https://github.com/emepetres/local-vision-playground/issues/40)). Quantising at all is
 not optional on this class of machine: decoding is memory-bandwidth bound, and the 4B model at
 FP16 is almost 9 GB.

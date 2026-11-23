@@ -34,6 +34,7 @@ import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
@@ -46,12 +47,89 @@ from typing import Any
 # rows. Change an argument here and that first-try result is no longer the one #40 proved.
 # ---------------------------------------------------------------------------
 DEFAULT_WEIGHTS = "Qwen/Qwen3-VL-2B-Instruct"
-EXPORT_ARGS = [
-    "--weight-format", "int4",
-    "--sym",
-    "--ratio=1.0",
-    "--group-size=-1",
-]
+
+
+CHANNEL_WISE = -1
+"""The ``--group-size`` that gives each output channel its own scale (slug fragment ``cw``)."""
+
+
+@dataclass(frozen=True)
+class Recipe:
+    """How the weights are compressed (CONTEXT.md, Recipe), named in full.
+
+    "INT4" is a bit width, not a Recipe: ``sym`` says whether the range is centred on zero and
+    ``group_size`` how many weights share one scale (``-1`` is channel-wise, ``128`` is
+    group-wise). Two Recipes of the same weights are two Variants, so the whole thing — not just
+    the bit width — is in the slug (:attr:`name`) and in the Provenance.
+    """
+
+    weight_format: str = "int4"
+    sym: bool = True
+    group_size: int = CHANNEL_WISE
+    ratio: float = 1.0
+
+    @property
+    def name(self) -> str:
+        """The slug fragment: ``int4-sym-cw`` (channel-wise) or ``int4-sym-g128``."""
+        scale = "cw" if self.group_size == CHANNEL_WISE else f"g{self.group_size}"
+        return f"{self.weight_format}-{'sym' if self.sym else 'asym'}-{scale}"
+
+    def args(self) -> list[str]:
+        """The ``optimum-cli export openvino`` arguments this Recipe runs under."""
+        return [
+            "--weight-format", self.weight_format,
+            *(["--sym"] if self.sym else []),
+            f"--ratio={self.ratio}",
+            f"--group-size={self.group_size}",
+        ]
+
+
+# The Recipe #40 verified: channel-wise INT4-sym yields a ~1.7 GB IR that runs first-try on the
+# NPU. It is the default, and its arguments are unchanged from before the Recipe was named.
+DEFAULT_RECIPE = Recipe()
+
+_RECIPE_NAME = re.compile(r"^(int4)-(sym|asym)-(?:cw|g(\d+))$")
+
+
+def parse_recipe(name: str) -> Recipe:
+    """The Recipe a name such as ``int4-sym-g128`` stands for — what a slug prints."""
+    match = _RECIPE_NAME.match(name)
+    if not match:
+        raise ValueError(
+            f"{name!r} names no Recipe — expected int4-(sym|asym)-(cw|g<group size>), "
+            "e.g. int4-sym-cw or int4-sym-g128"
+        )
+    weight_format, symmetry, group = match.groups()
+    if group is not None and int(group) < 1:
+        raise ValueError(f"{name!r} has a group size of {group} — it must be at least 1")
+    return Recipe(
+        weight_format=weight_format,
+        sym=symmetry == "sym",
+        group_size=int(group) if group else CHANNEL_WISE,
+    )
+
+
+def recipe_argument(name: str) -> Recipe:
+    """``parse_recipe`` as an argparse ``type``, so a bad name is a usage error, not a traceback."""
+    try:
+        return parse_recipe(name)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+
+
+def recipe_from_provenance(manifest: dict[str, Any]) -> Recipe:
+    """Read the Recipe back out of a ``provenance.json`` — the inverse of ``build_provenance``."""
+    recipe = manifest["recipe"]
+    if "name" not in recipe:
+        # A manifest written before the Recipe was named: the one export then was channel-wise.
+        return DEFAULT_RECIPE
+    return Recipe(
+        weight_format=recipe["weight_format"],
+        sym=recipe["sym"],
+        group_size=recipe["group_size"],
+        ratio=recipe["ratio"],
+    )
+
 # No --trust-remote-code: transformers >= 4.57 carries native `qwen3_vl`, so no custom remote
 # code is fetched, and #40 verified this exact argument list (issue #48). Recording anything the
 # export did not run under would make the Provenance lie about what produced the IR.
@@ -70,9 +148,10 @@ TOOLCHAIN = (
     "transformers",
 )
 
-# The NPU driver floor from #38. Only matters for the smoke run on the demo machine — the
-# export itself is CPU-bound and needs no NPU at all.
-NPU_DRIVER_FLOOR = (32, 0, 100, 3104)
+# The NPU driver floor from #38, raised from 3104 to 4023 by the 2026.4 spike (#78). Only
+# matters for the smoke run on the demo machine — the export itself is CPU-bound and needs
+# no NPU at all.
+NPU_DRIVER_FLOOR = (32, 0, 100, 4023)
 
 # The demo machine carries a system-wide OpenVINO 2025.3 archive install whose setupvars are
 # permanent in the environment. It shadows any pip/uv-installed openvino and then makes
@@ -131,20 +210,23 @@ def default_cache_root() -> Path:
     return Path(base) / "local-vision-playground" / "ir"
 
 
-def slug_for(weights: str, execution_provider: str) -> str:
+def slug_for(
+    weights: str, execution_provider: str, recipe: Recipe = DEFAULT_RECIPE
+) -> str:
     """The Provenance slug that names an IR that has no catalogue id (CONTEXT.md, Variant).
 
     A Foundry Local Variant is named by its id; an IR we exported has none, so it is named by
     this slug instead — the weights and the Execution Provider it was built for, reduced to
     something a directory name and a Variant token will both take. ``Qwen/Qwen3-VL-2B-Instruct``
-    on the NPU is ``qwen3-vl-2b-instruct-int4-sym-npu``.
+    on the NPU under the default Recipe is ``qwen3-vl-2b-instruct-int4-sym-cw-npu``; the same
+    weights under group-wise 128 are ``...-int4-sym-g128-npu``, a different Variant.
 
     The reduction mirrors ``vision.record._slug`` deliberately rather than sharing it: this
     module holds to the stdlib-only invariant (module docstring) and must not import ``vision``.
     """
     stem = weights.split("/")[-1].lower()
     stem = re.sub(r"[^a-z0-9]+", "-", stem).strip("-")
-    return f"{stem}-int4-sym-{execution_provider.lower()}"
+    return f"{stem}-{recipe.name}-{execution_provider.lower()}"
 
 
 def toolchain_versions() -> dict[str, str]:
@@ -170,6 +252,7 @@ def build_provenance(
     *,
     toolchain: dict[str, str],
     created: str,
+    recipe: Recipe = DEFAULT_RECIPE,
 ) -> dict[str, Any]:
     """The ``provenance.json`` contract: what identifies an IR no catalogue published.
 
@@ -183,23 +266,31 @@ def build_provenance(
     return {
         "weights": weights,
         "recipe": {
+            "name": recipe.name,
+            "weight_format": recipe.weight_format,
+            "sym": recipe.sym,
+            "group_size": recipe.group_size,
+            "ratio": recipe.ratio,
             "tool": "optimum-cli export openvino",
-            "args": list(EXPORT_ARGS),
+            "args": recipe.args(),
             "toolchain": toolchain,
         },
         "execution_provider": execution_provider,
-        "slug": slug_for(weights, execution_provider),
+        "slug": slug_for(weights, execution_provider, recipe),
         "created": created,
     }
 
 
-def write_provenance(out_dir: Path, weights: str, execution_provider: str) -> Path:
+def write_provenance(
+    out_dir: Path, weights: str, execution_provider: str, recipe: Recipe = DEFAULT_RECIPE
+) -> Path:
     """Write ``provenance.json`` beside the IR bytes, and answer with where it went."""
     manifest = build_provenance(
         weights,
         execution_provider,
         toolchain=toolchain_versions(),
         created=datetime.now(UTC).isoformat(),
+        recipe=recipe,
     )
     path = out_dir / "provenance.json"
     path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -251,7 +342,7 @@ def _version(reported: str) -> tuple[int, ...] | None:
     return tuple(int(part) for part in parts)
 
 
-def export(weights: str, out_dir: Path) -> None:
+def export(weights: str, out_dir: Path, recipe: Recipe = DEFAULT_RECIPE) -> None:
     """Run the verified ``optimum-cli export openvino`` recipe into ``out_dir``.
 
     Invoked as ``python -m`` in this same interpreter rather than as a bare ``optimum-cli`` on
@@ -261,7 +352,7 @@ def export(weights: str, out_dir: Path) -> None:
     """
     cmd = [
         sys.executable, "-m", "optimum.commands.optimum_cli",
-        "export", "openvino", "-m", weights, *EXPORT_ARGS, str(out_dir),
+        "export", "openvino", "-m", weights, *recipe.args(), str(out_dir),
     ]
     print(f"[convert] {' '.join(cmd)}")
     subprocess.run(cmd, check=True, env=child_environment())
@@ -273,10 +364,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--weights", default=DEFAULT_WEIGHTS, help="Hugging Face model id to export")
+    ap.add_argument("--recipe", default=DEFAULT_RECIPE, type=recipe_argument, metavar="NAME",
+                    help="Recipe to compress the weights with, named in full: int4-sym-cw "
+                         "(channel-wise, the default #40 verified) or e.g. int4-sym-g128 "
+                         "(group-wise). It is part of the slug, so each Recipe is its own Variant")
     ap.add_argument("--ep", dest="execution_provider", default="NPU",
                     choices=["NPU", "GPU", "CPU"],
                     help="Execution Provider this IR is built for (Provenance and slug only; "
-                         "the INT4-sym IR runs on all three OpenVINO rows)")
+                         "one IR runs on all three OpenVINO rows)")
     ap.add_argument("--out", type=Path, default=None,
                     help="IR output directory (default: $LVP_IR_CACHE/<slug>)")
     ap.add_argument("--force", action="store_true", help="Overwrite an existing IR directory")
@@ -289,9 +384,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     weights: str = args.weights
     execution_provider: str = args.execution_provider
-    out_dir: Path = args.out or (default_cache_root() / slug_for(weights, execution_provider))
+    recipe: Recipe = args.recipe
+    out_dir: Path = args.out or (
+        default_cache_root() / slug_for(weights, execution_provider, recipe)
+    )
 
-    print(f"[convert] weights={weights} ep={execution_provider}")
+    print(f"[convert] weights={weights} recipe={recipe.name} ep={execution_provider}")
     print(f"[convert] IR -> {out_dir}  (outside the repo - gigabytes)")
 
     if args.dry_run:
@@ -303,8 +401,8 @@ def main(argv: list[str] | None = None) -> int:
 
     check_npu_driver()
     out_dir.mkdir(parents=True, exist_ok=True)
-    export(weights, out_dir)
-    write_provenance(out_dir, weights, execution_provider)
+    export(weights, out_dir, recipe)
+    write_provenance(out_dir, weights, execution_provider, recipe)
     print("[convert] done. Smoke-run it on the demo machine's NPU (see README.md).")
     return 0
 

@@ -1,0 +1,339 @@
+{
+  "schema_version": 2,
+  "recorded_at": "2026-11-11T18:20:16.440869+01:00",
+  "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+  "workload": {
+    "prompt": "Describe what you see in this image in two or three sentences.",
+    "max_output_tokens": 128,
+    "temperature": 0.0,
+    "frame": {
+      "sha256": "2e8dbaf486957506796f282282a0577a4093495edb837df7fb991dfca70af54f",
+      "bytes": 43881,
+      "width": 640,
+      "height": 360,
+      "codec": "jpeg",
+      "provenance": "C:\\Users\\jcarnero\\dev\\local-vision-playground\\docs\\fixtures\\reference-frame.jpg"
+    }
+  },
+  "repetitions": 5,
+  "provider_registration": 1.404656700000487,
+  "variants": [
+    {
+      "order": 1,
+      "id": "qwen3-vl-4b-instruct-generic-cpu:3",
+      "alias": "qwen3-vl-4b-instruct",
+      "runtime": "Foundry Local",
+      "execution_provider": "CPUExecutionProvider",
+      "device_type": "CPU",
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "Foundry Local",
+        "execution_provider": "CPU"
+      },
+      "provenance": null,
+      "loaded": true,
+      "reason": null,
+      "load": 12.033525900002132,
+      "runs": [
+        {
+          "inference": 14.841214600000967,
+          "completion_tokens": 78,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 16.448047800000495,
+          "completion_tokens": 78,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 15.679803499999252,
+          "completion_tokens": 78,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 15.096815000000788,
+          "completion_tokens": 78,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 14.970947800000431,
+          "completion_tokens": 78,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": {
+        "fixtures": 32,
+        "shape_respected": 32,
+        "objects_found": 32
+      },
+      "observation": "This dimly lit indoor scene shows a large, light-colored wooden bookshelf filled with books and small decorative items on the left. In the center-right, a white door is slightly ajar, leading to another room, while a modern blue patterned office chair is prominently featured in the foreground. A dark-framed picture hangs on the wall above a small table or desk in the background."
+    },
+    {
+      "order": 2,
+      "id": "qwen3-vl-4b-instruct-int4-sym-cw-cpu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "CPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "CPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "recipe": {
+          "name": "int4-sym-cw",
+          "weight_format": "int4",
+          "sym": true,
+          "group_size": -1,
+          "ratio": 1.0,
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.4.0",
+            "openvino-genai": "2026.4.0.0",
+            "openvino-tokenizers": "2026.4.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "CPU",
+        "slug": "qwen3-vl-4b-instruct-int4-sym-cw-cpu",
+        "created": "2026-11-11T16:42:19.379915+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 8.941675999998552,
+      "runs": [
+        {
+          "inference": 19.628557899999578,
+          "completion_tokens": 95,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 7.222775500002172,
+          "completion_tokens": 95,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 7.084388899998885,
+          "completion_tokens": 95,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 7.128221399998438,
+          "completion_tokens": 95,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 7.68262440000035,
+          "completion_tokens": 95,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": {
+        "fixtures": 32,
+        "shape_respected": 32,
+        "objects_found": 32
+      },
+      "observation": "This image shows a well-organized, modern home office or study nook. The main focus is a large, light-wood bookshelf filled with books, decorative items, and small figurines, suggesting a personal and curated space. In the foreground, the back of a contemporary, blue-patterned office chair is visible, with a glimpse of a desk and a large, dark-framed piece of space-themed art on the wall, indicating a functional yet stylish workspace."
+    },
+    {
+      "order": 3,
+      "id": "qwen3-vl-4b-instruct-int4-sym-gpu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "GPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "GPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "recipe": {
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.3.0",
+            "openvino-genai": "2026.3.0.0",
+            "openvino-tokenizers": "2026.3.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "GPU",
+        "slug": "qwen3-vl-4b-instruct-int4-sym-gpu",
+        "created": "2026-09-24T18:25:51.733014+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 5.593038799997885,
+      "runs": [
+        {
+          "inference": 3.9812738000000536,
+          "completion_tokens": 87,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 3.370602400002099,
+          "completion_tokens": 87,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 2.8293371999970987,
+          "completion_tokens": 87,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 2.8879274999999325,
+          "completion_tokens": 87,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 3.0680367999993905,
+          "completion_tokens": 87,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": {
+        "fixtures": 32,
+        "shape_respected": 32,
+        "objects_found": 32
+      },
+      "observation": "This image shows a cozy, well-lit home office or study area. The main focus is a tall, light-wood bookshelf filled with books, decorative items, and small figurines, next to a white door that leads to another room. In the foreground, the back of a modern, patterned office chair is visible, with a large, dark-framed picture of a galaxy hanging on the wall above a desk."
+    },
+    {
+      "order": 4,
+      "id": "qwen3-vl-4b-instruct-int4-sym-cw-npu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "NPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "NPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "recipe": {
+          "name": "int4-sym-cw",
+          "weight_format": "int4",
+          "sym": true,
+          "group_size": -1,
+          "ratio": 1.0,
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.4.0",
+            "openvino-genai": "2026.4.0.0",
+            "openvino-tokenizers": "2026.4.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "NPU",
+        "slug": "qwen3-vl-4b-instruct-int4-sym-cw-npu",
+        "created": "2026-11-04T20:59:08.771776+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 6.654551200001151,
+      "runs": [
+        {
+          "inference": 7.1193993000015325,
+          "completion_tokens": 83,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 6.256395699998393,
+          "completion_tokens": 83,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 6.237087200002861,
+          "completion_tokens": 83,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 6.008688099998835,
+          "completion_tokens": 83,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 6.086694400000852,
+          "completion_tokens": 83,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": {
+        "fixtures": 32,
+        "shape_respected": 32,
+        "objects_found": 32
+      },
+      "observation": "The image shows a well-organized, tall wooden bookshelf filled with books, model cars, and various small decorative items, suggesting a personal or study space. A white door is visible in the background, leading into another room, and a modern, dark-colored office chair is prominently featured in the foreground. The room has a clean, bright aesthetic with a large wall-mounted piece of art above the bookshelf."
+    }
+  ],
+  "token_divergence": {
+    "fewest": "qwen3-vl-4b-instruct-generic-cpu:3",
+    "fewest_tokens": 78.0,
+    "most": "qwen3-vl-4b-instruct-int4-sym-cw-cpu",
+    "most_tokens": 95.0,
+    "fraction": 0.21794871794871795
+  }
+}

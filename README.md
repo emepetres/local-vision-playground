@@ -20,8 +20,8 @@ watched all shift — is argued in [`docs/business-value.md`](./docs/business-va
   build — so the machine's own accelerators are reached through a second runtime, OpenVINO
   GenAI. → [`docs/stack.md`](./docs/stack.md), Constraint 3
 - **The NPU's quantisation recipe buys the accelerator, not the accuracy.** Both runtimes
-  run INT4, but the OpenVINO export is quantised channel-wise, the shape the NPU wants, and
-  the same 2B model degrades into repetition under it, while Foundry Local's block-wise INT4
+  run INT4, but the OpenVINO export is quantised channel-wise, a recipe the NPU accepts but not
+  the one its guide recommends for models this small, and the same 2B model degrades into repetition under it, while Foundry Local's block-wise INT4
   build answers cleanly. → [the INT4 note](./docs/research/2026-09-25-int4-quantisation.md)
 - **A published model variant can simply be broken**, and no caller can fix it — only the
   publisher, as Foundry Local did five days later with a new version — which is
@@ -159,6 +159,12 @@ named: → [Reaching the NPU and the Arc GPU](./docs/guide/runtimes.md).
 - [2026-09-24 — can the 2B model see the Work Cell?](./docs/research/2026-09-24-work-cell-spike.md)
 - [2026-09-24 — which Scene Questions the 4B model can answer on the Work Cell](./docs/research/2026-09-24-d2-scene-questions.md)
 - [2026-09-25 — both runtimes run INT4; the recipe is what differs](./docs/research/2026-09-25-int4-quantisation.md)
+- [2026-11-04 — OpenVINO 2026.4 and the NPU driver floor (#78)](./docs/research/2026-11-04-openvino-2026-4-spike.md)
+- [2026-11-04 — OpenVINO/Qwen3-VL-4B-Instruct-int4-gq-ov: what "gq" is and what runs on the NPU](./docs/research/2026-11-04-qwen3-vl-ov-npu-verification.md)
+- [2026-11-04 — Intel's Qwen3-VL-4B gq-ov on the NPU as a Benchmark row (#80)](./docs/research/2026-11-04-intel-qwen3-vl-4b-on-the-npu.md)
+- [2026-11-04 — Our own Qwen3-VL-4B in two Recipes, on the NPU: Benchmark, memory and load time (#81)](./docs/research/2026-11-04-our-own-qwen3-vl-4b-in-two-recipes.md)
+- [2026-11-04 — Does the Recipe or the artifact decide quality on the NPU? The verdict (#82)](./docs/research/2026-11-04-recipe-or-artifact-on-the-npu.md)
+- [2026-11-11 — Qwen3-VL-4B on all four rows, prose and structured, for the keynote's face-off (#86)](./docs/research/2026-11-11-the-4b-on-all-four-rows.md)
 
 **What was measured**
 

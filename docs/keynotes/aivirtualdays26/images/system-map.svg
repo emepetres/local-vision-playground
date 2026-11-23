@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="821" viewBox="0 0 1920 821">
+  <defs>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arr" viewBox="0 0 20 20" refX="16" refY="10" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M2,2 L16,10 L2,18" fill="none" stroke="#F7FAFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <!-- text-lines glyph: only text crosses -->
+    <g id="textglyph" stroke="#7FBA00" stroke-width="6" stroke-linecap="round">
+      <line x1="0" y1="0" x2="22" y2="0"/><line x1="34" y1="0" x2="56" y2="0"/>
+      <line x1="0" y1="14" x2="14" y2="14"/><line x1="26" y1="14" x2="56" y2="14"/>
+    </g>
+  </defs>
+
+  <!-- laptop outline -->
+  <rect x="60" y="30" width="1800" height="660" rx="26" fill="#12304F" stroke="#3E5D81" stroke-width="5"/>
+  <path d="M10,690 L1910,690 L1884,752 Q1878,764 1864,764 L56,764 Q42,764 36,752 Z" fill="#1A3961" stroke="#3E5D81" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="860" y="690" width="200" height="14" rx="7" fill="#A2B6CD" opacity="0.35"/>
+  <text x="100" y="92" font-family="Consolas, monospace" font-size="28" fill="#A2B6CD">one laptop · no request leaves it</text>
+
+  <!-- where the image stops: dashed boundary -->
+  <rect x="110" y="200" width="680" height="340" rx="26" fill="none" stroke="#00BCF2" stroke-width="4" stroke-dasharray="18 12"/>
+  <text x="450" y="590" text-anchor="middle" font-family="Consolas, monospace" font-size="30" fill="#00BCF2">the image stops here</text>
+
+  <!-- camera -->
+  <g transform="translate(210,370)">
+    <path d="M-38,-44 L-26,-60 L26,-60 L38,-44" fill="#1A3961" stroke="#F7FAFF" stroke-width="5" stroke-linejoin="round"/>
+    <rect x="-62" y="-44" width="124" height="90" rx="16" fill="#1A3961" stroke="#F7FAFF" stroke-width="5"/>
+    <circle cx="0" cy="1" r="27" fill="#12304F" stroke="#00BCF2" stroke-width="5"/>
+    <circle cx="0" cy="1" r="10" fill="#00BCF2"/>
+  </g>
+  <text x="210" y="470" text-anchor="middle" font-family="Aptos, 'Segoe UI', sans-serif" font-size="30" fill="#A2B6CD">camera</text>
+
+  <!-- camera -> vision: a frame -->
+  <line x1="286" y1="370" x2="420" y2="370" stroke="#F7FAFF" stroke-width="4" marker-end="url(#arr)"/>
+  <g transform="translate(320,310)">
+    <rect x="0" y="0" width="52" height="38" rx="5" fill="#1A3961" stroke="#F7FAFF" stroke-width="3"/>
+    <path d="M5,33 L19,17 L29,27 L36,20 L47,33 Z" fill="#00BCF2"/>
+    <circle cx="39" cy="10" r="5" fill="#F7FAFF"/>
+  </g>
+
+  <!-- vision box -->
+  <rect x="432" y="280" width="320" height="180" rx="22" fill="#1A3961" stroke="#00BCF2" stroke-width="5"/>
+  <text x="592" y="362" text-anchor="middle" font-family="'Aptos Display', 'Segoe UI Semibold', sans-serif" font-size="44" font-weight="600" fill="#F7FAFF">vision</text>
+  <text x="592" y="408" text-anchor="middle" font-family="Aptos, 'Segoe UI', sans-serif" font-size="28" fill="#A2B6CD">Python · Qwen3-VL</text>
+
+  <!-- vision -> sheet: text only -->
+  <line x1="762" y1="370" x2="882" y2="370" stroke="#F7FAFF" stroke-width="4" marker-end="url(#arr)"/>
+  <use href="#textglyph" x="808" y="326"/>
+
+  <!-- observations.jsonl sheet (focal) -->
+  <g filter="url(#glow)">
+    <path d="M896,300 Q896,280 916,280 L996,280 L1036,320 L1036,440 Q1036,460 1016,460 L916,460 Q896,460 896,440 Z" fill="#1A3961" stroke="#7FBA00" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M996,280 L996,320 L1036,320" fill="none" stroke="#7FBA00" stroke-width="5" stroke-linejoin="round"/>
+    <g stroke="#F7FAFF" stroke-width="7" stroke-linecap="round">
+      <line x1="922" y1="352" x2="1008" y2="352"/>
+      <line x1="922" y1="380" x2="992" y2="380"/>
+      <line x1="922" y1="408" x2="1008" y2="408"/>
+      <line x1="922" y1="436" x2="976" y2="436"/>
+    </g>
+  </g>
+  <text x="966" y="514" text-anchor="middle" font-family="Consolas, monospace" font-size="30" fill="#F7FAFF">observations.jsonl</text>
+
+  <!-- sheet -> agent: text only -->
+  <line x1="1050" y1="370" x2="1166" y2="370" stroke="#F7FAFF" stroke-width="4" marker-end="url(#arr)"/>
+  <use href="#textglyph" x="1080" y="326"/>
+
+  <!-- Agent box -->
+  <rect x="1178" y="280" width="340" height="180" rx="22" fill="#1A3961" stroke="#0078D4" stroke-width="5"/>
+  <text x="1348" y="362" text-anchor="middle" font-family="'Aptos Display', 'Segoe UI Semibold', sans-serif" font-size="44" font-weight="600" fill="#F7FAFF">Agent</text>
+  <text x="1348" y="408" text-anchor="middle" font-family="Aptos, 'Segoe UI', sans-serif" font-size="28" fill="#A2B6CD">C# · Agent Framework</text>
+
+  <!-- agent -> actions -->
+  <path d="M1528,340 C1570,340 1570,250 1610,250" fill="none" stroke="#F7FAFF" stroke-width="4" marker-end="url(#arr)"/>
+  <path d="M1528,400 C1570,400 1570,490 1600,490" fill="none" stroke="#F7FAFF" stroke-width="4" marker-end="url(#arr)"/>
+
+  <!-- bell -->
+  <g transform="translate(1670,250)">
+    <path d="M-34,26 L-34,-2 Q-34,-40 0,-44 Q34,-40 34,-2 L34,26 L44,38 L-44,38 Z" fill="#1A3961" stroke="#F7FAFF" stroke-width="5" stroke-linejoin="round"/>
+    <circle cx="0" cy="50" r="9" fill="#F7FAFF"/>
+  </g>
+  <text x="1730" y="262" font-family="Aptos, 'Segoe UI', sans-serif" font-size="28" fill="#A2B6CD">notify</text>
+
+  <!-- log file -->
+  <g transform="translate(1636,440)">
+    <rect x="0" y="0" width="70" height="96" rx="10" fill="#1A3961" stroke="#F7FAFF" stroke-width="5"/>
+    <g stroke="#7FBA00" stroke-width="6" stroke-linecap="round">
+      <line x1="16" y1="28" x2="54" y2="28"/><line x1="16" y1="50" x2="46" y2="50"/><line x1="16" y1="72" x2="54" y2="72"/>
+    </g>
+  </g>
+  <text x="1730" y="500" font-family="Aptos, 'Segoe UI', sans-serif" font-size="28" fill="#A2B6CD">log</text>
+</svg>

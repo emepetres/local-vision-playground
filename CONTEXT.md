@@ -173,11 +173,21 @@ half of a Variant's identity that a Variant id hands over for free — so a [[Fo
 Variant satisfies it by naming its id, and one of ours has to state it. A path on disk is
 not an identity, and a Benchmark is persisted to be read months later.
 
-The _recipe_ is one named part of a Provenance — the export command and its arguments, and
-the field of that name the conversion step writes into `provenance.json` — not another word
-for the whole: calling the whole "the recipe" would lose the weights and the Execution
-Provider standing beside it, which is why only the part carries the name.
+The [[Recipe]] is one named part of a Provenance, not another word for the whole: calling
+the whole "the recipe" would lose the weights and the Execution Provider standing beside
+it, which is why only the part carries the name.
 _Avoid_: source, origin, lineage
+
+**Recipe**:
+How a model's weights were compressed to produce a [[Variant]] — the precision they were
+reduced to and how finely that reduction was applied: how many weights share one scale,
+whether the range is centred on zero, which layers were left wider, and whether any data
+was used to choose the scales. One part of a [[Provenance]], and the part that decides how
+good an [[Observation]] is: two Variants of the same weights at the same bit width but
+under different Recipes are different Variants, because they describe the same [[Frame]]
+differently. "INT4" names a bit width, not a Recipe — which is why two INT4 builds can be
+far apart in quality, and why a Recipe is named in full wherever one is compared.
+_Avoid_: quantisation, compression, format, precision
 
 **Local-First**:
 The constraint that every stage — capture, understanding and action — runs on the Operator's machine, with no request leaving it. It is the reason the project exists, not an optimisation applied to it.

@@ -11,9 +11,9 @@ OpenVINO GenAI's CPU, Arc iGPU and NPU — named explicitly:
 cd vision
 uv run benchmark \
   --variant qwen3-vl-2b-instruct-generic-cpu \
-  --variant qwen3-vl-2b-instruct-int4-sym-cpu \
-  --variant qwen3-vl-2b-instruct-int4-sym-gpu \
-  --variant qwen3-vl-2b-instruct-int4-sym-npu \
+  --variant qwen3-vl-2b-instruct-int4-sym-cw-cpu \
+  --variant qwen3-vl-2b-instruct-int4-sym-cw-gpu \
+  --variant qwen3-vl-2b-instruct-int4-sym-cw-npu \
   --hardware "ASUS Zenbook S14, Intel Core Ultra 7 258V"
 ```
 
@@ -34,7 +34,7 @@ Inference       9.589 s   7.972 s   7.801 s   8.321 s
 Tokens               92        92        92        92
 Tokens/second       9.6      11.5      11.1      11.8
 
-Model        qwen3-vl-2b-instruct-int4-sym-cpu (CPU)
+Model        qwen3-vl-2b-instruct-int4-sym-cw-cpu (CPU)
 Runtime      OpenVINO GenAI
 Measured     2nd of 4
 Load         4.551 s
@@ -46,7 +46,7 @@ Tokens/second      14.1      27.8      27.4      28.7
 
 (5 of 5 Benchmark Runs hit the 128-token output limit, so the limit decided how much text they generated)
 
-Model        qwen3-vl-2b-instruct-int4-sym-gpu (GPU)
+Model        qwen3-vl-2b-instruct-int4-sym-cw-gpu (GPU)
 Runtime      OpenVINO GenAI
 Measured     3rd of 4
 Load         6.188 s
@@ -58,7 +58,7 @@ Tokens/second      46.2      56.0      51.4      56.6
 
 (5 of 5 Benchmark Runs hit the 128-token output limit, so the limit decided how much text they generated)
 
-Model        qwen3-vl-2b-instruct-int4-sym-npu (NPU)
+Model        qwen3-vl-2b-instruct-int4-sym-cw-npu (NPU)
 Runtime      OpenVINO GenAI
 Measured     4th of 4
 Load         2.251 s
@@ -70,7 +70,7 @@ Tokens/second      22.2      21.8      20.9      23.0
 
 (5 of 5 Benchmark Runs hit the 128-token output limit, so the limit decided how much text they generated)
 
-(qwen3-vl-2b-instruct-int4-sym-cpu generated 128 tokens against qwen3-vl-2b-instruct-generic-cpu:2's 92 — 39% more, so these Variants did not do the same amount of work and their latencies are not a hardware comparison; Tokens/second is the figure that survives it)
+(qwen3-vl-2b-instruct-int4-sym-cw-cpu generated 128 tokens against qwen3-vl-2b-instruct-generic-cpu:2's 92 — 39% more, so these Variants did not do the same amount of work and their latencies are not a hardware comparison; Tokens/second is the figure that survives it)
 
 Recorded     C:\Users\jcarnero\dev\local-vision-playground\docs\benchmarks\asus-zenbook-s14-intel-core-ultra-7-258v-20260922-090814.json
              C:\Users\jcarnero\dev\local-vision-playground\docs\benchmarks\asus-zenbook-s14-intel-core-ultra-7-258v-20260922-090814.md
@@ -88,7 +88,7 @@ apart. Two things the numbers say plainly, and neither flatters the NPU:
   [#38](https://github.com/emepetres/local-vision-playground/issues/38)), which this
   Benchmark does not measure.
 - **This is not a like-for-like comparison.** Every row is INT4, but not the same INT4: the
-  three OpenVINO rows run the NPU's channel-wise recipe, Foundry Local's row a block-wise one
+  three OpenVINO rows run a channel-wise recipe (one the NPU accepts, though its guide recommends group size 128 at this size), Foundry Local's row a block-wise one
   ([the INT4 note](../research/2026-09-25-int4-quantisation.md)). The OpenVINO Variants
   degrade into repetition and run to the 128-token limit (see _What each Variant saw_ in the record), while Foundry Local's
   stops at 92 tokens with a clean description. Different amounts of work, so Tokens/second is
@@ -236,6 +236,57 @@ Providers, so a few tokens either way is the normal state of affairs — the 96-
 the report above is inside it — and a warning on every Benchmark is a warning nobody reads.
 The divergence is carried on the Benchmark rather than only printed, so it travels into the
 persisted record instead of living in a terminal that has since scrolled.
+
+## When a Variant goes round in circles
+
+Latency says nothing about whether the Observation is any good, and the channel-wise INT4 IR
+fails in one recognisable way: it says a sentence and then says it again until the output
+limit stops it ([the INT4 note](../research/2026-09-25-int4-quantisation.md)). So every
+Variant carries a **loop rate** — the share of its Benchmark Runs that repeated themselves,
+the cold one included — as a `Loops` line above its table and a `Loops` column in the
+Markdown (`3/5`), and as `loops`, `loop_rate` and a per-run `looped` in the JSON:
+
+```
+Loops        5 of 5 Benchmark Runs (100%)
+```
+
+**The detection rule.** A text _loops_ when a run of words repeats back-to-back at least
+**3 times** and the repeating stretch covers at least **12 words** (`vision/loops.py`). Case
+and punctuation are ignored, and a final repetition cut off by the output limit still counts
+— that is how a loop usually ends. The two thresholds are the point: a sentence said twice, a
+phrase repeated across a list, or emphasis such as "very very very" or "no, no, no" is a text
+that repeats _legitimately_ and is not a loop. A Structured Observation has no prose, so there
+a loop is the same object (name, count and `where`) listed three times in a row.
+
+On the 2B recorded in `docs/benchmarks/`, the rule reads the three OpenVINO rows as looping
+and Foundry Local's CPU row as clean. It counts what the model _wrote_; it does not say the
+text was wrong, only that it was stuck.
+
+## Is the Structured Observation usable? `--work-cell`
+
+```bash
+uv run benchmark --work-cell --variant qwen3-vl-2b-instruct-generic-cpu --variant qwen3-vl-2b-instruct-int4-sym-cw-gpu
+```
+
+After its repetitions, and while it is still on the hardware, each Variant is asked for the
+fixed shape (the [`--structured`](./structured.md) prompt) once on every photo in
+[`docs/fixtures/work-cell/`](../fixtures/work-cell/) — byte-identical copies counted once.
+It is independent of `--structured` and not timed; it costs one inference per photo per
+Variant, so it adds minutes on a CPU Variant. Two counts come back per Variant, as a
+`Work Cell` line, a Markdown column and a `work_cell` object in the JSON:
+
+```
+Work Cell    shape respected on 29 of 32 fixtures, objects found on 27
+```
+
+- **Shape respected** — photos that came back as a list of objects at all: not prose, not
+  malformed JSON, not cut off with nothing closed.
+- **Objects found** — those among them that listed at least one object. Every fixture is a
+  Work Cell with things on it, so an empty list is a miss.
+
+Neither says the objects named were the _right_ ones: the fixtures carry no labels beside the
+photos, and scoring them against the Triggers was done by hand in
+[the spike](../research/2026-09-24-work-cell-spike.md).
 
 ## What a Benchmark leaves behind
 

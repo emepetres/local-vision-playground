@@ -1,0 +1,327 @@
+{
+  "schema_version": 2,
+  "recorded_at": "2026-11-11T18:35:18.046975+01:00",
+  "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+  "workload": {
+    "prompt": "This is a work bench seen from above. The work zone is the green cutting mat. The tray is the white mesh tray beside it. List every distinct object you can see, and where it is: \"tray\" if it lies in the white tray, \"zone\" if it lies on the green mat, \"hand\" if a hand is holding it, \"elsewhere\" for anything else. Hands are objects too: name each visible hand \"bare hand\" (skin showing) or \"gloved hand\". Reply with ONLY a JSON array, where each element is an object {\"name\": <string>, \"count\": <integer >= 1>, \"where\": <one of \"tray\", \"zone\", \"hand\", \"elsewhere\">}. Example: [{\"name\": \"cup\", \"count\": 1, \"where\": \"zone\"}, {\"name\": \"bare hand\", \"count\": 1, \"where\": \"zone\"}]. If nothing is there, reply with [].",
+    "max_output_tokens": 256,
+    "temperature": 0.0,
+    "frame": {
+      "sha256": "2e8dbaf486957506796f282282a0577a4093495edb837df7fb991dfca70af54f",
+      "bytes": 43881,
+      "width": 640,
+      "height": 360,
+      "codec": "jpeg",
+      "provenance": "C:\\Users\\jcarnero\\dev\\local-vision-playground\\docs\\fixtures\\reference-frame.jpg"
+    }
+  },
+  "repetitions": 5,
+  "provider_registration": 0.4678552999976091,
+  "variants": [
+    {
+      "order": 1,
+      "id": "qwen3-vl-4b-instruct-generic-cpu:3",
+      "alias": "qwen3-vl-4b-instruct",
+      "runtime": "Foundry Local",
+      "execution_provider": "CPUExecutionProvider",
+      "device_type": "CPU",
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "Foundry Local",
+        "execution_provider": "CPU"
+      },
+      "provenance": null,
+      "loaded": true,
+      "reason": null,
+      "load": 12.260698499998398,
+      "runs": [
+        {
+          "inference": 18.119637600000715,
+          "completion_tokens": 1,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 19.03463080000074,
+          "completion_tokens": 1,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 19.192148199999792,
+          "completion_tokens": 1,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 19.153771100001904,
+          "completion_tokens": 1,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 19.74105579999741,
+          "completion_tokens": 1,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": null,
+      "objects": [],
+      "no_shape": null
+    },
+    {
+      "order": 2,
+      "id": "qwen3-vl-4b-instruct-int4-sym-cw-cpu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "CPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "CPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "recipe": {
+          "name": "int4-sym-cw",
+          "weight_format": "int4",
+          "sym": true,
+          "group_size": -1,
+          "ratio": 1.0,
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.4.0",
+            "openvino-genai": "2026.4.0.0",
+            "openvino-tokenizers": "2026.4.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "CPU",
+        "slug": "qwen3-vl-4b-instruct-int4-sym-cw-cpu",
+        "created": "2026-11-11T16:42:19.379915+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 8.056910600000265,
+      "runs": [
+        {
+          "inference": 15.034916600001452,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 1.9354676000002655,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 1.8502619999999297,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 1.8125690999986546,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 1.8831360999975004,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": null,
+      "objects": [],
+      "no_shape": null
+    },
+    {
+      "order": 3,
+      "id": "qwen3-vl-4b-instruct-int4-sym-gpu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "GPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "GPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "recipe": {
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.3.0",
+            "openvino-genai": "2026.3.0.0",
+            "openvino-tokenizers": "2026.3.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "GPU",
+        "slug": "qwen3-vl-4b-instruct-int4-sym-gpu",
+        "created": "2026-09-24T18:25:51.733014+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 4.524025099999562,
+      "runs": [
+        {
+          "inference": 1.0354290999966906,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 0.8641766000000644,
+          "completion_tokens": 23,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 0.9129151999986789,
+          "completion_tokens": 23,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 0.9442788000014843,
+          "completion_tokens": 23,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 0.9455869999983406,
+          "completion_tokens": 23,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": null,
+      "objects": [],
+      "no_shape": null
+    },
+    {
+      "order": 4,
+      "id": "qwen3-vl-4b-instruct-int4-sym-cw-npu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "NPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "NPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-4B-Instruct",
+        "recipe": {
+          "name": "int4-sym-cw",
+          "weight_format": "int4",
+          "sym": true,
+          "group_size": -1,
+          "ratio": 1.0,
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.4.0",
+            "openvino-genai": "2026.4.0.0",
+            "openvino-tokenizers": "2026.4.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "NPU",
+        "slug": "qwen3-vl-4b-instruct-int4-sym-cw-npu",
+        "created": "2026-11-04T20:59:08.771776+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 7.08935250000286,
+      "runs": [
+        {
+          "inference": 4.693091000001004,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 3.2236943999996583,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 2.8488609999985783,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 2.9120302999981504,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        },
+        {
+          "inference": 2.803249800002959,
+          "completion_tokens": 2,
+          "finish_reason": "complete",
+          "looped": false
+        }
+      ],
+      "loops": 0,
+      "loop_rate": 0.0,
+      "work_cell": null,
+      "objects": [],
+      "no_shape": null
+    }
+  ],
+  "token_divergence": {
+    "fewest": "qwen3-vl-4b-instruct-generic-cpu:3",
+    "fewest_tokens": 1.0,
+    "most": "qwen3-vl-4b-instruct-int4-sym-gpu",
+    "most_tokens": 23.0,
+    "fraction": 22.0
+  }
+}

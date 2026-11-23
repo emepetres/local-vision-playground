@@ -27,6 +27,7 @@ from vision.openvino_runtime import (
     device_of,
     identity_from_provenance,
     ir_cache_root,
+    legacy_alias,
     read_provenance,
     resolve_ir_directory,
     without_shadow,
@@ -36,7 +37,7 @@ PROVENANCE = {
     "weights": "Qwen/Qwen3-VL-2B-Instruct",
     "recipe": {"tool": "optimum-cli export openvino", "args": ["--weight-format", "int4"]},
     "execution_provider": "NPU",
-    "slug": "qwen3-vl-2b-instruct-int4-sym-npu",
+    "slug": "qwen3-vl-2b-instruct-int4-sym-cw-npu",
     "created": "2026-09-21T12:00:00+00:00",
 }
 """A manifest shaped exactly as ``tools/convert/convert.py`` writes one (see test_convert)."""
@@ -65,6 +66,50 @@ class TestResolveIrDirectory:
         assert resolve_ir_directory("qwen3-vl-2b-instruct-int4-sym-npu") == (
             tmp_path / "qwen3-vl-2b-instruct-int4-sym-npu"
         )
+
+    def test_a_legacy_slug_resolves_to_the_channel_wise_ir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Before the Recipe was named, one INT4 export was `...-int4-sym-<ep>`; that name is the
+        # channel-wise Recipe, so it is an alias for it.
+        monkeypatch.setenv("LVP_IR_CACHE", str(tmp_path))
+        write_ir(tmp_path / "qwen3-vl-2b-instruct-int4-sym-cw-npu")
+        assert resolve_ir_directory("qwen3-vl-2b-instruct-int4-sym-npu") == (
+            tmp_path / "qwen3-vl-2b-instruct-int4-sym-cw-npu"
+        )
+
+    def test_the_alias_is_the_slug_the_conversion_step_gives_the_default_recipe(self) -> None:
+        # The runtime and the conversion step each hold this naming (the latter is stdlib-only),
+        # so this is what keeps them from drifting apart.
+        from tools.convert.convert import slug_for
+
+        for ep in ("NPU", "GPU", "CPU"):
+            legacy = f"qwen3-vl-2b-instruct-int4-sym-{ep.lower()}"
+            assert legacy_alias(legacy) == slug_for("Qwen/Qwen3-VL-2B-Instruct", ep)
+
+    def test_an_ir_still_on_disk_under_the_legacy_name_wins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LVP_IR_CACHE", str(tmp_path))
+        write_ir(tmp_path / "qwen3-vl-2b-instruct-int4-sym-npu")
+        write_ir(tmp_path / "qwen3-vl-2b-instruct-int4-sym-cw-npu")
+        assert resolve_ir_directory("qwen3-vl-2b-instruct-int4-sym-npu") == (
+            tmp_path / "qwen3-vl-2b-instruct-int4-sym-npu"
+        )
+
+    def test_two_recipes_of_the_same_weights_are_two_variants(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LVP_IR_CACHE", str(tmp_path))
+        cw = "qwen3-vl-2b-instruct-int4-sym-cw-npu"
+        g128 = "qwen3-vl-2b-instruct-int4-sym-g128-npu"
+        write_ir(tmp_path / cw)
+        write_ir(tmp_path / g128, {**PROVENANCE, "slug": g128})
+        ids = {
+            identity_from_provenance(read_provenance(resolve_ir_directory(n))).variant  # type: ignore[arg-type]
+            for n in (cw, g128)
+        }
+        assert ids == {cw, g128}
 
     def test_a_directory_without_a_manifest_is_not_a_variant(self, tmp_path: Path) -> None:
         # IR bytes with no provenance.json have no identity to carry (ADR-0013), so the directory
@@ -99,7 +144,7 @@ class TestIdentity:
 
     def test_is_the_slug_with_no_alias_and_no_version(self) -> None:
         identity = identity_from_provenance(PROVENANCE)
-        assert identity.variant == "qwen3-vl-2b-instruct-int4-sym-npu"
+        assert identity.variant == "qwen3-vl-2b-instruct-int4-sym-cw-npu"
         assert identity.alias is None
         assert ":" not in identity.variant
 
@@ -131,7 +176,7 @@ class TestReadProvenance:
 
     def test_reads_the_manifest_beside_the_ir(self, tmp_path: Path) -> None:
         ir = write_ir(tmp_path / "ir")
-        assert read_provenance(ir)["slug"] == "qwen3-vl-2b-instruct-int4-sym-npu"
+        assert read_provenance(ir)["slug"] == "qwen3-vl-2b-instruct-int4-sym-cw-npu"
 
     def test_a_manifest_that_will_not_parse_is_a_refusal(self, tmp_path: Path) -> None:
         ir = tmp_path / "ir"
@@ -161,7 +206,7 @@ class TestInProcessOpenVINO:
     def test_resolves_the_identity_from_the_manifest(self, tmp_path: Path) -> None:
         ir = write_ir(tmp_path / "ir")
         model = InProcessOpenVINO().resolve(str(ir))
-        assert model.identity.variant == "qwen3-vl-2b-instruct-int4-sym-npu"
+        assert model.identity.variant == "qwen3-vl-2b-instruct-int4-sym-cw-npu"
         assert model.identity.execution_provider == "NPU"
 
     def test_an_ir_on_disk_is_already_cached(self, tmp_path: Path) -> None:

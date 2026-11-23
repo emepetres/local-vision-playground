@@ -1,0 +1,177 @@
+{
+  "schema_version": 2,
+  "recorded_at": "2026-11-04T20:48:38.832746+01:00",
+  "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512, second pass",
+  "workload": {
+    "prompt": "Describe what you see in this image in two or three sentences.",
+    "max_output_tokens": 128,
+    "temperature": 0.0,
+    "frame": {
+      "sha256": "2e8dbaf486957506796f282282a0577a4093495edb837df7fb991dfca70af54f",
+      "bytes": 43881,
+      "width": 640,
+      "height": 360,
+      "codec": "jpeg",
+      "provenance": "C:\\Users\\jcarnero\\dev\\local-vision-playground\\docs\\fixtures\\reference-frame.jpg"
+    }
+  },
+  "repetitions": 5,
+  "provider_registration": 1.2999998943996616e-06,
+  "variants": [
+    {
+      "order": 1,
+      "id": "qwen3-vl-2b-instruct-int4-sym-gpu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "GPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512, second pass",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "GPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-2B-Instruct",
+        "recipe": {
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.3.0",
+            "openvino-genai": "2026.3.0.0",
+            "openvino-tokenizers": "2026.3.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "GPU",
+        "slug": "qwen3-vl-2b-instruct-int4-sym-gpu",
+        "created": "2026-09-22T07:05:26.750331+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 4.884495799999968,
+      "runs": [
+        {
+          "inference": 3.29188669999985,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        },
+        {
+          "inference": 2.678785799999787,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        },
+        {
+          "inference": 2.899400500000411,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        },
+        {
+          "inference": 2.5133630000000267,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        },
+        {
+          "inference": 2.6097626000000673,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        }
+      ],
+      "loops": 5,
+      "loop_rate": 1.0,
+      "work_cell": null,
+      "observation": "This is a close-up of a room, with a bookshelf, a white door, and a white door in the background. The bookshelf is filled with books and other objects. A white door is in the center of the room. A white door is in the center of the room. A white door is in the center of the room. A white door is in the center of the room. A white door is in the center of the room. A white door is in the center of the room. A white door is in the center of the room. A white door is in the center of the room. A white door"
+    },
+    {
+      "order": 2,
+      "id": "qwen3-vl-2b-instruct-int4-sym-npu",
+      "alias": null,
+      "runtime": "OpenVINO GenAI",
+      "execution_provider": "NPU",
+      "device_type": null,
+      "hardware_profile": {
+        "machine": "ASUS Zenbook S14, Intel Core Ultra 7 258V, OpenVINO 2026.4.0, NPU driver 4512, second pass",
+        "runtime": "OpenVINO GenAI",
+        "execution_provider": "NPU"
+      },
+      "provenance": {
+        "weights": "Qwen/Qwen3-VL-2B-Instruct",
+        "recipe": {
+          "tool": "optimum-cli export openvino",
+          "args": [
+            "--weight-format",
+            "int4",
+            "--sym",
+            "--ratio=1.0",
+            "--group-size=-1"
+          ],
+          "toolchain": {
+            "openvino": "2026.3.0",
+            "openvino-genai": "2026.3.0.0",
+            "openvino-tokenizers": "2026.3.0.0",
+            "optimum": "2.3.0",
+            "optimum-intel": "2.1.0",
+            "nncf": "3.3.0",
+            "transformers": "4.57.6"
+          }
+        },
+        "execution_provider": "NPU",
+        "slug": "qwen3-vl-2b-instruct-int4-sym-npu",
+        "created": "2026-09-21T21:58:45.086200+00:00"
+      },
+      "loaded": true,
+      "reason": null,
+      "load": 2.698284899999635,
+      "runs": [
+        {
+          "inference": 6.1164866999997685,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        },
+        {
+          "inference": 5.624076499999319,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        },
+        {
+          "inference": 5.660677800000485,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        },
+        {
+          "inference": 5.578673200000594,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        },
+        {
+          "inference": 5.639160700000502,
+          "completion_tokens": 128,
+          "finish_reason": "truncated",
+          "looped": true
+        }
+      ],
+      "loops": 5,
+      "loop_rate": 1.0,
+      "work_cell": null,
+      "observation": "This image shows a room with a bookshelf, a white door, and a white door. The bookshelf is filled with books and other items. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white door is in the room. A white"
+    }
+  ],
+  "token_divergence": null
+}

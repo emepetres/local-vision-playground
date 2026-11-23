@@ -36,6 +36,7 @@ from vision.benchmark import (
     AnyBenchmarkRun,
     Benchmark,
     MeasuredVariant,
+    Reliability,
     StructuredBenchmarkRun,
     UnmeasuredVariant,
 )
@@ -243,6 +244,9 @@ def _variant(
         "reason": None,
         "load": None,
         "runs": [],
+        "loops": None,
+        "loop_rate": None,
+        "work_cell": None,
         **_empty_answer(structured),
     }
     if isinstance(variant, UnmeasuredVariant):
@@ -255,11 +259,26 @@ def _variant(
             "inference": run.inference,
             "completion_tokens": run.completion_tokens,
             "finish_reason": str(run.finish_reason),
+            "looped": run.looped,
         }
         for run in variant.runs
     ]
+    recorded["loops"] = variant.loops
+    recorded["loop_rate"] = variant.loop_rate
+    recorded["work_cell"] = _work_cell(variant.reliability)
     recorded.update(_answer(variant.first))
     return recorded
+
+
+def _work_cell(reliability: Reliability | None) -> dict[str, Any] | None:
+    """The structured reliability sweep as data, or nothing where none was asked for."""
+    if reliability is None:
+        return None
+    return {
+        "fixtures": reliability.fixtures,
+        "shape_respected": reliability.shape_respected,
+        "objects_found": reliability.objects_found,
+    }
 
 
 def _hardware_profile(identity: ModelIdentity, machine: str) -> dict[str, Any]:

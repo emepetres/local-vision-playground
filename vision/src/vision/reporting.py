@@ -23,6 +23,7 @@ from vision.benchmark import (
     AnyBenchmarkRun,
     Benchmark,
     MeasuredVariant,
+    Reliability,
     Spread,
     StructuredBenchmarkRun,
     TokenDivergence,
@@ -85,6 +86,8 @@ MARKDOWN_COLUMNS = (
     "Max",
     "Tokens",
     "Tokens/second",
+    "Loops",
+    "Work Cell",
 )
 """The persisted table's columns: one row per Variant, so the sitting reads as one table.
 
@@ -100,8 +103,11 @@ MISSING = "—"
 MARKDOWN_LEGEND = (
     "First is the cold Benchmark Run; Median, Min and Max are the inference seconds over"
     " the repetitions after it, and Tokens and Tokens/second are medians over those same"
-    " repetitions — over the cold one where it is the only one there was. Every Benchmark"
-    " Run is in the JSON beside this file."
+    " repetitions — over the cold one where it is the only one there was. Loops is how many"
+    " Benchmark Runs repeated themselves (the same run of words, or the same object, three"
+    " times running); Work Cell is how many of the fixture photos came back in the fixed shape"
+    " and how many of those listed any object — a dash where that sweep was not asked for."
+    " Every Benchmark Run is in the JSON beside this file."
 )
 """What the columns mean, said once under the table rather than crammed into headers."""
 
@@ -558,7 +564,27 @@ def _variant_rows(variant: MeasuredVariant, total: int) -> list[tuple[str, str]]
     if total > 1:
         rows.append(("Measured", f"{_ordinal(variant.order)} of {total}"))
     rows.append(("Load", format_seconds(variant.load)))
+    rows.append(("Loops", _loops(variant)))
+    if variant.reliability is not None:
+        rows.append(("Work Cell", _work_cell(variant.reliability)))
     return rows
+
+
+def _loops(variant: MeasuredVariant) -> str:
+    """How many Benchmark Runs repeated themselves — read before the latencies are.
+
+    Above the table with the Load, because like it this is about the Variant rather than about
+    one repetition, and because a Variant that loops is judged on that before its speed.
+    """
+    return f"{variant.loops} of {len(variant.runs)} Benchmark Runs ({variant.loop_rate:.0%})"
+
+
+def _work_cell(reliability: Reliability) -> str:
+    """The structured reliability over the Work Cell fixtures, in the words the record uses."""
+    return (
+        f"shape respected on {reliability.shape_respected} of {reliability.fixtures} fixtures,"
+        f" objects found on {reliability.objects_found}"
+    )
 
 
 def _ordinal(order: int) -> str:
@@ -807,7 +833,7 @@ def _markdown_cells(variant: MeasuredVariant | UnmeasuredVariant, total: int) ->
         f"{_ordinal(variant.order)} of {total}",
     ]
     if isinstance(variant, UnmeasuredVariant):
-        return head + [MISSING] * 7
+        return head + [MISSING] * (len(MARKDOWN_COLUMNS) - len(head))
     return head + [
         format_seconds(variant.load),
         format_seconds(variant.first.inference),
@@ -818,7 +844,19 @@ def _markdown_cells(variant: MeasuredVariant | UnmeasuredVariant, total: int) ->
         _markdown_summary(
             format_tokens_per_second, variant.first.tokens_per_second, variant.tokens_per_second
         ),
+        f"{variant.loops}/{len(variant.runs)}",
+        _markdown_work_cell(variant.reliability),
     ]
+
+
+def _markdown_work_cell(reliability: Reliability | None) -> str:
+    """``shaped/fixtures · found/fixtures``, or a dash where no sweep was asked for."""
+    if reliability is None:
+        return MISSING
+    return (
+        f"{reliability.shape_respected}/{reliability.fixtures} shaped,"
+        f" {reliability.objects_found}/{reliability.fixtures} found"
+    )
 
 
 def _markdown_spread(render: _Render, spread: Spread | None) -> list[str]:

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="821" viewBox="0 0 1920 821" font-family="Aptos, 'Segoe UI', sans-serif">
+  <defs>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="ah" viewBox="0 0 18 18" refX="4" refY="9" markerWidth="18" markerHeight="18" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M0,0 L18,9 L0,18 z" fill="#F7FAFF"/>
+    </marker>
+    <g id="bit0"><rect width="48" height="48" rx="9" fill="#1A3961" stroke="#3E5D81" stroke-width="3"/><text x="24" y="34" text-anchor="middle" font-family="Consolas, monospace" font-size="28" fill="#A2B6CD">0</text></g>
+    <g id="bit1"><rect width="48" height="48" rx="9" fill="#1A3961" stroke="#3E5D81" stroke-width="3"/><text x="24" y="34" text-anchor="middle" font-family="Consolas, monospace" font-size="28" fill="#F7FAFF">1</text></g>
+    <g id="q0"><rect width="64" height="64" rx="11" fill="#FFB900"/><text x="32" y="44" text-anchor="middle" font-family="Consolas, monospace" font-size="34" font-weight="700" fill="#12304F">0</text></g>
+    <g id="q1"><rect width="64" height="64" rx="11" fill="#FFB900"/><text x="32" y="44" text-anchor="middle" font-family="Consolas, monospace" font-size="34" font-weight="700" fill="#12304F">1</text></g>
+    <g id="chip">
+      <g stroke="#3E5D81" stroke-width="5" stroke-linecap="round">
+        <line x1="40" y1="-4" x2="40" y2="-18"/><line x1="80" y1="-4" x2="80" y2="-18"/><line x1="120" y1="-4" x2="120" y2="-18"/><line x1="160" y1="-4" x2="160" y2="-18"/>
+        <line x1="40" y1="134" x2="40" y2="148"/><line x1="80" y1="134" x2="80" y2="148"/><line x1="120" y1="134" x2="120" y2="148"/><line x1="160" y1="134" x2="160" y2="148"/>
+      </g>
+      <rect width="200" height="130" rx="18" fill="#1A3961" stroke="#00BCF2" stroke-width="4"/>
+    </g>
+  </defs>
+
+  <!-- Stage 1: 16 bits, two rows of eight -->
+  <text x="300" y="250" text-anchor="middle" font-family="'Aptos Display', 'Segoe UI Semibold', sans-serif" font-size="40" font-weight="600" fill="#A2B6CD">16 bits</text>
+  <g transform="translate(80,290)">
+    <use href="#bit0" x="0"/><use href="#bit1" x="56"/><use href="#bit0" x="112"/><use href="#bit0" x="168"/>
+    <use href="#bit0" x="224"/><use href="#bit0" x="280"/><use href="#bit0" x="336"/><use href="#bit1" x="392"/>
+    <use href="#bit1" x="0" y="56"/><use href="#bit0" x="56" y="56"/><use href="#bit1" x="112" y="56"/><use href="#bit1" x="168" y="56"/>
+    <use href="#bit0" x="224" y="56"/><use href="#bit1" x="280" y="56"/><use href="#bit1" x="336" y="56"/><use href="#bit0" x="392" y="56"/>
+  </g>
+  <text x="300" y="470" text-anchor="middle" font-size="30" fill="#A2B6CD">one weight</text>
+
+  <!-- arrow to 4 bits -->
+  <line x1="560" y1="342" x2="636" y2="342" stroke="#F7FAFF" stroke-width="5" marker-end="url(#ah)"/>
+
+  <!-- 4 bits -->
+  <text x="806" y="250" text-anchor="middle" font-family="'Aptos Display', 'Segoe UI Semibold', sans-serif" font-size="40" font-weight="600" fill="#FFB900">4 bits</text>
+  <g transform="translate(670,310)">
+    <use href="#q1" x="0"/><use href="#q0" x="72"/><use href="#q1" x="144"/><use href="#q1" x="216"/>
+  </g>
+
+  <!-- arrow to IR -->
+  <line x1="966" y1="342" x2="1042" y2="342" stroke="#F7FAFF" stroke-width="5" marker-end="url(#ah)"/>
+
+  <!-- IR file (focal) -->
+  <g transform="translate(1076,252)" filter="url(#glow)">
+    <path d="M18,0 H110 L150,40 V162 a18,18 0 0 1 -18,18 H18 a18,18 0 0 1 -18,-18 V18 a18,18 0 0 1 18,-18 z" fill="#1A3961" stroke="#0078D4" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M110,0 V40 H150" fill="none" stroke="#0078D4" stroke-width="5" stroke-linejoin="round"/>
+    <text x="75" y="118" text-anchor="middle" font-family="Consolas, monospace" font-size="48" font-weight="700" fill="#F7FAFF">IR</text>
+  </g>
+  <text x="1151" y="480" text-anchor="middle" font-size="30" fill="#A2B6CD">one file</text>
+
+  <!-- branching arrows -->
+  <g fill="none" stroke="#F7FAFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M1236,342 H1330"/>
+    <path d="M1330,135 V575"/>
+    <path d="M1330,135 H1402" marker-end="url(#ah)"/>
+    <path d="M1330,355 H1402" marker-end="url(#ah)"/>
+    <path d="M1330,575 H1402" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- chips -->
+  <g transform="translate(1436,70)"><use href="#chip"/><text x="100" y="80" text-anchor="middle" font-family="'Aptos Display', 'Segoe UI Semibold', sans-serif" font-size="40" font-weight="700" fill="#F7FAFF">CPU</text></g>
+  <g transform="translate(1436,290)"><use href="#chip"/><text x="100" y="80" text-anchor="middle" font-family="'Aptos Display', 'Segoe UI Semibold', sans-serif" font-size="40" font-weight="700" fill="#F7FAFF">GPU</text></g>
+  <g transform="translate(1436,510)"><use href="#chip"/><text x="100" y="80" text-anchor="middle" font-family="'Aptos Display', 'Segoe UI Semibold', sans-serif" font-size="40" font-weight="700" fill="#F7FAFF">NPU</text></g>
+</svg>

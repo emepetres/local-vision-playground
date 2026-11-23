@@ -31,22 +31,27 @@ from __future__ import annotations
 from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from pathlib import Path
 from statistics import median
 from typing import TextIO
 
 from tqdm import tqdm
 
+from vision.capture import Frame, ImageFileCamera
 from vision.errors import VisionError
 from vision.formatting import format_seconds
 from vision.inference import (
     FinishReason,
     ModelIdentity,
+    ObjectsPresent,
     Shape,
     VisionModel,
     Workload,
     require_vision_task,
+    structured_workload,
     unresolved_identity,
 )
+from vision.loops import loops_in_objects, loops_in_text
 from vision.router import Router
 from vision.startup import (
     Clock,
@@ -95,6 +100,11 @@ class BenchmarkRun:
         return self.finish_reason is FinishReason.TRUNCATED
 
     @property
+    def looped(self) -> bool:
+        """Whether the Observation repeats itself instead of describing the Frame."""
+        return loops_in_text(self.text)
+
+    @property
     def tokens_per_second(self) -> float:
         """What the Variant generated per second — the latency read per unit of work.
 
@@ -135,6 +145,11 @@ class StructuredBenchmarkRun:
     @property
     def truncated(self) -> bool:
         return self.finish_reason is FinishReason.TRUNCATED
+
+    @property
+    def looped(self) -> bool:
+        """Whether the same object is listed over and over (``vision.loops``)."""
+        return loops_in_objects(self.shape)
 
     @property
     def tokens_per_second(self) -> float:
@@ -181,6 +196,34 @@ class Spread:
 
 
 @dataclass(frozen=True)
+class Reliability:
+    """How dependably a Variant answers the fixed shape over the Work Cell fixtures.
+
+    One Structured Observation per fixture photo, none of it timed: the question is not how
+    fast the Variant answered but whether the answer can be used. ``shape_respected`` counts the
+    photos that came back as a list of objects at all — not prose, not malformed JSON, not cut
+    off with nothing closed — and ``objects_found`` those among them that listed at least one
+    object. Every fixture is a Work Cell with things on it, so an empty list is a miss, not a
+    clean answer. Neither is a judgement of whether the objects named were the right ones: the
+    fixtures carry no labels beside the photos, and the spike that scored them did it by hand.
+    """
+
+    fixtures: int
+    shape_respected: int
+    objects_found: int
+
+    @classmethod
+    def over(cls, shapes: Sequence[Shape]) -> Reliability:
+        return cls(
+            fixtures=len(shapes),
+            shape_respected=sum(1 for shape in shapes if isinstance(shape, ObjectsPresent)),
+            objects_found=sum(
+                1 for shape in shapes if isinstance(shape, ObjectsPresent) and shape.objects
+            ),
+        )
+
+
+@dataclass(frozen=True)
 class MeasuredVariant:
     """Every Benchmark Run taken against one Variant, and what putting it there cost.
 
@@ -194,6 +237,8 @@ class MeasuredVariant:
     order: int
     load: float
     runs: tuple[AnyBenchmarkRun, ...]
+    reliability: Reliability | None = None
+    """The Work Cell fixtures sweep, when the sitting asked for one (``--work-cell``)."""
 
     @property
     def first(self) -> AnyBenchmarkRun:
@@ -233,6 +278,20 @@ class MeasuredVariant:
         instead of by the model.
         """
         return sum(1 for run in self.runs if run.truncated)
+
+    @property
+    def loops(self) -> int:
+        """How many Benchmark Runs repeated themselves, the cold one included.
+
+        Over every run rather than the steady state, like ``truncated``: whether a model loops
+        is not a warm-up effect, and the cold run is as much a sample of it as the others.
+        """
+        return sum(1 for run in self.runs if run.looped)
+
+    @property
+    def loop_rate(self) -> float:
+        """The share of Benchmark Runs that looped, from 0 to 1."""
+        return self.loops / len(self.runs)
 
     @property
     def typical_completion_tokens(self) -> float:
@@ -398,6 +457,26 @@ def refuse_a_live_camera(camera: int | None) -> None:
     )
 
 
+def work_cell_fixtures(directory: Path) -> tuple[Frame, ...]:
+    """The Work Cell photos as Frames, each distinct picture once, in file-name order.
+
+    Distinct by bytes: the directory holds files that are byte-identical copies of one another
+    (the ``part-in-use-*`` photos repeat the bare-hand and one-glove ones), and counting a photo
+    twice would weigh the reliability towards whichever scene happened to be filed twice.
+    A directory that is not there is the Operator's to be told, in the same breath as the
+    reference Frame's absence — it is only present in a source checkout.
+    """
+    photos = sorted(directory.glob("*.png")) if directory.is_dir() else []
+    if not photos:
+        raise VisionError(
+            f"there are no Work Cell fixtures in {directory} — they are kept in the repository"
+            " and found relative to the installed package, so they are only there when the"
+            " project is installed from a source checkout (which is what `uv run` gives you)"
+        )
+    frames = {frame.digest: frame for frame in (ImageFileCamera(path).capture() for path in photos)}
+    return tuple(frames.values())
+
+
 def measure(
     *,
     router: Router,
@@ -407,6 +486,7 @@ def measure(
     repetitions: int,
     out: TextIO,
     structured: bool = False,
+    fixtures: Sequence[Frame] = (),
 ) -> Benchmark:
     """Measure each Variant against the same Workload, one on the hardware at a time.
 
@@ -426,6 +506,11 @@ def measure(
     same way they must share the Frame and the limits (ADR-0011). A model that declines the
     shape is a "no shape" run, not a failed one — the Variant was measured, so it does not
     raise and it does not become prose.
+
+    ``fixtures`` are Frames to sweep with the fixed shape once the repetitions are done, while the
+    Variant is still on the hardware — the Work Cell photos, when the Operator asked for the
+    reliability of the Structured Observation. Independent of ``structured``: a prose sitting can
+    carry the sweep too, because reliability is about the shape and is not timed.
     """
     require_a_benchmark_run(repetitions)
     require_a_variant(variants)
@@ -443,6 +528,7 @@ def measure(
             repetitions=repetitions,
             out=out,
             structured=structured,
+            fixtures=fixtures,
         )
         for order, variant in enumerate(accepted, start=1)
     )
@@ -500,6 +586,7 @@ def _measure_one(
     repetitions: int,
     out: TextIO,
     structured: bool,
+    fixtures: Sequence[Frame],
 ) -> MeasuredVariant | UnmeasuredVariant:
     """Bring one Variant up, run the Workload against it, and take it back off again.
 
@@ -534,6 +621,7 @@ def _measure_one(
             out=out,
             structured=structured,
         )
+        reliability = _sweep(ready.model, fixtures)
     except BaseException:
         # Take the model off the hardware, but never at the cost of the reason the
         # measurement failed: a native unload that fails on the way out of a failed
@@ -543,7 +631,27 @@ def _measure_one(
         raise
     ready.model.unload()
 
-    return MeasuredVariant(model=ready.identity, order=order, load=ready.load, runs=runs)
+    return MeasuredVariant(
+        model=ready.identity,
+        order=order,
+        load=ready.load,
+        runs=runs,
+        reliability=reliability,
+    )
+
+
+def _sweep(model: VisionModel, fixtures: Sequence[Frame]) -> Reliability | None:
+    """Ask the fixed shape of every fixture once, and count what came back usable.
+
+    Not timed and not repeated: this is a count of how often the shape holds, not a latency, and
+    a Variant that takes twenty-five seconds a photo is already paid for by the repetitions. A
+    "no shape" is a miss, never an error — the same ordinary outcome it is everywhere else
+    (ADR-0011) — while a model that raises still ends the Benchmark, as it does mid-repetition.
+    """
+    if not fixtures:
+        return None
+    shapes = [model.observe_structured(structured_workload(frame)).shape for frame in fixtures]
+    return Reliability.over(shapes)
 
 
 def _repeat(
